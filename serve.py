@@ -13,7 +13,9 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 STORE = os.path.expanduser("~/Documents/otzvuk")
 STATE = os.path.join(STORE, "state.json")
 VKUS = os.path.join(STORE, "вкус.jsonl")
+EMB = os.path.join(STORE, "эмбеддинги.jsonl")
 RECS = os.path.join(STORE, "записи")
+INBOX = os.path.join(STORE, "обмен")
 PORT = 8781
 
 
@@ -47,6 +49,14 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(200, {"rows": []})
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
+        if p == "/эмбеддинги":
+            try:
+                with open(EMB, encoding="utf-8") as f:
+                    return self._json(200, {"rows": [json.loads(x) for x in f if x.strip()]})
+            except FileNotFoundError:
+                return self._json(200, {"rows": []})
+            except (ValueError, OSError) as e:
+                return self._json(500, {"error": str(e)})
         if p != "/state":
             return super().do_GET()
         try:
@@ -75,6 +85,22 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(500, {"error": str(e)})
 
     def do_POST(self):
+        if self.path.split("?")[0] == "/clap":
+            # WAV из браузера → эмбеддинг CLAP. Модель живёт в отдельном
+            # процессе (clapd.py) и общается через папку обмена: держать
+            # торч внутри веб-сервера значит ждать его при каждом старте.
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                key = self.headers.get("X-Key") or "нечто"
+                data = self.rfile.read(n)
+                os.makedirs(INBOX, exist_ok=True)
+                tmp = os.path.join(INBOX, key + ".part")
+                with open(tmp, "wb") as f:
+                    f.write(data)
+                os.replace(tmp, os.path.join(INBOX, key + ".wav"))
+                return self._json(200, {"ok": True, "queued": key})
+            except (ValueError, OSError) as e:
+                return self._json(500, {"error": str(e)})
         if self.path.split("?")[0] == "/vkus":
             try:
                 n = int(self.headers.get("Content-Length", 0))
@@ -115,5 +141,6 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     os.makedirs(RECS, exist_ok=True)
+    os.makedirs(INBOX, exist_ok=True)
     print(f"отзвук: http://127.0.0.1:{PORT}  ·  записи: {RECS}")
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

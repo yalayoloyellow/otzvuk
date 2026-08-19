@@ -26,6 +26,7 @@
   секунд <input id="dur" value="20" style="width:60px">
   <button id="go">прогнать</button>
   <button id="det">дважды · детерминизм</button>
+  <button id="dump">выгрузить темы для CLAP</button>
 </div>
 <pre id="out">Офлайн-рендер того же engine.worklet.js, что играет в живой странице.
 Материал — из того же material.js. Композитора здесь нет: движок получает
@@ -37,6 +38,7 @@ import {genMaterial, mul32} from './material.js';
 import {pickGroove} from './groove.js';
 import {HATS,CLAPS,euclid} from './composer.js';
 import * as theme from './feat.js';
+import {encodeWav} from './wav.js';
 const $=s=>document.querySelector(s);
 const out=$('#out');
 const log=h=>{ out.innerHTML=h; };
@@ -220,5 +222,33 @@ async function measureSwing(seed,profile,groove,dur){
 // себе, а на тихих семействах детектор ловил фон вместо разрядов (при
 // одном разряде насчитывал четырнадцать). Различие семейств доказано
 // спектром, пиком и хэшем; форму судит ухо.
-window.stand={render,metrics,theme,kickOffsets,measureGroove,measureSwing,pickGroove,mul32,HATS,CLAPS,euclid};
+// Выгрузка всех прослушанных тем: семена лежат в журнале, движок и материал
+// детерминированы, поэтому звук воспроизводится точно тот же, что ты слышал.
+async function dumpThemes(onProgress){
+  const d=await fetch('/vkus',{cache:'no-store'}).then(r=>r.json());
+  const rows=d.rows||[], seen=new Set(), jobs=[];
+  for(const r of rows){
+    for(const [seed,prof] of [[r.seedA,r.profile],[r.seedB,r.profile]]){
+      const key=prof+'_'+(seed>>>0);
+      if(seed===undefined||seen.has(key)) continue;
+      seen.add(key); jobs.push({key,seed:seed>>>0,prof});
+    }
+  }
+  let i=0;
+  for(const j of jobs){
+    const r=await render(j.seed,j.prof,3.2,null,'theme');
+    const b=r.buf, n=b.length;
+    const blob=encodeWav([b.getChannelData(0),b.getChannelData(1)],n,b.sampleRate);
+    await fetch('/clap',{method:'POST',headers:{'X-Key':j.key},body:blob});
+    i++; if(onProgress) onProgress(i,jobs.length);
+  }
+  return jobs.length;
+}
+$('#dump').onclick=async()=>{
+  try{
+    const n=await dumpThemes((i,t)=>log('выгружаю тему <b>'+i+'</b> из '+t));
+    log('выгружено тем: <b>'+n+'</b>. Демон считает эмбеддинги.');
+  }catch(e){ log('<span class="bad">ошибка: '+(e.message||e)+'</span>'); }
+};
+window.stand={render,metrics,theme,dumpThemes,kickOffsets,measureGroove,measureSwing,pickGroove,mul32,HATS,CLAPS,euclid};
 </script>
