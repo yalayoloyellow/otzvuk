@@ -8,6 +8,7 @@
 import json
 import os
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import unquote
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STORE = os.path.expanduser("~/Documents/otzvuk")
@@ -18,6 +19,10 @@ RECS = os.path.join(STORE, "записи")
 INBOX = os.path.join(STORE, "обмен")
 ИСТОК = os.path.join(STORE, "исток")
 ЗАКАЗ = os.path.join(STORE, "заказ.json")
+# Пресеты лежат по одному файлу на штуку: так их не потерять целиком и можно
+# унести по одному. Папка в Документах — она переживает и порт, и профиль
+# браузера, и переустановку.
+ПРЕСЕТЫ = os.path.join(STORE, "пресеты")
 PORT = 8781
 
 
@@ -40,7 +45,23 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        p = self.path.split("?")[0]
+        # Путь приходит в процентной кодировке, а имена у нас кириллические —
+        # без разбора обратно ни один такой адрес не совпадёт.
+        p = unquote(self.path.split("?")[0])
+        if p == "/пресеты":
+            try:
+                os.makedirs(ПРЕСЕТЫ, exist_ok=True)
+                строки = []
+                for имя in sorted(os.listdir(ПРЕСЕТЫ)):
+                    if not имя.endswith(".json"):
+                        continue
+                    with open(os.path.join(ПРЕСЕТЫ, имя), encoding="utf-8") as f:
+                        д = json.load(f)
+                    д["файл"] = имя
+                    строки.append(д)
+                return self._json(200, {"пресеты": строки})
+            except (ValueError, OSError) as e:
+                return self._json(500, {"error": str(e)})
         if p == "/vkus":
             # журнал кликов: одна строка на пару, дописывается, не переписывается
             try:
@@ -72,7 +93,6 @@ class Handler(SimpleHTTPRequestHandler):
             except OSError as e:
                 return self._json(500, {"error": str(e)})
         if p.startswith("/исток/"):
-            from urllib.parse import unquote
             name = os.path.basename(unquote(p[len("/исток/"):]))
             path = os.path.join(ИСТОК, name)
             try:
@@ -120,8 +140,28 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(500, {"error": str(e)})
 
     def do_POST(self):
+        if unquote(self.path.split("?")[0]) == "/пресеты":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                д = json.loads(self.rfile.read(n) or b"{}")
+                os.makedirs(ПРЕСЕТЫ, exist_ok=True)
+                имя = "".join(c for c in str(д.get("имя") or "без имени")
+                              if c not in '/\\:*?"<>|')[:60]
+                путь = os.path.join(ПРЕСЕТЫ, имя + ".json")
+                # Один и тот же снимок дважды не пишем, а вот разные под
+                # одним именем разводим номером — терять пресеты нельзя.
+                k = 2
+                while os.path.exists(путь):
+                    путь = os.path.join(ПРЕСЕТЫ, f"{имя} ({k}).json")
+                    k += 1
+                with open(путь, "w", encoding="utf-8") as f:
+                    json.dump(д, f, ensure_ascii=False, indent=1)
+                return self._json(200, {"ок": True, "файл": os.path.basename(путь)})
+            except (ValueError, OSError) as e:
+                return self._json(500, {"error": str(e)})
+
         if self.path.split("?")[0] == "/clap":
-            from urllib.parse import parse_qs, unquote
+            from urllib.parse import parse_qs
             # WAV из браузера → эмбеддинг CLAP. Модель живёт в отдельном
             # процессе (clapd.py) и общается через папку обмена: держать
             # торч внутри веб-сервера значит ждать его при каждом старте.
