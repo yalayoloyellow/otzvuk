@@ -407,6 +407,16 @@ class Otzvuk extends AudioWorkletProcessor{
     this.kEnv=0; this.kPh=0; this.kDrop=0;
     this.hEnv=0; this.hLp=0; this.hRs=7331;
     this.cEnvD=0; this.cTaps=0; this.cCd=0; this.cRs=99; this.cf0=0; this.cf1=0;
+    // Грув: сдвиги от сетки и велосити. Выключен (null) = жёсткая сетка,
+    // поведение в точности прежнее. Удар не бьёт на границе шага, а
+    // планируется с задержкой в сэмплах; «раньше сетки» существует за счёт
+    // общего базового сдвига 0.2 шага — он одинаков для всех, поэтому не
+    // слышен как задержка.
+    this.grv=null; this.cVel=1;
+    this.gDelK=-1; this.gDelH=-1; this.gDelC=-1; this.gDelS=-1; this.gDelB=-1;
+    this.gVelK=1; this.gVelH=1; this.gVelC=1; this.gVelS=1;
+    this.gWk=0; this.gWh=0; this.gWs=0;     // блуждание, коррелированный ход
+    this.gRs=0x9e3779b9|0;                  // посевной LCG: грув воспроизводим
     this.kF=46; this.kSweep=2.6; this.kDec=.9999; this.kDrive=.7; this.kLvl=1;
     this.hDec=.999; this.hLvl=.5; this.cLvl=.6; this.hRoll=0;
     this.rec=0; this.recL=new Float32Array(4096); this.recR=new Float32Array(4096); this.recN=0;
@@ -484,6 +494,7 @@ class Otzvuk extends AudioWorkletProcessor{
         if(d.l1!==undefined) this.L[1].srT=d.l1|0;
         if(d.lvl0!==undefined) this.L[0].lvl=d.lvl0;
         if(d.lvl1!==undefined) this.L[1].lvl=d.lvl1; }
+      else if(d.t==='groove'){ this.grv=d.g||null; }
       else if(d.t==='bpm'){ this.bpmLock=d.lock?1:0;
         // Скользящий темп под ударными плывёт и слышен как аритмия.
         // В жанрах ставим сразу, в авангарде оставляем плавным.
@@ -587,22 +598,57 @@ class Otzvuk extends AudioWorkletProcessor{
     if(d.bass!==undefined) this.mBass=d.bass;
     if(d.hook!==undefined) this.mHook=d.hook;
   }
+  grn(){ this.gRs=(Math.imul(this.gRs,1664525)+1013904223)|0;
+    return ((this.gRs>>>9)/4194304)-1; }        // −1…1, посевной
   onStep(){
-    const st=this.step;
-    if(this.dr){
-      if(this.pK[st]){ this.kEnv=1; this.kDrop=1; this.kPh=0; this.pump=1; }
-      if(this.pH[st]){ this.hEnv=1; }
-      // раскат хэтов: то, без чего рейдж не рейдж
-      if(this.hRoll>0 && this.pH[st] && Math.random()<this.hRoll) this.hRollN=3+(Math.random()*5|0);
-      if(this.pC[st]){ this.cTaps=3; this.cCd=0; }
+    const st=this.step, g=this.grv;
+    let dK=0,dH=0,dC=0,vK=1,vH=1,vC=1,vS=1;
+    if(g){
+      // Блуждание: медленный коррелированный ход, не дрожание. Датасет живых
+      // барабанщиков: корреляция соседних сдвигов ≈ 0.5.
+      const wf=g.wander;
+      this.gWk=this.gWk*wf+this.grn()*(1-wf);
+      this.gWh=this.gWh*wf+this.grn()*(1-wf);
+      this.gWs=this.gWs*wf+this.grn()*(1-wf);
+      const sw=(st&1)?(g.swing-.5)*2:0;         // свинг двигает чётные 16-е
+      dK=.2+sw+g.late.kick +this.gWk*g.jit.kick;
+      dH=.2+sw+g.late.hat  +this.gWh*g.jit.hat;
+      dC=.2+sw+g.late.clap +this.gWs*g.jit.snare;
+      const hm=g.human, p=st&3;
+      const acc=a=>a?(1-hm)+hm*a[p]*(1+this.grn()*.12):1;
+      vK=acc(g.acc.kick); vH=acc(g.acc.hat); vC=acc(g.acc.clap); vS=acc(g.acc.snare);
     }
-    if(this.pS[st]) this.hitEnv=1;
-    else if(this.pB[st]) this.hitEnv=.45;
-    if(this.pS[st] || (this.pB[st]&&(st&3)===0)){
-      // бас идёт по сильным долям и получает ноту из партии семени
-      this.bsEnv=1; this.bsPunch=1; this.pump=1;
-      // если удары идут подряд — высота не сбрасывается целиком, а скользит
-      this.bsDrop=this.bsGlide>0 ? Math.max(this.bsDrop*this.bsGlide,.55) : 1;
+    const D=f=>Math.round(clamp(f,0,.94)*this.stepLen);
+    if(this.dr){
+      if(this.pK[st]){
+        if(g){ this.gDelK=D(dK); this.gVelK=vK; }
+        else { this.kEnv=1; this.kDrop=1; this.kPh=0; this.pump=1; } }
+      if(this.pH[st]){
+        if(g){ this.gDelH=D(dH); this.gVelH=vH; }
+        else this.hEnv=1; }
+      // раскат хэтов: то, без чего рейдж не рейдж
+      if(this.hRoll>0 && this.pH[st] && (this.grn()*.5+.5)<this.hRoll)
+        this.hRollN=3+((this.grn()*.5+.5)*5|0);
+      if(this.pC[st]){
+        if(g){ this.gDelC=D(dC); this.gVelC=vC; }
+        else { this.cTaps=3; this.cCd=0; } }
+    }
+    // ворота фактуры и бас едут карманом бочки — иначе бит расслаивается
+    if(g){
+      if(this.pS[st]||this.pB[st]){
+        this.gDelS=D(.2+((st&1)?(g.swing-.5)*2:0)+g.late.kick+this.gWk*g.jit.kick);
+        this.gVelS=(this.pS[st]?1:.45)*vS;
+        this.gDelB=(this.pS[st]||(this.pB[st]&&(st&3)===0))?this.gDelS:-1;
+      }
+    } else {
+      if(this.pS[st]) this.hitEnv=1;
+      else if(this.pB[st]) this.hitEnv=.45;
+      if(this.pS[st] || (this.pB[st]&&(st&3)===0)){
+        // бас идёт по сильным долям и получает ноту из партии семени
+        this.bsEnv=1; this.bsPunch=1; this.pump=1;
+        // если удары идут подряд — высота не сбрасывается целиком, а скользит
+        this.bsDrop=this.bsGlide>0 ? Math.max(this.bsDrop*this.bsGlide,.55) : 1;
+      }
     }
     this.step=(this.step+1)&15;
     if(this.step===0){ this.bar++;
@@ -687,6 +733,16 @@ class Otzvuk extends AudioWorkletProcessor{
       if(this.running && --this.stepCd<=0){ this.stepCd=Math.round(this.stepLen); this.onStep();
         // нажали до наполнения памяти — дозахватим сами
       }
+      // Отложенные удары грува: onStep только назначает время, срабатывание
+      // происходит здесь, с точностью до сэмпла.
+      if(this.gDelK>=0 && --this.gDelK<0){
+        this.kEnv=this.gVelK; this.kDrop=1; this.kPh=0; this.pump=1; }
+      if(this.gDelH>=0 && --this.gDelH<0) this.hEnv=this.gVelH;
+      if(this.gDelC>=0 && --this.gDelC<0){ this.cTaps=3; this.cCd=0; this.cVel=this.gVelC; }
+      if(this.gDelS>=0 && --this.gDelS<0) this.hitEnv=this.gVelS;
+      if(this.gDelB>=0 && --this.gDelB<0){
+        this.bsEnv=1; this.bsPunch=1; this.pump=1;
+        this.bsDrop=this.bsGlide>0 ? Math.max(this.bsDrop*this.bsGlide,.55) : 1; }
 
       // ---- фактура -----------------------------------------------------------
       let mix=0;
@@ -820,7 +876,7 @@ class Otzvuk extends AudioWorkletProcessor{
           const nz=((this.cRs>>>9)/4194304)-1;
           this.cf0+=.19*this.cf1; this.cf1+=.19*(nz-this.cf0-.7*this.cf1);
           this.cEnvD*= this.cTaps>0 ? .997 : .9997;
-          drm+=this.cf1*this.cEnvD*this.cLvl*.7*this.gClap;
+          drm+=this.cf1*this.cEnvD*this.cVel*this.cLvl*.7*this.gClap;
         }
       }
 

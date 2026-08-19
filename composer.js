@@ -19,7 +19,8 @@
 //  движок (post), контекст (ctx), подмену материала (swap) и строку формы
 //  (onForm). Так композитора можно гонять в стенде без страницы.
 // ============================================================================
-import {genMaterial} from './material.js';
+import {genMaterial, mul32} from './material.js';
+import {pickGroove} from './groove.js';
 
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 const rnd=(a,b)=>a+Math.random()*(b-a);
@@ -141,6 +142,7 @@ export function makeComposer(env){
   let curKit={k:'1000000010000000'};
   let srPlanT=null, curCrunch=0;
   let curBar=0, lastBpm=0;
+  let curGroove=null;
 
   const material=seed=>genMaterial(env.ctx(),seed,profile,tasteW);
   const form=(bars,bpm)=>env.onForm({sec:curSec,mat:curMat,bars,bpm,tension});
@@ -210,6 +212,13 @@ export function makeComposer(env){
     };
   }
 
+  // Грув: карман выводится из семени пресета, поэтому он свойство темы,
+  // а не глобальная настройка. Жанр задаёт рамки, семя — точку внутри.
+  function sendGroove(seed){
+    curGroove=pickGroove(profile,mul32((seed^0x7f4a7c15)>>>0));
+    post({t:'groove',g:curGroove});
+  }
+
   function sendTilt(){ post({t:'tilt',v:TILTS[profile]}); }
 
   // Заполнение: кит тот же, меняется только рисунок хэтов и клэпа. Это то,
@@ -246,6 +255,7 @@ export function makeComposer(env){
       post({t:'preset',seed:hookSeed,layer:0});
       post({t:'preset',seed:(hookSeed^0x5bf03635)>>>0,layer:1});
       const mm=material(hookSeed); curMat=mm.name; env.swap(mm.buf,2.5);
+      sendGroove(hookSeed);
       post({t:'bpm',lock:1,hard:1,
         v:Math.round(rnd(PROFILES[profile].bpm[0],PROFILES[profile].bpm[1])),mul:1});
       sendDrums(); sendTilt();
@@ -326,7 +336,7 @@ export function makeComposer(env){
       l1: SRD[Math.min(SRD.length-1, cr + (Math.random()<.5?2:0))],
       lvl0: rnd(.85,1.15), lvl1: rnd(.35,.9)});
     setCrunch(sh.crunch, sh.xf>2);
-    sendDrums(); sendTilt();
+    sendDrums(); sendTilt(); sendGroove(seed);
 
     if(sh.newVoice) { const mm=material(seed); curMat=mm.name; env.swap(mm.buf,Math.min(3,sh.xf)); }
 
@@ -435,6 +445,7 @@ export function makeComposer(env){
     // Явно: режим удержания выходит раньше, чем дошло бы до отключения кита,
     // и после техно в авангарде оставалась прямая бочка.
     post({t:'drums',mode:0});
+    post({t:'groove',g:null});
     era=null; tabu=[]; memory=[]; tension=.2; tDir=1;
     // Переход берётся не из нового профиля (там бывает до 20 секунд), а
     // осмысленно быстрый — иначе смена режима просто не слышна.
@@ -468,6 +479,7 @@ export function makeComposer(env){
   }
 
   return {start, stepSection, vote, refresh, nextProfile, onBar,
+          get groove(){return curGroove},
           get profile(){return profile}, get started(){return started},
           get curSec(){return curSec}, get curMat(){return curMat}};
 }
