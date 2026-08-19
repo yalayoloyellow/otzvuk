@@ -9,7 +9,7 @@ globalThis.AudioWorkletProcessor = class { constructor(){ this.port = {
 new Function(readFileSync('./хаос.worklet.js','utf8'))();
 const SR = 48000;
 const БАЗ = {качание:.55, характер:.5, размах:.75, импульс:.2,
-             дребезг:.15, удар:.35, развод:.15, гуляние:0, питч:.5};
+             дребезг:.15, удар:.35, развод:.15, гуляние:0, питч:.5, голоса:.6};
 function прогон(p, сек){
   const пр = new K();
   пр.port._f({data:{t:'p', v:{...БАЗ, ...p}}});
