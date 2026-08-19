@@ -687,6 +687,10 @@ class Chaos extends AudioWorkletProcessor {
     this.pr = this.devices[0];
     this.svod = new Decim();
     this.kont = new Contacts();
+    // ТУМБЛЕР ЦЕПИ. Выключен — провод с первого прибора идёт прямо на
+    // капсюль, второй обесточен и не считается вовсе. Включён — первый
+    // втекает во второй, а наружу идёт второй.
+    this.chain = 1;
     this.pl = new Float32Array(9);
     this.utechka = 0; this.navodka = 0;
     this.pik = 0; this.report = 0; this.okno = 0; this.sryvy = 0;
@@ -720,6 +724,7 @@ class Chaos extends AudioWorkletProcessor {
         this.svod = new Decim();
       }
       else if (d.t === 'active'){ this.active = d.i === 1 ? 1 : 0; }
+      else if (d.t === 'chain'){ this.chain = d.v ? 1 : 0; }
       else if (d.t === 'kick'){
         for (const p of this.devices)
           for (const g of p.cells) g.V += (Math.random() - .5) * 2;

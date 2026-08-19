@@ -56,7 +56,9 @@ const SWITCHES=[
   {k:'gen2',     kl:'KeyK', imya:'ГЕН 2',    podpis:['выкл','вкл']},
   {k:'gen3',     kl:'KeyL', imya:'ГЕН 3',    podpis:['выкл','вкл']},
   {k:'link',    kl:'KeyB', imya:'СВЯЗЬ',    podpis:['нет','замкнута']},
-  {k:'dirt',    kl:'KeyM', imya:'ГРЯЗЬ',    podpis:['развязка','снята']}
+  {k:'dirt',    kl:'KeyM', imya:'ГРЯЗЬ',    podpis:['развязка','снята']},
+  // Не в приборе, а между приборами: стоит ли второй в цепи вообще.
+  {k:'chain',   kl:'KeyN', imya:'ЦЕПЬ',     podpis:['один прибор','два в цепи'], obschiy:1}
 ];
 // Второй страницы нет и быть не должно. Всё, чего нет на панели, — это
 // номиналы деталей: конденсаторы, резисторы, пороги конкретной микросхемы,
@@ -88,7 +90,7 @@ function skazhi(t){ vest=t; vestdo=performance.now()+2600; }
 function snimok(){
   return {name:nazovis(), time:new Date().toISOString().slice(0,19).replace('T',' '),
           seeds:[...seeds], sets:sets.map(x=>({...x})),
-          switches:tumbnabory.map(x=>({...x})), active};
+          switches:tumbnabory.map(x=>({...x})), chain, active};
 }
 function nazovis(){
   const p=report.period>0 ? report.period.toFixed(2)+'с' : '';
@@ -140,6 +142,10 @@ function primenit(p){
     if(с!==undefined && с!==null){ seeds[i]=с>>>0;
       node&&node.port.postMessage({t:'seed', i, v:seeds[i]}); }
   }
+  // Пресет, записанный до появления второго прибора, знал только один —
+  // цепь для него выключаем, иначе он зазвучит через чужой прибор.
+  chain = p.chain!==undefined ? (p.chain?1:0) : (p.sets||p.наборы ? 1 : 0);
+  node&&node.port.postMessage({t:'chain', v:chain});
   send();
   skazhi('пресет: '+(p.name||p.имя||p.file));
 }
@@ -169,6 +175,7 @@ function vyberi(i){
 function razvedi(){
   const v={...knobs};
   for(const t of SWITCHES){
+    if(t.obschiy) continue;            // общий тумблер уходит своим сообщением
     const pol=t.pol||2;
     v[t.k] = pol>2 ? switches[t.k]/(pol-1) : switches[t.k];
   }
@@ -181,6 +188,7 @@ function razvedi(){
 const pustomakro = () => ({sway:.55, tone:.5, depth:.75, pulse:.2,
                            hit:.35, spread:.15, drift:0, range:.5, feed:0});
 const pustotumb = () => ({gen2:1, gen3:0, link:0, dirt:0});
+let chain=1;
 const sets=[pustomakro(), pustomakro()];
 const tumbnabory=[pustotumb(), pustotumb()];
 sets[1].feed=.35;
@@ -278,6 +286,7 @@ async function pusk(){
   // в цепи и звучит, даже когда на экране первый.
   for(let i=0;i<2;i++) node.port.postMessage({t:'seed', i, v:seeds[i]});
   node.port.postMessage({t:'active', i:active});
+  node.port.postMessage({t:'chain', v:chain});
   send();
   window.dbg.sostoyanie='играет';
   }catch(e){ window.dbg.oshibka=''+e; window.dbg.sostoyanie='упал'; }
@@ -307,7 +316,11 @@ addEventListener('keydown',async e=>{
     e.preventDefault();
     if(e.repeat) return;
     const pol=t.pol||2;
-    switches[t.k]=(switches[t.k]+1)%pol;
+    if(t.obschiy){
+      chain=(chain+1)%pol;
+      node&&node.port.postMessage({t:'chain', v:chain});
+      skazhi(chain?'два прибора в цепи':'играет только первый');
+    } else switches[t.k]=(switches[t.k]+1)%pol;
     vspyshkat=t; vspyshka=8; send();
     return;
   }
@@ -390,6 +403,12 @@ addEventListener('resize',pomer);
 
 function kartina(){
   const o=report.osc||new Float32Array(256), n=o.length;
+  // Осциллограмма строится в долях СВОЕГО размаха, а не в абсолютных
+  // вольтах: на тихой настройке фигура иначе схлопывается в точку, хотя
+  // форма у неё та же самая.
+  let mxo=1e-4;
+  for(let i=0;i<n;i++){ const a=o[i]<0?-o[i]:o[i]; if(a>mxo) mxo=a; }
+  const k=1/mxo;
   const u=clamp(report.swing??.5,0,1);            // положение качелей
   const g=clamp(report.drift??.5,0,1);
   const ut=clamp(report.utechka||0,0,1.4);          // пальцы на площадках
@@ -436,7 +455,7 @@ function kartina(){
   };
   let px=null, py=null;
   for(let i=0;i<n-sdv;i++){
-    const a=clamp(o[i],-1,1), b=clamp(o[i+sdv],-1,1);
+    const a=clamp(o[i]*k,-1,1), b=clamp(o[i+sdv]*k,-1,1);
     let rx=a*ko - b*si, ry=a*si + b*ko;
     const rad=Math.sqrt(rx*rx+ry*ry);
     const t=tvist*rad*rad;
@@ -544,13 +563,14 @@ function ruchki(){
   }
   stroki.push('');
   stroki.push(SWITCHES.map(t=>{
-    const pol=t.pol||2, z=switches[t.k];
+    const pol=t.pol||2, z=t.obschiy ? chain : switches[t.k];
     const vid=pol>2 ? '['+'·'.repeat(z)+'▮'+'·'.repeat(pol-1-z)+']'
                     : (z?'[▮]':'[·]');
     const cv=z?'hot':'dim';
     return `<span class="${cv}">${t.imya} ${vid}</span> <span class="dim2">${t.kl.replace('Key','').toLowerCase()}</span>`;
   }).join('   '));
-  stroki.push(`  <span class="dim2">${SWITCHES.map(t=>t.imya+': '+(t.podpis[switches[t.k]]||'')).join(' · ')}</span>`);
+  stroki.push(`  <span class="dim2">${SWITCHES.map(t=>t.imya+': '+
+    (t.podpis[t.obschiy?chain:switches[t.k]]||'')).join(' · ')}</span>`);
   return stroki.join('\n');
 }
 
