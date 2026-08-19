@@ -106,22 +106,32 @@ export function score(f,w){
 export function learnPair(w,winner,loser,rate){
   const k=rate||.35, out={...w};
   for(const key of Object.keys(out)){
-    const a=key==='brightness'?briTerm(winner):winner[key];
-    const b=key==='brightness'?briTerm(loser):loser[key];
+    const a=val(winner,key), b=val(loser,key);
     out[key]=Math.max(.05,Math.min(3,out[key]+k*(a-b)));
   }
-  return out;
+  return norm(out,w);
 }
-// «Обе мимо»: признаки, выраженные у обеих, теряют вес — раз такие темы
-// не нравятся, то и цениться они должны меньше.
+// «Обе мимо»: раз обе темы не нравятся, признаки, которыми они сильны,
+// ценились зря — их вес падает тем сильнее, чем ярче они выражены.
+// Порога здесь нет намеренно: с порогом 0.5 большинство пар не двигало
+// ничего, и ответ выглядел как проглоченный.
 export function learnBothBad(w,a,b,rate){
-  const k=rate||.12, out={...w};
+  const k=rate||.25, out={...w};
   for(const key of Object.keys(out)){
-    const va=key==='brightness'?briTerm(a):a[key];
-    const vb=key==='brightness'?briTerm(b):b[key];
-    const m=(va+vb)/2;
-    if(m>.5) out[key]=Math.max(.05,out[key]-k*(m-.5)*2);
+    const m=(val(a,key)+val(b,key))/2;
+    out[key]=Math.max(.05,out[key]-k*m);
   }
-  return out;
+  return norm(out,w);
+}
+function val(f,key){ return key==='brightness'?briTerm(f):f[key]; }
+// Сумма весов держится постоянной: иначе десяток пар либо раздувает их,
+// либо утягивает к нулю, и оценка перестаёт что-либо значить.
+function norm(out,ref){
+  let s=0,s0=0;
+  for(const k of Object.keys(out)){ s+=out[k]; s0+=ref[k]; }
+  if(s<1e-6) return {...ref};
+  const g=s0/s, r={};
+  for(const k of Object.keys(out)) r[k]=Math.max(.05,Math.min(3,out[k]*g));
+  return r;
 }
 function briTerm(f){ return Math.max(0,1-Math.abs(f.brightness-.42)*2); }

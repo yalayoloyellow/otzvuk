@@ -129,7 +129,13 @@ addEventListener('keydown',e=>{
 //  мимо. Веса двигаются в сторону выбранного (правило перцептрона).
 // ============================================================================
 let calOn=false, calPair=null, calDone=0, calPlaying=null, calWasPlaying=false;
+let calGen=0;                       // поколение: старое прослушивание глохнет
 const CAL_TARGET=10;
+// Кнопки гаснут, пока пара готовится: раньше нажатие в этот момент молча
+// пропадало, и «обе мимо» выглядела сломанной.
+function calReady(on){
+  for(const id of ['#calA','#calB','#calN','#calR']) $(id).disabled=!on;
+}
 
 function calStop(){ if(calPlaying){ try{calPlaying.stop();}catch(e){} calPlaying=null; } }
 
@@ -141,40 +147,48 @@ function calPlay(buf,label){
 }
 
 async function calNext(){
+  const gen=++calGen;
+  calReady(false);
   $('#calmsg').textContent='готовлю пару…';
   const a=await composer.renderCandidate((Math.random()*4294967295)>>>0);
   const b=await composer.renderCandidate((Math.random()*4294967295)>>>0);
+  if(gen!==calGen||!calOn) return;
   calPair={a:{buf:a.buf,f:features(a.buf),mat:a.mat},
            b:{buf:b.buf,f:features(b.buf),mat:b.mat}};
-  $('#caln').textContent=calDone+' из '+CAL_TARGET;
-  await calAudition();
+  calReady(true);
+  await calAudition(gen);
 }
 
-async function calAudition(){
+async function calAudition(gen){
+  if(gen===undefined) gen=calGen;
   if(!calPair) return;
-  calPlay(calPair.a.buf,'первая…');
+  calPlay(calPair.a.buf,'первая…  (можно выбирать не дослушивая)');
   await new Promise(r=>setTimeout(r,4600));
-  if(!calOn) return;
+  if(gen!==calGen||!calOn) return;
   calPlay(calPair.b.buf,'вторая…');
   await new Promise(r=>setTimeout(r,4600));
-  if(!calOn) return;
+  if(gen!==calGen||!calOn) return;
   calStop();
   $('#calmsg').textContent='какая цепляет?';
 }
 
 function calChoose(which){
   if(!calPair) return;
+  calGen++;                          // прерываем прослушивание текущей пары
+  calStop();
   const {a,b}=calPair;
   if(which==='a') composer.setWeights(learnPair(composer.weights,a.f,b.f));
   else if(which==='b') composer.setWeights(learnPair(composer.weights,b.f,a.f));
   else composer.setWeights(learnBothBad(composer.weights,a.f,b.f));
   calDone++;
   calPair=null;
+  $('#caln').textContent=calDone+' из '+CAL_TARGET;
   if(calDone>=CAL_TARGET){ calFinish(); return; }
   calNext();
 }
 
 function calFinish(){
+  calReady(false);
   const w=composer.weights;
   $('#calmsg').textContent='готово. веса: '+
     Object.keys(w).map(k=>k+' '+w[k].toFixed(2)).join(' · ');
@@ -189,9 +203,9 @@ function calToggle(){
   if(calOn){
     calWasPlaying=playing;
     if(playing) $('#run').click();          // подложка молчит, пока слушаем пары
-    calDone=0; calNext();
+    calDone=0; $('#caln').textContent='0 из '+CAL_TARGET; calNext();
   } else {
-    calStop(); calPair=null;
+    calGen++; calStop(); calPair=null;
     if(calWasPlaying && !playing) $('#run').click();
   }
 }
