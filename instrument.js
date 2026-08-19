@@ -465,7 +465,26 @@ function kartina(){
     const mut=ut>.01 ? (Math.random()-.5)*ut*.18 : 0;
     const x=Math.round(cx + (wx+mut)*cx*.82*rastx);
     const y=Math.round(cy - (wy+mut)*cy*.82*rasty);
-    if(px!==null) mazok(px,py,x,y,.85);
+    // ТЕЛО. Один контур читается как проволочная петля. Заливка от центра к
+    // каждой точке даёт плотную середину, сквозь которую контур всё равно
+    // виден ярче — фигура становится телесной, а не нарисованной линией.
+    // ТЕЛО набирается заливкой от центра, но только до середины пути:
+    // сплошной диск съедал контур, а так плотная сердцевина остаётся, и
+    // край при этом читается.
+    mazok(Math.round(cx),Math.round(cy),
+          Math.round(cx+(x-cx)*.55), Math.round(cy+(y-cy)*.55), .07);
+    if(px!==null){
+      mazok(px,py,x,y,.9);
+      // ЩУПАЛЬЦА растут НАРУЖУ по радиусу — тем длиннее, чем резче скачок
+      // сигнала в этом месте. Внутри тела они бы потерялись, а так торчат
+      // и показывают, где волна рвётся.
+      const dl=Math.hypot(x-px,y-py);
+      if(dl>Sh*.045){
+        const dx=x-cx, dy=y-cy, r=Math.hypot(dx,dy)||1;
+        const dlin=Math.min(dl*1.35, Sh*.3);
+        mazok(x,y,Math.round(x+dx/r*dlin), Math.round(y+dy/r*dlin), 1.3);
+      }
+    }
     else if(x>=0&&x<Sh&&y>=0&&y<V) pole[y*Sh+x]+=.85;
     px=x; py=y;
   }
