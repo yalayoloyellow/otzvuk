@@ -182,7 +182,7 @@ export function makeComposer(env){
   let curKit={k:'1000000010000000'};
   let srPlanT=null, curCrunch=0;
   let curBar=0, lastBpm=0;
-  let curGroove=null, curPerc=null;
+  let curGroove=null, curPerc=null, curHat=null;
 
   const material=seed=>genMaterial(env.ctx(),seed,profile,tasteW);
   const form=(bars,bpm)=>env.onForm({sec:curSec,mat:curMat,bars,bpm,tension,
@@ -269,7 +269,9 @@ export function makeComposer(env){
     const P=a=>a.split('').map(Number);
     post({t:'drums', mode: profile==='техно'?2:1,
       pK:P(curKit.k), pH:hatPattern(K), pC:P(pick(K.c)),
-      hRoll:rnd(K.hRoll[0],K.hRoll[1])});
+      // раскаты берём у семейства хэта, а не у кита: иначе заполнение
+      // затирало характер семейства своим значением
+      hRoll:rnd((curHat||K).hRoll[0],(curHat||K).hRoll[1])});
   }
   // Рисунок хэта: половина случаев — евклидов, половина — жанровый из списка.
   // Список держит узнаваемость, евклид даёт сетки, которых в списке нет.
@@ -290,6 +292,7 @@ export function makeComposer(env){
     curKit.k=pick(K.k);
     const fam=K.fam?pick(K.fam):K;
     const H=pick(HATS[profile]), C=pick(CLAPS[profile]);
+    curHat=H;
     curPerc=H.name+'/'+C.name;
     post({t:'drums', mode: profile==='техно'?2:1,
       hNz:H.hNz, hTone:H.hTone, hRing:H.hRing,

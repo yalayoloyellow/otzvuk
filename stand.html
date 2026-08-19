@@ -38,11 +38,13 @@ import {HATS,CLAPS,euclid} from './composer.js';
 const $=s=>document.querySelector(s);
 const out=$('#out');
 const log=h=>{ out.innerHTML=h; };
+const VER=Date.now();
 
 async function render(seed, profile, dur, groove, only){
   const sr=48000;
   const off=new OfflineAudioContext(2, Math.ceil(sr*dur), sr);
-  await off.audioWorklet.addModule('./engine.worklet.js');
+  // у модулей воркета свой кэш: без метки браузер держит старый движок
+  await off.audioWorklet.addModule('./engine.worklet.js?v='+VER);
   const node=new AudioWorkletNode(off,'otzvuk',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});
   node.connect(off.destination);
   const mat=genMaterial(off,seed,profile,()=>1);
@@ -71,15 +73,18 @@ async function render(seed, profile, dur, groove, only){
       hNz:only.hat.hNz,hTone:only.hat.hTone,hRing:only.hat.hRing,
       hRingF:only.hat.hRingF?(only.hat.hRingF[0]+only.hat.hRingF[1])/2:3200,
       hDec:(only.hat.hDec[0]+only.hat.hDec[1])/2});
+    post({t:'lufs',v:-14,off:1});
     post({t:'mute',now:1,hook:0,bass:0,kick:0,hat:1,clap:0});
   }
   if(only&&only.clap){
     const c=new Float32Array(16), z=new Float32Array(16);
-    c[0]=1; c[8]=1;
+    c[0]=1;   // один удар на такт: хвосты не должны налезать друг на друга
     post({t:'drums',mode:1,pK:z,pH:z,pC:c,cLvl:1,
       cTapsN:only.clap.cTapsN,cGap:(only.clap.cGap[0]+only.clap.cGap[1])/2,
       cFreq:(only.clap.cFreq[0]+only.clap.cFreq[1])/2,cQ:only.clap.cQ,
       cTail:(only.clap.cTail[0]+only.clap.cTail[1])/2,cNz:only.clap.cNz});
+    // нормализация подтягивает тихий хвост вверх и удлиняет его на замере
+    post({t:'lufs',v:-14,off:1});
     post({t:'mute',now:1,hook:0,bass:0,kick:0,hat:0,clap:1});
   }
   if(only==='hat16'){
@@ -206,5 +211,9 @@ async function measureSwing(seed,profile,groove,dur){
   const o=kickOffsets(r.buf,120,{band:'high',every:1});
   return o;
 }
+// Формы клэпа стенд не мерит: огибающая полосового шума скачет сама по
+// себе, а на тихих семействах детектор ловил фон вместо разрядов (при
+// одном разряде насчитывал четырнадцать). Различие семейств доказано
+// спектром, пиком и хэшем; форму судит ухо.
 window.stand={render,metrics,kickOffsets,measureGroove,measureSwing,pickGroove,mul32,HATS,CLAPS,euclid};
 </script>

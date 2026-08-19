@@ -431,7 +431,7 @@ class Otzvuk extends AudioWorkletProcessor{
     this.luMs=1e-4; this.luCoef=1/(SR*2.0);      // окно ~2 с, как short-term
     this.luFast=1e-4; this.luFastC=1/(SR*.4); this.luSeen=0;   // мгновенное 400 мс
     this.luDb=0; this.luG=1; this.luLufs=-70;
-    this.luTarget=-14; this.luSlew=1/(SR*4);     // движение медленное, без качания
+    this.luTarget=-14; this.luOff=0; this.luSlew=1/(SR*4);     // движение медленное, без качания
     this.srTex=1; this.srTexCd=1; this.shTex=0;
     this.srRhy=1; this.srRhyCd=1; this.shRhy=0;
     this.srTex=1; this.srTexCd=1; this.shTex=0;
@@ -461,7 +461,7 @@ class Otzvuk extends AudioWorkletProcessor{
       else if(d.t==='mon') this.monitor=d.v?1:0;
       else if(d.t==='loop') this.loop=d.v?1:0;
       else if(d.t==='perc') this.percOn=d.v?1:0;
-      else if(d.t==='lufs') this.luTarget=d.v;
+      else if(d.t==='lufs'){ this.luTarget=d.v; this.luOff=d.off?1:0; }
       else if(d.t==='tilt'){ for(let i=0;i<8;i++) this.eqTilt[i]=d.v[i]; }
       else if(d.t==='rec'){ this.rec=d.v?1:0; }
       else if(d.t==='run'){ this.masterT=d.v?1:0; this.running=d.v?1:0;
@@ -656,7 +656,7 @@ class Otzvuk extends AudioWorkletProcessor{
       }
       if(this.pC[st]){
         if(g){ this.gDelC=D(dC); this.gVelC=vC; }
-        else { this.cTaps=3; this.cCd=0; } }
+        else { this.cTaps=this.cTapsN; this.cCd=0; } }
     }
     // ворота фактуры и бас едут карманом бочки — иначе бит расслаивается
     if(g){
@@ -767,7 +767,7 @@ class Otzvuk extends AudioWorkletProcessor{
         this.hRollCd=this.hRollP; this.hRollN--;
         this.hEnv=this.hVel*(.55+.45*(this.grn()*.5+.5));
       }
-      if(this.gDelC>=0 && --this.gDelC<0){ this.cTaps=3; this.cCd=0; this.cVel=this.gVelC; }
+      if(this.gDelC>=0 && --this.gDelC<0){ this.cTaps=this.cTapsN; this.cCd=0; this.cVel=this.gVelC; }
       if(this.gDelS>=0 && --this.gDelS<0) this.hitEnv=this.gVelS;
       if(this.gDelB>=0 && --this.gDelB<0){
         this.bsEnv=1; this.bsPunch=1; this.pump=1;
@@ -1004,7 +1004,8 @@ class Otzvuk extends AudioWorkletProcessor{
         const mom=this.luFast>1e-12 ? -0.691+10*Math.log10(this.luFast) : -99;
         const gate=Math.max(-60, this.luLufs-10);
         if(mom>gate){ this.luMs+=(ms-this.luMs)*this.luCoef; this.luSeen=1; }
-        if(this.running && this.luSeen && this.luMs>1e-9){
+        if(this.luOff){ this.luDb=0; this.luG=1; }
+        else if(this.running && this.luSeen && this.luMs>1e-9){
           const lufs=-0.691+10*Math.log10(this.luMs);
           this.luLufs=lufs;
           const want=clamp(this.luTarget-lufs,-24,24);

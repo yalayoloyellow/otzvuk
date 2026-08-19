@@ -121,7 +121,8 @@ addEventListener('keydown',e=>{
 // ---- запуск -------------------------------------------------------------------
 async function boot(){
   ctx=new AudioContext({latencyHint:'interactive'});
-  await ctx.audioWorklet.addModule('engine.worklet.js');
+  // у модулей воркета свой кэш: без метки браузер держит старый движок
+  await ctx.audioWorklet.addModule('engine.worklet.js?v='+Date.now());
   node=new AudioWorkletNode(ctx,'otzvuk',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});
   inGain=ctx.createGain(); inGain.connect(node); node.connect(ctx.destination);
   node.port.onmessage=e=>{
