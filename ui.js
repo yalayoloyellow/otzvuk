@@ -3,6 +3,7 @@
 //  Вся композиция — в composer.js; сюда она приходит через узкий env.
 // ============================================================================
 import {makeComposer} from './composer.js';
+import {истокСписок, истокЗагрузи, истокЗакажи} from './material.js';
 import {extract} from './feat.js';
 import {emptyModel, train, score as vscore, fitness, explain} from './vkus.js';
 
@@ -259,6 +260,64 @@ $('#calB').onclick=()=>calChoose('b');
 $('#calnone').onclick=()=>calChoose('none');
 $('#calR').onclick=()=>calAudition();
 $('#calX').onclick=()=>{ if(calOn) calToggle(); };
+
+// ============================================================================
+//  ИСТОК — материал по описанию словами
+//  Учить отбор на кликах оказалось тупиком: 134 клика дали модель уровня
+//  монетки. Зато CLAP сравнивает звук с текстом и согласуется с живыми
+//  слушателями лучше — значит цель проще СКАЗАТЬ, чем вывести из статистики.
+// ============================================================================
+let srcOn=false, srcSeen=new Set(), srcWatch=null;
+
+async function srcRefresh(){
+  const files=await истокСписок();
+  $('#srcn').textContent=files.length+' в истоке';
+  $('#srcfiles').innerHTML=files.slice(-8).map(f=>
+    '<span style="cursor:pointer;text-decoration:underline" data-f="'+f+'">'+f+'</span>').join(' · ');
+  for(const el of $('#srcfiles').querySelectorAll('[data-f]'))
+    el.onclick=()=>srcUse(el.dataset.f);
+  return files;
+}
+
+async function srcUse(имя){
+  if(!ctx) return;
+  try{
+    $('#srcmsg').textContent='беру '+имя+'…';
+    const buf=await истокЗагрузи(ctx,имя);
+    swapSource(buf,1.2);
+    $('#srcmsg').textContent='звучит: '+имя+' (движок модулирует его как любой вход)';
+  }catch(e){ $('#srcmsg').textContent='не вышло: '+(e.message||e); }
+}
+
+async function srcOrder(){
+  const t=$('#srctext').value.trim();
+  if(!t) return;
+  const было=new Set(await истокСписок());
+  await истокЗакажи(t,3,8);
+  $('#srcmsg').textContent='порождаю по описанию… (первый раз дольше: грузятся модели)';
+  if(srcWatch) clearInterval(srcWatch);
+  let ждём=0;
+  srcWatch=setInterval(async()=>{
+    ждём+=2;
+    const files=await истокСписок();
+    const новое=files.find(f=>!было.has(f));
+    if(новое){ clearInterval(srcWatch); srcWatch=null; await srcRefresh(); srcUse(новое); }
+    else if(ждём>600){ clearInterval(srcWatch); srcWatch=null;
+      $('#srcmsg').textContent='генератор молчит — запущен ли исток? (python3 исток.py служи)'; }
+  },2000);
+}
+
+function srcToggle(){
+  srcOn=!srcOn;
+  $('#srcp').hidden=!srcOn;
+  $('#src').classList.toggle('on',srcOn);
+  if(srcOn) srcRefresh();
+  else if(srcWatch){ clearInterval(srcWatch); srcWatch=null; }
+}
+$('#src').onclick=()=>{ if(ctx) srcToggle(); };
+$('#srcgo').onclick=()=>srcOrder();
+$('#srclist').onclick=()=>srcRefresh();
+$('#srcx').onclick=()=>{ if(srcOn) srcToggle(); };
 
 // ---- запуск -------------------------------------------------------------------
 async function boot(){

@@ -169,3 +169,23 @@ export function genMaterial(ctx,seed,profile,tasteW){
   if(pk>1e-6){ const g=.2/pk; for(let i=0;i<d.length;i++) d[i]*=g; }
   return {buf:b,name:m};
 }
+
+// ---- исток: материал, порождённый по описанию ---------------------------------
+// Порождённый звук — это ВХОД, наравне с микрофоном и файлом (решение yala от
+// 2026-08-19). Движок по-прежнему только модулирует то, что пришло в память.
+// Отбор внутри истока делает CLAP: он согласуется с живыми слушателями лучше,
+// чем любая модель, которую мы могли бы выучить на сотне кликов.
+export async function истокСписок(){
+  try{ const d=await fetch('/исток',{cache:'no-store'}).then(r=>r.json());
+    return d.файлы||[]; }catch(e){ return []; }
+}
+export async function истокЗагрузи(ctx,имя){
+  const r=await fetch('/исток/'+encodeURIComponent(имя));
+  if(!r.ok) throw new Error('нет файла');
+  const buf=await r.arrayBuffer();
+  return await ctx.decodeAudioData(buf);
+}
+export async function истокЗакажи(текст,вариантов,секунд){
+  await fetch('/заказ',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({t:Date.now(),текст,вариантов:вариантов||3,секунд:секунд||8})});
+}

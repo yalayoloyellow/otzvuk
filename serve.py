@@ -16,6 +16,8 @@ VKUS = os.path.join(STORE, "вкус.jsonl")
 EMB = os.path.join(STORE, "эмбеддинги.jsonl")
 RECS = os.path.join(STORE, "записи")
 INBOX = os.path.join(STORE, "обмен")
+ИСТОК = os.path.join(STORE, "исток")
+ЗАКАЗ = os.path.join(STORE, "заказ.json")
 PORT = 8781
 
 
@@ -49,6 +51,28 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(200, {"rows": []})
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
+        if p == "/исток":
+            # что уже породил генератор: список готовых файлов
+            try:
+                names = sorted(f for f in os.listdir(ИСТОК) if f.endswith(".wav"))
+                return self._json(200, {"файлы": names})
+            except FileNotFoundError:
+                return self._json(200, {"файлы": []})
+            except OSError as e:
+                return self._json(500, {"error": str(e)})
+        if p.startswith("/исток/"):
+            from urllib.parse import unquote
+            name = os.path.basename(unquote(p[len("/исток/"):]))
+            path = os.path.join(ИСТОК, name)
+            try:
+                data = open(path, "rb").read()
+                self.send_response(200)
+                self.send_header("Content-Type", "audio/wav")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                return self.wfile.write(data)
+            except OSError:
+                return self._json(404, {"error": "нет такого"})
         if p == "/эмбеддинги":
             try:
                 with open(EMB, encoding="utf-8") as f:
@@ -106,6 +130,19 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(200, {"ok": True, "queued": key})
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
+        if self.path.split("?")[0] == "/заказ":
+            # заказ материала словами: демон истока подхватит и породит
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                d = json.loads(self.rfile.read(n) or b"{}")
+                os.makedirs(STORE, exist_ok=True)
+                tmp = ЗАКАЗ + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(d, f, ensure_ascii=False)
+                os.replace(tmp, ЗАКАЗ)
+                return self._json(200, {"ok": True})
+            except (ValueError, OSError) as e:
+                return self._json(500, {"error": str(e)})
         if self.path.split("?")[0] == "/vkus":
             try:
                 n = int(self.headers.get("Content-Length", 0))
@@ -147,5 +184,6 @@ class Handler(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     os.makedirs(RECS, exist_ok=True)
     os.makedirs(INBOX, exist_ok=True)
+    os.makedirs(ИСТОК, exist_ok=True)
     print(f"отзвук: http://127.0.0.1:{PORT}  ·  записи: {RECS}")
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

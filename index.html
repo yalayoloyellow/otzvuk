@@ -98,8 +98,26 @@
     <button id="dis">▼ не то</button>
     <button id="rec">● запись</button>
     <button id="cal">◆ вкус</button>
+    <button id="src">✦ исток</button>
     <div id="hint">запись ложится несжатым wav в <b>~/Documents/otzvuk/записи</b></div>
   </footer>
+
+  <div class="panel" id="srcp" hidden>
+    <h2><span>исток — материал по описанию</span><span id="srcn">—</span></h2>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <input id="srctext" value="deep dark sub bass, tonal, clean, slow movement"
+        style="flex:1;min-width:260px;font:inherit;color:var(--fg);background:transparent;
+               border:1px solid var(--line);padding:8px 10px">
+      <button id="srcgo">породить</button>
+      <button id="srclist">что есть</button>
+      <button id="srcx">выйти</button>
+    </div>
+    <div id="srcmsg" style="font-size:10.5px;color:var(--dim);margin-top:8px;line-height:1.7">
+      Скажи словами, из чего строить. Генератор породит несколько вариантов,
+      CLAP выберет ближайший к описанию, движок возьмёт его как вход —
+      наравне с микрофоном и файлом.</div>
+    <div id="srcfiles" style="font-size:10.5px;color:var(--dim2);margin-top:6px"></div>
+  </div>
 
   <div class="panel" id="calp" hidden>
     <h2><span>настройка вкуса</span><span id="caln">—</span></h2>
