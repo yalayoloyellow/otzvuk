@@ -46,7 +46,7 @@ def main():
                 x, sr = sf.read(path, dtype="float32", always_2d=True)
                 x = x.mean(axis=1)
                 if key not in done:
-                    inp = proc(audios=x, sampling_rate=sr, return_tensors="pt")
+                    inp = proc(audio=x, sampling_rate=sr, return_tensors="pt")
                     with torch.no_grad():
                         v = model.get_audio_features(**inp)[0]
                     v = (v / v.norm()).tolist()          # единичная длина: сравниваем углы

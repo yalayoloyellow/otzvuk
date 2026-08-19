@@ -239,7 +239,7 @@ async function dumpThemes(onProgress){
     const r=await render(j.seed,j.prof,3.2,null,'theme');
     const b=r.buf, n=b.length;
     const blob=encodeWav([b.getChannelData(0),b.getChannelData(1)],n,b.sampleRate);
-    await fetch('/clap',{method:'POST',headers:{'X-Key':j.key},body:blob});
+    await fetch('/clap?key='+encodeURIComponent(j.key),{method:'POST',body:blob});
     i++; if(onProgress) onProgress(i,jobs.length);
   }
   return jobs.length;

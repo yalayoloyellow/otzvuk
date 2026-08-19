@@ -86,12 +86,17 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         if self.path.split("?")[0] == "/clap":
+            from urllib.parse import parse_qs, unquote
             # WAV из браузера → эмбеддинг CLAP. Модель живёт в отдельном
             # процессе (clapd.py) и общается через папку обмена: держать
             # торч внутри веб-сервера значит ждать его при каждом старте.
             try:
                 n = int(self.headers.get("Content-Length", 0))
-                key = self.headers.get("X-Key") or "нечто"
+                q = parse_qs(self.path.split("?")[1] if "?" in self.path else "")
+                # ключ едет в адресе, а не в заголовке: заголовки HTTP —
+                # только латиница, а профили у нас по-русски
+                key = unquote(q.get("key", ["нечто"])[0])
+                key = key.replace("/", "_").replace("..", "_")
                 data = self.rfile.read(n)
                 os.makedirs(INBOX, exist_ok=True)
                 tmp = os.path.join(INBOX, key + ".part")
