@@ -61,6 +61,14 @@ const SWITCHES=[
   // соединяется с выходом напрямую.
   {k:'on',      kl:'KeyN', imya:'ПИТАНИЕ',  podpis:['выкл','вкл']}
 ];
+
+// ---- ТРАКТ -----------------------------------------------------------------
+// Каким ПРОВОДОМ соединены приборы. Это не настройка, а патч: разные гнёзда
+// на панели дают принципиально разный звук, а не оттенок одного.
+const TRAKTY=['ТОК','СИНХРО','КОЛЬЦО','ГЕЙТ'];
+const TRAKT_POYASN=['захват и деление частоты','жёсткая синхронизация',
+                    'кольцевой смеситель, металл','нарезка питанием'];
+let trakt=0;
 // Второй страницы нет и быть не должно. Всё, чего нет на панели, — это
 // номиналы деталей: конденсаторы, резисторы, пороги конкретной микросхемы,
 // ёмкость монтажа. Ими не «управляют», они впаяны.
@@ -91,7 +99,7 @@ function skazhi(t){ vest=t; vestdo=performance.now()+2600; }
 function snimok(){
   return {name:nazovis(), time:new Date().toISOString().slice(0,19).replace('T',' '),
           seeds:[...seeds], sets:sets.map(x=>({...x})),
-          switches:tumbnabory.map(x=>({...x})), active};
+          switches:tumbnabory.map(x=>({...x})), trakt, active};
 }
 function nazovis(){
   const p=report.period>0 ? report.period.toFixed(2)+'с' : '';
@@ -146,6 +154,8 @@ function primenit(p){
   // Пресет, записанный до появления второго прибора, знал только один —
   // второй выключаем, иначе тот зазвучит через чужой прибор.
   if(!(p.sets||p.наборы)) tumbnabory[1].on=0;
+  if(p.trakt!==undefined){ trakt=p.trakt|0;
+    node&&node.port.postMessage({t:'trakt', v:trakt}); }
   send();
   skazhi('пресет: '+(p.name||p.имя||p.file));
 }
@@ -284,6 +294,7 @@ async function pusk(){
   // в цепи и звучит, даже когда на экране первый.
   for(let i=0;i<2;i++) node.port.postMessage({t:'seed', i, v:seeds[i]});
   node.port.postMessage({t:'active', i:active});
+  node.port.postMessage({t:'trakt', v:trakt});
   send();
   window.dbg.sostoyanie='играет';
   }catch(e){ window.dbg.oshibka=''+e; window.dbg.sostoyanie='упал'; }
@@ -302,6 +313,13 @@ addEventListener('keydown',async e=>{
   if(c==='Tab'){ e.preventDefault(); peresoberi(); return; }
 
   // Прибор переключается и клавишей — мышь не всегда под рукой.
+  // Тракт переключается на shift+B: b — связь узлов внутри прибора,
+  // shift+b — провод между приборами.
+  if(c==='KeyB' && e.shiftKey){ e.preventDefault();
+    if(!e.repeat){ trakt=(trakt+1)%TRAKTY.length;
+      node&&node.port.postMessage({t:'trakt', v:trakt});
+      skazhi('тракт: '+TRAKTY[trakt]+' — '+TRAKT_POYASN[trakt]); }
+    return; }
   if(c==='KeyJ'){ e.preventDefault(); if(!e.repeat) vyberi(active?0:1); return; }
   if(c==='KeyP'){ e.preventDefault(); if(!e.repeat) sohrani(); return; }
   if(c==='KeyO'){ e.preventDefault(); if(!e.repeat) listay(e.shiftKey?-1:1); return; }
@@ -375,7 +393,7 @@ addEventListener('visibilitychange',()=>{ derzhim.clear(); ploschadki.clear(); }
 // Размер поля считается по окну: сколько знакомест влезает, столько и
 // рисуем. Фиксированная сетка на узком экране уезжала за край.
 const PHOSPHOR=' ·∙:∴*≋≡▒▓█';
-let Sh=112, V=40, pole=new Float32Array(Sh*V), kolonok=3;
+let Sh=112, V=40, pole=new Float32Array(Sh*V), shipy=new Float32Array(Sh*V), kolonok=3;
 let ugol=0;
 function pomer(){
   const ris=$('#canvas');
@@ -389,7 +407,10 @@ function pomer(){
   proba.remove();
   const nov=clamp(Math.floor((ris.clientWidth||innerWidth-28)/shs)-1,40,220);
   const novv=clamp(Math.round(nov*.34),14,54);
-  if(nov!==Sh||novv!==V){ Sh=nov; V=novv; pole=new Float32Array(Sh*V); }
+  if(nov!==Sh||novv!==V){ Sh=nov; V=novv;
+    // Оба слоя пересоздаются вместе: если пересоздать только один, второй
+    // остаётся прежней длины и на краях отдаёт undefined.
+    pole=new Float32Array(Sh*V); shipy=new Float32Array(Sh*V); }
   // Панель ручек: три колонки на широком, две на среднем, одна на узком.
   kolonok = Sh>=96 ? 3 : Sh>=66 ? 2 : 1;
 }
@@ -427,8 +448,11 @@ function kartina(){
   const ut=clamp(report.utechka||0,0,1.4);
 
   // ПОСЛЕСВЕЧЕНИЕ: внизу качелей след держится дольше, наверху гаснет быстро.
-  const spad=.87 + (1-u)*.09 + (1-clamp(report.shina||1,0,1))*.03;
-  for(let i=0;i<pole.length;i++) pole[i]*=spad;
+  // ДВА СЛОЯ. Тело тлеет долго — оно и держит форму существа. Щупальца
+  // гаснут почти мгновенно: они должны выстреливать и пропадать вместе с
+  // волной, а не оставаться лучами.
+  const spad=.90 + (1-u)*.06;
+  for(let i=0;i<pole.length;i++){ pole[i]*=spad; shipy[i]*=.42; }
 
   const cx=(Sh-1)/2, cy=(V-1)/2;
   ugol += .003 + u*.016;
@@ -468,34 +492,39 @@ function kartina(){
     // ТЕЛО. Один контур читается как проволочная петля. Заливка от центра к
     // каждой точке даёт плотную середину, сквозь которую контур всё равно
     // виден ярче — фигура становится телесной, а не нарисованной линией.
-    // ТЕЛО набирается заливкой от центра, но только до середины пути:
-    // сплошной диск съедал контур, а так плотная сердцевина остаётся, и
-    // край при этом читается.
-    mazok(Math.round(cx),Math.round(cy),
-          Math.round(cx+(x-cx)*.55), Math.round(cy+(y-cy)*.55), .07);
+    // ТЕЛО — сама петля. Заливки от центра нет: она превращала фигуру в
+    // ровную биомассу, в которой не читается ни форма, ни движение.
     if(px!==null){
-      mazok(px,py,x,y,.9);
-      // ЩУПАЛЬЦА растут НАРУЖУ по радиусу — тем длиннее, чем резче скачок
-      // сигнала в этом месте. Внутри тела они бы потерялись, а так торчат
-      // и показывают, где волна рвётся.
+      mazok(px,py,x,y,.8);
+      // ЩУПАЛЬЦЕ выстреливает НАРУЖУ там, где волна рвётся, и сходит на
+      // остриё: яркость падает вдоль луча, а сам слой гаснет за пару кадров.
+      // Поэтому они вылезают резко и так же резко пропадают.
       const dl=Math.hypot(x-px,y-py);
-      if(dl>Sh*.045){
+      if(dl>Sh*.05){
         const dx=x-cx, dy=y-cy, r=Math.hypot(dx,dy)||1;
-        const dlin=Math.min(dl*1.35, Sh*.3);
-        mazok(x,y,Math.round(x+dx/r*dlin), Math.round(y+dy/r*dlin), 1.3);
+        const dlin=Math.min(dl*1.9, Sh*.42);
+        const shagov=Math.round(dlin);
+        for(let q=0;q<=shagov;q++){
+          const t=q/Math.max(1,shagov);
+          const sx=Math.round(x+dx/r*dlin*t), sy=Math.round(y+dy/r*dlin*t);
+          const yar=1.5*(1-t)*(1-t);            // сходит на остриё
+          if(sx>=0&&sx<Sh&&sy>=0&&sy<V) shipy[sy*Sh+sx]+=yar;
+          const sxm=Sh-1-sx;
+          if(sxm>=0&&sxm<Sh&&sy>=0&&sy<V) shipy[sy*Sh+sxm]+=yar*.35;
+        }
       }
     }
-    else if(x>=0&&x<Sh&&y>=0&&y<V) pole[y*Sh+x]+=.85;
+    else if(x>=0&&x<Sh&&y>=0&&y<V) pole[y*Sh+x]+=.8;
     px=x; py=y;
   }
 
   let mx=.001;
-  for(const v of pole) if(v>mx) mx=v;
+  for(let i=0;i<pole.length;i++){ const v=pole[i]+shipy[i]; if(v>mx) mx=v; }
   const stroki=[];
   for(let y=0;y<V;y++){
     let s='';
     for(let x=0;x<Sh;x++){
-      const v=pole[y*Sh+x]/mx;
+      const v=(pole[y*Sh+x]+shipy[y*Sh+x])/mx;
       s+=PHOSPHOR[clamp(Math.round(Math.pow(v,.55)*(PHOSPHOR.length-1)),0,PHOSPHOR.length-1)];
     }
     stroki.push(s);
@@ -589,7 +618,7 @@ function ruchki(){
                     : (z?'[▮]':'[·]');
     const cv=z?'hot':'dim';
     return `<span class="${cv}">${t.imya} ${vid}</span> <span class="dim2">${t.kl.replace('Key','').toLowerCase()}</span>`;
-  }).join('   '));
+  }).join('   ') + `   <span class="hot">ТРАКТ ${TRAKTY[trakt]}</span> <span class="dim2">⇧b</span>`);
   stroki.push(`  <span class="dim2">${SWITCHES.map(t=>t.imya+': '+
     (t.podpis[switches[t.k]]||'')).join(' · ')}</span>`);
   return stroki.join('\n');

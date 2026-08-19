@@ -472,15 +472,18 @@ class Device {
     }
     this.osn = this.cells[0];
     this.din = new Speaker(this.sb);
-    this.Cvyh = 0; this.temp = 0; this.moschn = 0;
+    this.Cvyh = 0; this.scDC = 0; this.temp = 0; this.moschn = 0;
     this.vyh = 0;
     this.int = new Float32Array(32); this.inti = 0; this.intN = 0; this.ssch = 0;
     this.razbr = 0; this.gc = 0;
   }
 
-  step(p, utechka, navodka, kontakt, feed, glubina){
+  step(p, utechka, navodka, kontakt, vhSig, glubina, trakt){
     const sb = this.sb;
-    const Vdd = this.bat.Vl * (kontakt === undefined ? 1 : kontakt);
+    let Vdd = this.bat.Vl * (kontakt === undefined ? 1 : kontakt);
+    // ГЕЙТ: вход снимает питание, пока он в нижней половине.
+    if (trakt === 3 && glubina > .002 && (vhSig || 0) < 0)
+      Vdd *= 1 - clamp(glubina, 0, 1) * .96;
     const u = this.swing.step(p.sway, p.drift, p.hit, Vdd, this.temp);
 
     // ХАРАКТЕР — подстроечник, задающий, в каких пределах ходит фоторезистор.
@@ -553,6 +556,9 @@ class Device {
       if (utechka > .001) R = 1 / (1/R + utechka / 2.6e6);
       const sosed = this.cells[(i + 1) % 3];
       const dVs = sosed.vyh - (sosed.prosh || 0);
+      // СИНХРО: фронт входа разряжает конденсатор — цикл начинается заново.
+      if (trakt === 1 && glubina > .002 && (vhSig || 0) > .35 && (this.prvh || 0) <= .35)
+        uzel.V = Vdd * .06;
       const v = sb.ves[i] * vkl[i];
       // Предел отвода считается по порогу ИМЕННО ЭТОГО элемента: точка покоя
       // разряда обязана остаться ниже него, иначе генератор запрётся. Пороги
@@ -564,16 +570,28 @@ class Device {
       // делить частоту входа на 2, 3, 5. Крутишь первый прибор — второй
       // перескакивает по делениям. Это и есть «один синт вошёл в другой».
       const Rvh = glubina > .002 ? R * (14 / glubina) : 0;
-      const Vvh = Rvh ? Vdd * .5 * (1 + (feed || 0) * 1.6) : 0;
+      const Vvh = Rvh ? Vdd * .5 * (1 + (vhSig || 0) * 1.6) : 0;
       summa += uzel.step(R, Vdd * (1 + utechka * .1), R * Math.max(ki, kmin),
                         dVs, sosed.V, Rsv, Vdd, this.temp, Vvh, Rvh) * v;
       vesov += v;
       tok += uzel.Ipit;
     }
     for (const u of this.cells) u.prosh = u.vyh;
+    this.prvh = vhSig || 0;
     if (vesov < 1e-6) vesov = 1;
     // суммирующая цепь: резисторы сводят выходы на базу транзистора
     let x = summa / vesov;
+    // КОЛЬЦО: балансный смеситель перемножает выходы. Основные тоны в нём
+    // подавлены, остаются суммы и разности — отсюда металл.
+    if (trakt === 2 && glubina > .002)
+      x = x * (1 - glubina) + x * (vhSig || 0) * 2.2 * glubina;
+    // Провод на следующий прибор снимается через разделительный конденсатор
+    // и нормируется питанием: наружу идёт переменная составляющая в долях
+    // шины, размахом около ±1. Без этого сигнал шёл в вольтах от нуля до
+    // девяти — гейт по знаку не срабатывал никогда, а кольцо умножало на
+    // восьмёрку вместо единицы.
+    this.scDC += (x - this.scDC) * (14 * 2 * Math.PI / FS);
+    this.scepi = clamp((x - this.scDC) * 2 / Math.max(1, Vdd), -1.5, 1.5);
 
     // ТУМБЛЕР ГРЯЗИ снимает конденсатор развязки питания логики.
     this.bat.step(tok + (this.tokdin || 0), p.dirt > .5 ? 0 : 1);
@@ -693,6 +711,7 @@ class Chaos extends AudioWorkletProcessor {
     // по порядку, а ВЫХОД — отдельная точка на конце: в него идёт последний
     // включённый прибор. Выключили второй — первый идёт в выход напрямую;
     // выключили первый — играет один второй. Выключены оба — тишина.
+    this.trakt = 0;                     // каким проводом связаны приборы
     this.pl = new Float32Array(9);
     this.utechka = 0; this.navodka = 0;
     this.pik = 0; this.report = 0; this.okno = 0; this.sryvy = 0;
@@ -726,6 +745,7 @@ class Chaos extends AudioWorkletProcessor {
         this.svod = new Decim();
       }
       else if (d.t === 'active'){ this.active = d.i === 1 ? 1 : 0; }
+      else if (d.t === 'trakt'){ this.trakt = d.v | 0; }
       else if (d.t === 'kick'){
         for (const p of this.devices)
           for (const g of p.cells) g.V += (Math.random() - .5) * 2;
@@ -762,7 +782,8 @@ class Chaos extends AudioWorkletProcessor {
         for (let d = 0; d < this.devices.length; d++){
           if (!(this.p[d].on > .5)) continue;
           syro = this.devices[d].step(this.p[d], ut, nav, kont,
-                                      bylo ? signal : 0, bylo ? this.p[d].feed : 0);
+                                      bylo ? signal : 0, bylo ? this.p[d].feed : 0,
+                                      this.trakt);
           signal = this.devices[d].scepi;
           bylo = true;
         }
