@@ -72,9 +72,9 @@ class Handler(SimpleHTTPRequestHandler):
                         видели.add(имя)
                         with open(os.path.join(папка, имя), encoding="utf-8") as f:
                             д = json.load(f)
-                        д["файл"] = имя
+                        д["file"] = имя
                         строки.append(д)
-                return self._json(200, {"пресеты": строки})
+                return self._json(200, {"presets": строки})
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
         if p == "/vkus":
@@ -160,7 +160,7 @@ class Handler(SimpleHTTPRequestHandler):
                 n = int(self.headers.get("Content-Length") or 0)
                 д = json.loads(self.rfile.read(n) or b"{}")
                 os.makedirs(ПРЕСЕТЫ, exist_ok=True)
-                имя = "".join(c for c in str(д.get("имя") or "без имени")
+                имя = "".join(c for c in str(д.get("name") or д.get("имя") or "preset")
                               if c not in '/\\:*?"<>|')[:60]
                 путь = os.path.join(ПРЕСЕТЫ, имя + ".json")
                 # Один и тот же снимок дважды не пишем, а вот разные под
@@ -171,7 +171,7 @@ class Handler(SimpleHTTPRequestHandler):
                     k += 1
                 with open(путь, "w", encoding="utf-8") as f:
                     json.dump(д, f, ensure_ascii=False, indent=1)
-                return self._json(200, {"ок": True, "файл": os.path.basename(путь)})
+                return self._json(200, {"ok": True, "file": os.path.basename(путь)})
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
 

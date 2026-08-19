@@ -712,15 +712,15 @@ class Chaos extends AudioWorkletProcessor {
           nab[k] = v;
         }
       }
-      else if (d.t === 'площадки'){ for (let i = 0; i < 9; i++) this.pl[i] = d.v[i] || 0; }
-      else if (d.t === 'семя'){
+      else if (d.t === 'pads'){ for (let i = 0; i < 9; i++) this.pl[i] = d.v[i] || 0; }
+      else if (d.t === 'seed'){
         const n = d.i === 1 ? 1 : 0;
         this.devices[n] = new Device(d.v);
         this.pr = this.devices[0];
         this.svod = new Decim();
       }
-      else if (d.t === 'активный'){ this.active = d.i === 1 ? 1 : 0; }
-      else if (d.t === 'толчок'){
+      else if (d.t === 'active'){ this.active = d.i === 1 ? 1 : 0; }
+      else if (d.t === 'kick'){
         for (const p of this.devices)
           for (const g of p.cells) g.V += (Math.random() - .5) * 2;
       }

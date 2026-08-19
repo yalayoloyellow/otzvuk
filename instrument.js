@@ -86,12 +86,11 @@ let seeds=[(Math.random()*4294967295)>>>0,(Math.random()*4294967295)>>>0];
 let presets=[], tekuschiy=-1, vest='', vestdo=0;
 function skazhi(t){ vest=t; vestdo=performance.now()+2600; }
 function snimok(){
-  return {imya:nazovis(), vremya:new Date().toISOString().slice(0,19).replace('T',' '),
+  return {name:nazovis(), time:new Date().toISOString().slice(0,19).replace('T',' '),
           seeds:[...seeds], sets:sets.map(x=>({...x})),
           switches:tumbnabory.map(x=>({...x})), active};
 }
 function nazovis(){
-  const sb=report.build||{};
   const p=report.period>0 ? report.period.toFixed(2)+'с' : '';
   const v=report.pitch>0 ? Math.round(report.pitch)+'Гц' : '';
   const d=new Date();
@@ -105,30 +104,44 @@ async function sohrani(){
     const o=await fetch('/presets',{method:'POST',headers:{'Content-Type':'application/json'},
                                     body:JSON.stringify(snimok())});
     const d=await o.json();
-    if(d.ok){ await zagruzispisok(); tekuschiy=presets.findIndex(x=>x.fayl===d.fayl);
-              skazhi('сохранено: '+d.fayl.replace('.json','')); }
+    if(d.ok){ await zagruzispisok();
+              tekuschiy=presets.findIndex(x=>x.file===d.file);
+              skazhi('сохранено: '+String(d.file).replace('.json','')); }
     else skazhi('не сохранилось: '+(d.error||'?'));
   }catch(e){ skazhi('не сохранилось: '+e.message); }
 }
 async function zagruzispisok(){
-  try{ const o=await fetch('/presets'); const d=await o.json(); presets=d.presets||[]; }
-  catch(e){ presets=[]; }
+  try{
+    const o=await fetch('/presets'); const d=await o.json();
+    presets=d.presets||[];
+  }catch(e){ presets=[]; }
 }
+// Пресет мог быть записан и до перехода на латиницу, и до появления второго
+// прибора. Читаем оба написания и оба формата — терять сохранённое нельзя.
 function primenit(p){
   if(!p) return;
-  // Старые пресеты знали один прибор — кладём его первым и не теряем.
-  const n = p.sets || [p.knobs||{}, pustomakro()];
-  const t = p.switches && Array.isArray(p.switches) ? p.switches
-          : [p.switches||{}, pustotumb()];
-  const s = p.seeds || [p.semya, seeds[1]];
+  const наб = p.sets || p.наборы || [p.knobs || p.макро || {}, pustomakro()];
+  const тум = Array.isArray(p.switches) ? p.switches
+            : Array.isArray(p.тумблеры) ? p.тумблеры
+            : [p.switches || p.тумблеры || {}, pustotumb()];
+  const сем = p.seeds || p.семена || [p.seed ?? p.семя, seeds[1]];
+  const карта = {качание:'sway', характер:'tone', размах:'depth', импульс:'pulse',
+                 удар:'hit', развод:'spread', гуляние:'drift', диапазон:'range',
+                 вход:'feed', ген2:'gen2', ген3:'gen3', связь:'link', грязь:'dirt'};
+  const перевод = о => {
+    const r={};
+    for(const k in (о||{})) r[карта[k]||k] = о[k];
+    return r;
+  };
   for(let i=0;i<2;i++){
-    Object.assign(sets[i], n[i]||{});
-    Object.assign(tumbnabory[i], t[i]||{});
-    if(s[i]!==undefined){ seeds[i]=s[i]>>>0;
-      node&&node.port.postMessage({t:'семя', i, v:seeds[i]}); }
+    Object.assign(sets[i], перевод(наб[i]));
+    Object.assign(tumbnabory[i], перевод(тум[i]));
+    const с = сем[i];
+    if(с!==undefined && с!==null){ seeds[i]=с>>>0;
+      node&&node.port.postMessage({t:'seed', i, v:seeds[i]}); }
   }
   send();
-  skazhi('пресет: '+(p.imya||p.fayl));
+  skazhi('пресет: '+(p.name||p.имя||p.file));
 }
 async function listay(step){
   if(!presets.length) await zagruzispisok();
@@ -138,12 +151,12 @@ async function listay(step){
 }
 function peresoberi(novoe){
   seeds[active] = novoe!==undefined ? novoe>>>0 : (Math.random()*4294967295)>>>0;
-  node&&node.port.postMessage({t:'семя', i:active, v:seeds[active]});
+  node&&node.port.postMessage({t:'seed', i:active, v:seeds[active]});
   send();
 }
 function vyberi(i){
   active = i ? 1 : 0;
-  node&&node.port.postMessage({t:'активный', i:active});
+  node&&node.port.postMessage({t:'active', i:active});
   skazhi('прибор '+(active+1));
 }
 
@@ -186,7 +199,7 @@ const switches=new Proxy({},{
 });
 const p={};
 
-let poslednyaya=null, vspyshka=0, vspyshkat=null;
+let poslednyaya=null, vspyshka=0, vspyshkat=null, poslednieVkladki='';
 // Ручка должна ехать, а не прыгать. Шаг 4% при диапазоне высоты в семь с
 // половиной октав давал треть октавы за нажатие — отсюда «жёсткие пороги»
 // и ощущение цифры вместо аналога. Теперь базовый шаг мелкий, а при
@@ -241,7 +254,7 @@ setInterval(()=>{
     provodimost[i]+=(cel-provodimost[i])*skor;
     if(Math.abs(provodimost[i]-bylo)>1e-4) menyalos=true;
   }
-  if(menyalos&&node) node.port.postMessage({t:'площадки',v:Array.from(provodimost)});
+  if(menyalos&&node) node.port.postMessage({t:'pads',v:Array.from(provodimost)});
 },1000/60);
 
 // ---- запуск ---------------------------------------------------------------
@@ -263,8 +276,8 @@ async function pusk(){
   idet=true;
   // Обе сборки и оба набора ручек уходят в ядро сразу: второй прибор стоит
   // в цепи и звучит, даже когда на экране первый.
-  for(let i=0;i<2;i++) node.port.postMessage({t:'семя', i, v:seeds[i]});
-  node.port.postMessage({t:'активный', i:active});
+  for(let i=0;i<2;i++) node.port.postMessage({t:'seed', i, v:seeds[i]});
+  node.port.postMessage({t:'active', i:active});
   send();
   window.dbg.sostoyanie='играет';
   }catch(e){ window.dbg.oshibka=''+e; window.dbg.sostoyanie='упал'; }
@@ -316,7 +329,7 @@ addEventListener('keydown',async e=>{
     }
     return;
   }
-  if(c==='Space'){ node&&node.port.postMessage({t:'толчок'}); e.preventDefault(); return; }
+  if(c==='Space'){ node&&node.port.postMessage({t:'kick'}); e.preventDefault(); return; }
   // ---- ПЛОЩАДКИ -----------------------------------------------------------
   // Не пресеты. У Срапы были контактные площадки: палец замыкал участок цепи
   // через сопротивление своего тела, и звук менялся ровно пока ты держишь.
@@ -542,7 +555,11 @@ function ruchki(){
 }
 
 function kadr(){
-  try{ kadr_(); }catch(e){ window.dbg.kadr=''+e; }
+  // Ошибку в кадре нельзя глушить молча: панель просто исчезала, а причина
+  // оставалась только в отладочном поле.
+  try{ kadr_(); }catch(e){
+    if(window.dbg.kadr!==''+e){ window.dbg.kadr=''+e; console.error('кадр:',e); }
+  }
   requestAnimationFrame(kadr);
 }
 function kadr_(){
@@ -553,7 +570,11 @@ function kadr_(){
   if(idet){
     $('#canvas').textContent=kartina();
     $('#devices').innerHTML=devices();
-    $('#tabs').innerHTML=vkladki();
+    // Перерисовываем вкладки только когда они правда изменились: лишняя
+    // замена разметки съедала клики.
+    const v=vkladki();
+    if(v!==poslednieVkladki){ $('#tabs').innerHTML=v; poslednieVkladki=v; }
+    poveshaytabs();
     $('#knobs').innerHTML=ruchki();
     $('#line').innerHTML=
       `  <b>Tab</b> — пересобрать · <b>⌘</b> втрое · <b>shift</b> вдесятеро · пробел — толчок · `+
@@ -563,9 +584,20 @@ function kadr_(){
   }
 }
 // Клик по вкладке переключает прибор.
-addEventListener('click',e=>{
-  const v=e.target.closest && e.target.closest('.tab');
-  if(v) vyberi(+v.dataset.device);
-});
+// Обработчик висит на КОНТЕЙНЕРЕ вкладок, а не на самих вкладках: их
+// разметка переписывается тридцать раз в секунду, и элемент успевал
+// подмениться между нажатием и обработкой — клик пропадал. Контейнер же
+// не пересоздаётся никогда.
+function poveshaytabs(){
+  const box=$('#tabs');
+  if(!box || box.dataset.gotov) return;
+  box.dataset.gotov='1';
+  box.addEventListener('mousedown',ev=>{
+    const el=ev.target.closest && ev.target.closest('.tab');
+    if(!el) return;
+    ev.preventDefault();
+    vyberi(+el.dataset.device);
+  });
+}
 pomer();
 kadr();
