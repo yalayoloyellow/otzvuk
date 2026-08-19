@@ -145,7 +145,8 @@ export function makeComposer(env){
   let curGroove=null;
 
   const material=seed=>genMaterial(env.ctx(),seed,profile,tasteW);
-  const form=(bars,bpm)=>env.onForm({sec:curSec,mat:curMat,bars,bpm,tension});
+  const form=(bars,bpm)=>env.onForm({sec:curSec,mat:curMat,bars,bpm,tension,
+    groove:curGroove?curGroove.name:null});
 
   // Эпоха: сдвиг самих диапазонов внутри границ профиля.
   function newEra(){

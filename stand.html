@@ -33,11 +33,12 @@
 
 <script type="module">
 import {genMaterial, mul32} from './material.js';
+import {pickGroove} from './groove.js';
 const $=s=>document.querySelector(s);
 const out=$('#out');
 const log=h=>{ out.innerHTML=h; };
 
-async function render(seed, profile, dur){
+async function render(seed, profile, dur, groove, only){
   const sr=48000;
   const off=new OfflineAudioContext(2, Math.ceil(sr*dur), sr);
   await off.audioWorklet.addModule('./engine.worklet.js');
@@ -59,6 +60,15 @@ async function render(seed, profile, dur){
   post({t:'drums',mode:profile==='техно'?2:1,pK,pH,pC,
         kF:48,kDec:.25,kSweep:2.5,kDrive:1.2,kLvl:1,hDec:.05,hLvl:.5,cLvl:.5});
   post({t:'rhy',v:1,lvl:1});
+  if(groove) post({t:'groove',g:groove});
+  // режим «только бочка»: тема, бас, хэт и клэп выключены, чтобы детектор
+  // мерил позиции ударов, а не транзиенты фактуры
+  if(only==='kick') post({t:'mute',now:1,hook:0,bass:0,kick:1,hat:0,clap:0});
+  if(only==='hat16'){
+    const h=new Float32Array(16).fill(1), z=new Float32Array(16);
+    post({t:'drums',mode:1,pK:z,pH:h,pC:z,hDec:.02,hLvl:1,hRoll:0});
+    post({t:'mute',now:1,hook:0,bass:0,kick:0,hat:1,clap:0});
+  }
   post({t:'run',v:1});
   // сообщения долетают до аудиопотока асинхронно — даём им сесть до рендера
   await new Promise(r=>setTimeout(r,80));
@@ -130,5 +140,53 @@ $('#det').onclick=async()=>{
 };
 
 // ручка для прогонов из консоли и автоматики
-window.stand={render,metrics};
+// Позиции атак бочки относительно сетки 16-х: доказательство, что грув
+// реально двигает удары, а не только объявлен.
+function kickOffsets(buf,bpm,opt){
+  opt=opt||{};
+  // Сетка известна, поэтому ищем не «все удары подряд», а атаку возле каждой
+  // ожидаемой доли: максимум нарастания низа в окне ±пол-шага. Порог по
+  // огибающей врал — она у длинной бочки не успевает упасть между ударами.
+  const L=buf.getChannelData(0), sr=buf.sampleRate, n=L.length;
+  const step=sr*60/bpm/4;
+  // низ — для бочки, верх — для хэта: полосу выбирает вызывающий
+  const env=new Float32Array(n);
+  if(opt.band==='high'){
+    const a=1-Math.exp(-2*Math.PI*3000/sr); let lp=0, e=0;
+    for(let i=0;i<n;i++){ lp+=(L[i]-lp)*a; const x=Math.abs(L[i]-lp); e+=(x-e)*.02; env[i]=e; }
+  } else {
+    const a=1-Math.exp(-2*Math.PI*160/sr); let e=0;
+    for(let i=0;i<n;i++){ const x=Math.abs(L[i]); e+=(x-e)*a; env[i]=e; }
+  }
+  const offs=[]; const beat=step*(opt.every||4);
+  const skip=Math.ceil(sr*2/beat);      // первые 2 с — разгон
+  for(let k=skip;;k++){
+    const c=Math.round(k*beat);
+    const wnd=opt.every===1?.45:1.6;
+    const lo=Math.round(c-step*wnd), hi=Math.round(c+step*wnd);
+    if(hi>=n) break;
+    let best=-1, bv=0;
+    for(let i=Math.max(1,lo);i<hi;i++){ const d=env[i]-env[i-1];
+      if(d>bv){ bv=d; best=i; } }
+    if(best<0) continue;
+    offs.push((best-c)/step);
+  }
+  if(!offs.length) return {n:0,med:null,sd:null};
+  const srt=[...offs].sort((x,y)=>x-y), med=srt[srt.length>>1];
+  const mean=offs.reduce((s2,o)=>s2+o,0)/offs.length;
+  const sd=Math.sqrt(offs.reduce((s2,o)=>s2+(o-mean)*(o-mean),0)/offs.length);
+  return {n:offs.length, med, sd};
+}
+async function measureGroove(seed,profile,groove,dur){
+  const r=await render(seed,profile,dur||16,groove,'kick');
+  return kickOffsets(r.buf,120);
+}
+// Свинг двигает НЕЧЁТНЫЕ 16-е, а бочка бьёт на чётных — поэтому свинг
+// меряется отдельно, по хэту, идущему всеми шестнадцатыми.
+async function measureSwing(seed,profile,groove,dur){
+  const r=await render(seed,profile,dur||16,groove,'hat16');
+  const o=kickOffsets(r.buf,120,{band:'high',every:1});
+  return o;
+}
+window.stand={render,metrics,kickOffsets,measureGroove,measureSwing,pickGroove,mul32};
 </script>
