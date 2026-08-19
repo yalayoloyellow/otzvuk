@@ -134,7 +134,7 @@ const CAL_TARGET=10;
 // Кнопки гаснут, пока пара готовится: раньше нажатие в этот момент молча
 // пропадало, и «обе мимо» выглядела сломанной.
 function calReady(on){
-  for(const id of ['#calA','#calB','#calN','#calR']) $(id).disabled=!on;
+  for(const id of ['#calA','#calB','#calnone','#calR']) $(id).disabled=!on;
 }
 
 function calStop(){ if(calPlaying){ try{calPlaying.stop();}catch(e){} calPlaying=null; } }
@@ -212,7 +212,7 @@ function calToggle(){
 $('#cal').onclick=()=>{ if(ctx) calToggle(); };
 $('#calA').onclick=()=>calChoose('a');
 $('#calB').onclick=()=>calChoose('b');
-$('#calN').onclick=()=>calChoose('none');
+$('#calnone').onclick=()=>calChoose('none');
 $('#calR').onclick=()=>calAudition();
 $('#calX').onclick=()=>{ if(calOn) calToggle(); };
 
