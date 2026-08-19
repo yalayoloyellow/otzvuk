@@ -34,6 +34,7 @@
 <script type="module">
 import {genMaterial, mul32} from './material.js';
 import {pickGroove} from './groove.js';
+import {HATS,CLAPS,euclid} from './composer.js';
 const $=s=>document.querySelector(s);
 const out=$('#out');
 const log=h=>{ out.innerHTML=h; };
@@ -64,6 +65,23 @@ async function render(seed, profile, dur, groove, only){
   // режим «только бочка»: тема, бас, хэт и клэп выключены, чтобы детектор
   // мерил позиции ударов, а не транзиенты фактуры
   if(only==='kick') post({t:'mute',now:1,hook:0,bass:0,kick:1,hat:0,clap:0});
+  if(only&&only.hat){
+    const h=new Float32Array(16).fill(1), z=new Float32Array(16);
+    post({t:'drums',mode:1,pK:z,pH:h,pC:z,hLvl:1,hRoll:0,
+      hNz:only.hat.hNz,hTone:only.hat.hTone,hRing:only.hat.hRing,
+      hRingF:only.hat.hRingF?(only.hat.hRingF[0]+only.hat.hRingF[1])/2:3200,
+      hDec:(only.hat.hDec[0]+only.hat.hDec[1])/2});
+    post({t:'mute',now:1,hook:0,bass:0,kick:0,hat:1,clap:0});
+  }
+  if(only&&only.clap){
+    const c=new Float32Array(16), z=new Float32Array(16);
+    c[0]=1; c[8]=1;
+    post({t:'drums',mode:1,pK:z,pH:z,pC:c,cLvl:1,
+      cTapsN:only.clap.cTapsN,cGap:(only.clap.cGap[0]+only.clap.cGap[1])/2,
+      cFreq:(only.clap.cFreq[0]+only.clap.cFreq[1])/2,cQ:only.clap.cQ,
+      cTail:(only.clap.cTail[0]+only.clap.cTail[1])/2,cNz:only.clap.cNz});
+    post({t:'mute',now:1,hook:0,bass:0,kick:0,hat:0,clap:1});
+  }
   if(only==='hat16'){
     const h=new Float32Array(16).fill(1), z=new Float32Array(16);
     post({t:'drums',mode:1,pK:z,pH:h,pC:z,hDec:.02,hLvl:1,hRoll:0});
@@ -188,5 +206,5 @@ async function measureSwing(seed,profile,groove,dur){
   const o=kickOffsets(r.buf,120,{band:'high',every:1});
   return o;
 }
-window.stand={render,metrics,kickOffsets,measureGroove,measureSwing,pickGroove,mul32};
+window.stand={render,metrics,kickOffsets,measureGroove,measureSwing,pickGroove,mul32,HATS,CLAPS,euclid};
 </script>

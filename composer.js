@@ -127,6 +127,46 @@ export const ARR={
   }
 };
 
+// Евклидов рисунок (Bjorklund/Toussaint): k ударов, максимально равномерно
+// разнесённых по n шагам. Порождает почти все мировые ритмические сетки,
+// поэтому даёт разнообразие рисунков без списка вариантов.
+export function euclid(k,n,rot){
+  k=Math.max(0,Math.min(n,k|0));
+  const p=new Array(n).fill(0);
+  let bucket=0;
+  for(let i=0;i<n;i++){ bucket+=k; if(bucket>=n){ bucket-=n; p[i]=1; } }
+  if(rot){ const r=((rot%n)+n)%n; return p.slice(n-r).concat(p.slice(0,n-r)); }
+  return p;
+}
+
+// Семейства хэта: тембр целиком, не громкость. hNz — доля шума (остальное
+// верх дорожки), hRing — металл кольцевой модуляцией, hTone — яркость.
+export const HATS={
+  'хип-хоп':[
+    {name:'шип',   hNz:.9,  hTone:.62, hRing:0,   hDec:[.012,.03], hRoll:[.15,.45]},
+    {name:'сухой', hNz:.55, hTone:.80, hRing:0,   hDec:[.006,.014],hRoll:[.2,.5]},
+    {name:'звон',  hNz:.35, hTone:.45, hRing:.75, hRingF:[2600,5200], hDec:[.02,.05], hRoll:[.1,.35]},
+    {name:'песок', hNz:.25, hTone:.55, hRing:.3,  hRingF:[1800,3400], hDec:[.01,.03], hRoll:[.15,.4]}
+  ],
+  'техно':[
+    {name:'острый',hNz:.85, hTone:.75, hRing:0,   hDec:[.008,.02], hRoll:[0,.08]},
+    {name:'мягкий',hNz:.6,  hTone:.5,  hRing:0,   hDec:[.03,.08],  hRoll:[0,.05]},
+    {name:'сталь', hNz:.3,  hTone:.5,  hRing:.8,  hRingF:[3000,6000], hDec:[.015,.045], hRoll:[0,.1]}
+  ]
+};
+// Семейства клэпа: 808 — пачка быстрых разрядов плюс хвост.
+export const CLAPS={
+  'хип-хоп':[
+    {name:'808',   cTapsN:3, cGap:[.008,.012], cFreq:[900,1300], cQ:.7,  cTail:[.09,.16], cNz:.85},
+    {name:'узкий', cTapsN:2, cGap:[.005,.009], cFreq:[1400,2100],cQ:.5,  cTail:[.04,.08], cNz:.7},
+    {name:'толпа', cTapsN:4, cGap:[.012,.02],  cFreq:[700,1100], cQ:.95, cTail:[.14,.26], cNz:.9}
+  ],
+  'техно':[
+    {name:'рим',   cTapsN:1, cGap:[.004,.007], cFreq:[1600,2600],cQ:.4,  cTail:[.02,.05], cNz:.8},
+    {name:'808',   cTapsN:3, cGap:[.008,.013], cFreq:[900,1400], cQ:.7,  cTail:[.08,.15], cNz:.85}
+  ]
+};
+
 export const SRD=[1,2,4,8,12,24,32,48,96,192,320];
 
 export function makeComposer(env){
@@ -142,11 +182,11 @@ export function makeComposer(env){
   let curKit={k:'1000000010000000'};
   let srPlanT=null, curCrunch=0;
   let curBar=0, lastBpm=0;
-  let curGroove=null;
+  let curGroove=null, curPerc=null;
 
   const material=seed=>genMaterial(env.ctx(),seed,profile,tasteW);
   const form=(bars,bpm)=>env.onForm({sec:curSec,mat:curMat,bars,bpm,tension,
-    groove:curGroove?curGroove.name:null});
+    groove:curGroove?curGroove.name:null, perc:curPerc});
 
   // Эпоха: сдвиг самих диапазонов внутри границ профиля.
   function newEra(){
@@ -228,8 +268,20 @@ export function makeComposer(env){
     const K=KITS[profile]; if(!K) return;
     const P=a=>a.split('').map(Number);
     post({t:'drums', mode: profile==='техно'?2:1,
-      pK:P(curKit.k), pH:P(pick(K.h)), pC:P(pick(K.c)),
+      pK:P(curKit.k), pH:hatPattern(K), pC:P(pick(K.c)),
       hRoll:rnd(K.hRoll[0],K.hRoll[1])});
+  }
+  // Рисунок хэта: половина случаев — евклидов, половина — жанровый из списка.
+  // Список держит узнаваемость, евклид даёт сетки, которых в списке нет.
+  function hatPattern(K){
+    if(Math.random()<.5) return pick(K.h).split('').map(Number);
+    if(profile==='техно'){
+      // техно живёт офбитом: поворот на 2 ставит удары между долями
+      const k=pick([4,6,8,8,12]);
+      return euclid(k,16,2);
+    }
+    const k=pick([6,7,9,10,11,13,16]);
+    return euclid(k,16,pick([0,0,1,2]));
   }
   function sendDrums(){
     const K=KITS[profile];
@@ -237,13 +289,20 @@ export function makeComposer(env){
     const P=a=>a.split('').map(Number);
     curKit.k=pick(K.k);
     const fam=K.fam?pick(K.fam):K;
+    const H=pick(HATS[profile]), C=pick(CLAPS[profile]);
+    curPerc=H.name+'/'+C.name;
     post({t:'drums', mode: profile==='техно'?2:1,
-      pK:P(curKit.k), pH:P(pick(K.h)), pC:P(pick(K.c)),
+      hNz:H.hNz, hTone:H.hTone, hRing:H.hRing,
+      hRingF:H.hRingF?rnd(H.hRingF[0],H.hRingF[1]):3200,
+      cTapsN:C.cTapsN, cGap:rnd(C.cGap[0],C.cGap[1]),
+      cFreq:rnd(C.cFreq[0],C.cFreq[1]), cQ:C.cQ,
+      cTail:rnd(C.cTail[0],C.cTail[1]), cNz:C.cNz,
+      pK:P(curKit.k), pH:hatPattern(K), pC:P(pick(K.c)),
       kF:rnd(fam.kF[0],fam.kF[1]), kDec:rnd(fam.kDec[0],fam.kDec[1]),
       kSweep:rnd(fam.kSweep[0],fam.kSweep[1]), kDrive:rnd(fam.kDrive[0],fam.kDrive[1]),
-      kLvl:rnd(K.kLvl[0],K.kLvl[1]), hDec:rnd(K.hDec[0],K.hDec[1]),
+      kLvl:rnd(K.kLvl[0],K.kLvl[1]), hDec:rnd(H.hDec[0],H.hDec[1]),
       hLvl:rnd(K.hLvl[0],K.hLvl[1]), cLvl:rnd(K.cLvl[0],K.cLvl[1]),
-      hRoll:rnd(K.hRoll[0],K.hRoll[1])});
+      hRoll:rnd(H.hRoll[0],H.hRoll[1])});
   }
 
   function genreStep(){
@@ -480,7 +539,7 @@ export function makeComposer(env){
   }
 
   return {start, stepSection, vote, refresh, nextProfile, onBar,
-          get groove(){return curGroove},
+          get groove(){return curGroove}, get perc(){return curPerc},
           get profile(){return profile}, get started(){return started},
           get curSec(){return curSec}, get curMat(){return curMat}};
 }

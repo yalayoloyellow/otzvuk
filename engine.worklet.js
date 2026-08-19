@@ -419,6 +419,13 @@ class Otzvuk extends AudioWorkletProcessor{
     this.gRs=0x9e3779b9|0;                  // посевной LCG: грув воспроизводим
     this.kF=46; this.kSweep=2.6; this.kDec=.9999; this.kDrive=.7; this.kLvl=1;
     this.hDec=.999; this.hLvl=.5; this.cLvl=.6; this.hRoll=0;
+    // Хэт и клэп больше не один тембр: источник — смесь шума и ВЕРХА самой
+    // дорожки, металл даётся кольцевой модуляцией (принцип 808 без единого
+    // осциллятора: перемножение, а не подмешанная нота).
+    this.hNz=1; this.hTone=.62; this.hRing=0; this.hRingF=3200; this.hPh=0;
+    this.hRollN=0; this.hRollCd=0; this.hRollP=0; this.hVel=1;
+    this.cTapsN=3; this.cGap=.009; this.cK=.19; this.cQ=.7; this.cTail=.9997;
+    this.cNz=1; this.cGapV=0;
     this.rec=0; this.recL=new Float32Array(4096); this.recR=new Float32Array(4096); this.recN=0;
     this.luMs=1e-4; this.luCoef=1/(SR*2.0);      // окно ~2 с, как short-term
     this.luFast=1e-4; this.luFastC=1/(SR*.4); this.luSeen=0;   // мгновенное 400 мс
@@ -477,6 +484,16 @@ class Otzvuk extends AudioWorkletProcessor{
         if(d.hLvl!==undefined) this.hLvl=d.hLvl;
         if(d.cLvl!==undefined) this.cLvl=d.cLvl;
         if(d.hRoll!==undefined) this.hRoll=d.hRoll;
+        if(d.hNz!==undefined) this.hNz=d.hNz;
+        if(d.hTone!==undefined) this.hTone=d.hTone;
+        if(d.hRing!==undefined) this.hRing=d.hRing;
+        if(d.hRingF!==undefined) this.hRingF=d.hRingF;
+        if(d.cTapsN!==undefined) this.cTapsN=d.cTapsN|0;
+        if(d.cGap!==undefined) this.cGap=d.cGap;
+        if(d.cFreq!==undefined) this.cK=clamp(2*Math.sin(Math.PI*d.cFreq/SR),.01,.6);
+        if(d.cQ!==undefined) this.cQ=d.cQ;
+        if(d.cTail!==undefined) this.cTail=Math.exp(-1/(SR*d.cTail));
+        if(d.cNz!==undefined) this.cNz=d.cNz;
       }
       else if(d.t==='rhy'){ this.rhyOnT=d.v?1:0;
         if(d.lvl!==undefined) this.rhyLvlT=d.lvl; }
@@ -627,8 +644,13 @@ class Otzvuk extends AudioWorkletProcessor{
         if(g){ this.gDelH=D(dH); this.gVelH=vH; }
         else this.hEnv=1; }
       // раскат хэтов: то, без чего рейдж не рейдж
-      if(this.hRoll>0 && this.pH[st] && (this.grn()*.5+.5)<this.hRoll)
-        this.hRollN=3+((this.grn()*.5+.5)*5|0);
+      // Раскат: шаг делится на N частей. Раньше число назначалось и нигде
+      // не читалось — раскатов просто не было.
+      if(this.hRoll>0 && this.pH[st] && (this.grn()*.5+.5)<this.hRoll){
+        const n=2+((this.grn()*.5+.5)*3.99|0);
+        this.hRollN=n; this.hRollP=Math.max(64,Math.round(this.stepLen/n));
+        this.hRollCd=this.hRollP;
+      }
       if(this.pC[st]){
         if(g){ this.gDelC=D(dC); this.gVelC=vC; }
         else { this.cTaps=3; this.cCd=0; } }
@@ -737,7 +759,11 @@ class Otzvuk extends AudioWorkletProcessor{
       // происходит здесь, с точностью до сэмпла.
       if(this.gDelK>=0 && --this.gDelK<0){
         this.kEnv=this.gVelK; this.kDrop=1; this.kPh=0; this.pump=1; }
-      if(this.gDelH>=0 && --this.gDelH<0) this.hEnv=this.gVelH;
+      if(this.gDelH>=0 && --this.gDelH<0){ this.hEnv=this.gVelH; this.hVel=this.gVelH; }
+      if(this.hRollN>0 && --this.hRollCd<=0){
+        this.hRollCd=this.hRollP; this.hRollN--;
+        this.hEnv=this.hVel*(.55+.45*(this.grn()*.5+.5));
+      }
       if(this.gDelC>=0 && --this.gDelC<0){ this.cTaps=3; this.cCd=0; this.cVel=this.gVelC; }
       if(this.gDelS>=0 && --this.gDelS<0) this.hitEnv=this.gVelS;
       if(this.gDelB>=0 && --this.gDelB<0){
@@ -866,16 +892,29 @@ class Otzvuk extends AudioWorkletProcessor{
         if(this.hEnv>1e-5){
           this.hRs=(Math.imul(this.hRs,1664525)+1013904223)|0;
           const nz=((this.hRs>>>9)/4194304)-1;
-          this.hLp+=(nz-this.hLp)*.62;
+          // верх дорожки: в хэт попадает характер самого материала
+          const hi=(m-this.lb0)*3;
+          let src=nz*this.hNz+hi*(1-this.hNz);
+          if(this.hRing>0){
+            this.hPh+=this.hRingF/SR; if(this.hPh>=1) this.hPh-=1;
+            src=src*(1-this.hRing)+src*S(this.hPh)*this.hRing*1.7;
+          }
+          this.hLp+=(src-this.hLp)*this.hTone;
           this.hEnv*=this.hDec;
-          drm+=(nz-this.hLp)*this.hEnv*this.hLvl*.5*this.gHat;
+          drm+=(src-this.hLp)*this.hEnv*this.hLvl*.5*this.gHat;
         }
-        if(this.cTaps>0 && --this.cCd<=0){ this.cEnvD=1; this.cTaps--; this.cCd=Math.round(SR*.009); }
+        // Клэп по схеме 808: пачка быстрых разрядов «нескольких ладоней»,
+        // затем длинный хвост-«реверб». Интервал и число тапов — семейство.
+        if(this.cTaps>0 && --this.cCd<=0){ this.cEnvD=1; this.cTaps--;
+          this.cCd=Math.round(SR*this.cGap*(.85+.3*(this.grn()*.5+.5))); }
         if(this.cEnvD>1e-5){
           this.cRs=(Math.imul(this.cRs,1664525)+1013904223)|0;
           const nz=((this.cRs>>>9)/4194304)-1;
-          this.cf0+=.19*this.cf1; this.cf1+=.19*(nz-this.cf0-.7*this.cf1);
-          this.cEnvD*= this.cTaps>0 ? .997 : .9997;
+          // середина дорожки подмешивается к шуму — клэп тоже от материала
+          const mid=(m-this.lb0)*2;
+          const ex=nz*this.cNz+mid*(1-this.cNz);
+          this.cf0+=this.cK*this.cf1; this.cf1+=this.cK*(ex-this.cf0-this.cQ*this.cf1);
+          this.cEnvD*= this.cTaps>0 ? .997 : this.cTail;
           drm+=this.cf1*this.cEnvD*this.cVel*this.cLvl*.7*this.gClap;
         }
       }

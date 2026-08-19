@@ -31,7 +31,7 @@ function swapSource(buffer,fade){
 
 function renderForm(f){
   formEl.textContent=f.sec+' · '+f.mat+(f.groove?' · '+f.groove:'')+
-    ' · '+f.bars+' т. · '+f.bpm+' bpm';
+    (f.perc?' · '+f.perc:'')+' · '+f.bars+' т. · '+f.bpm+' bpm';
   const bar=Math.round(f.tension*22);
   tlEl.innerHTML='<span class="now">'+f.sec+'</span>'+
     '<i>напряжение</i><span>'+'▮'.repeat(bar)+'▯'.repeat(22-bar)+'</span>';
