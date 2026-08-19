@@ -23,6 +23,9 @@ INBOX = os.path.join(STORE, "обмен")
 # унести по одному. Папка в Документах — она переживает и порт, и профиль
 # браузера, и переустановку.
 ПРЕСЕТЫ = os.path.join(STORE, "presets")
+# Папка называлась по-русски, пока имена в проекте были кириллическими.
+# Читаем обе — ни один сохранённый пресет потеряться не должен.
+ПРЕСЕТЫ_СТАР = os.path.join(STORE, "пресеты")
 PORT = 8781
 
 
@@ -45,20 +48,32 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        # Путь приходит в процентной кодировке, а имена у нас кириллические —
-        # без разбора обратно ни один такой адрес не совпадёт.
+        # Путь приходит в процентной кодировке — без разбора обратно адрес
+        # с непростыми именами не совпадёт ни с одним обработчиком.
         p = unquote(self.path.split("?")[0])
+        if p == "/":
+            # Корень ведёт на инструмент: перезапуск сервера больше не
+            # выкидывает на старую страницу. Прежняя лежит на /index.html.
+            self.send_response(302)
+            self.send_header("Location", "/instrument.html")
+            self.end_headers()
+            return
         if p == "/presets":
             try:
                 os.makedirs(ПРЕСЕТЫ, exist_ok=True)
                 строки = []
-                for имя in sorted(os.listdir(ПРЕСЕТЫ)):
-                    if not имя.endswith(".json"):
+                видели = set()
+                for папка in (ПРЕСЕТЫ, ПРЕСЕТЫ_СТАР):
+                    if not os.path.isdir(папка):
                         continue
-                    with open(os.path.join(ПРЕСЕТЫ, имя), encoding="utf-8") as f:
-                        д = json.load(f)
-                    д["файл"] = имя
-                    строки.append(д)
+                    for имя in sorted(os.listdir(папка)):
+                        if not имя.endswith(".json") or имя in видели:
+                            continue
+                        видели.add(имя)
+                        with open(os.path.join(папка, имя), encoding="utf-8") as f:
+                            д = json.load(f)
+                        д["файл"] = имя
+                        строки.append(д)
                 return self._json(200, {"пресеты": строки})
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
