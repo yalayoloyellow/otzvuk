@@ -25,8 +25,9 @@
   #devices,#knobs{white-space:pre-wrap}
   b{font-weight:400;color:var(--hot)}
   #tabs{margin:2px 0 4px}
-  .tab{cursor:pointer;padding:0 2px}
-  .tab:hover{color:var(--hot)}
+  /* Вкладка должна выглядеть нажимаемой: рамка, курсор, отклик на наведение. */
+  .tab{cursor:pointer;padding:1px 6px;border:1px solid var(--line);border-radius:3px}
+  .tab:hover{color:var(--hot);border-color:var(--dim)}
 </style>
 <div id="screen">
 <pre id="head"></pre>

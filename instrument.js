@@ -282,6 +282,8 @@ addEventListener('keydown',async e=>{
   // панели остаются где стояли — меняется сам прибор, а не настройка.
   if(c==='Tab'){ e.preventDefault(); peresoberi(); return; }
 
+  // Прибор переключается и клавишей — мышь не всегда под рукой.
+  if(c==='KeyJ'){ e.preventDefault(); if(!e.repeat) vyberi(active?0:1); return; }
   if(c==='KeyP'){ e.preventDefault(); if(!e.repeat) sohrani(); return; }
   if(c==='KeyO'){ e.preventDefault(); if(!e.repeat) listay(e.shiftKey?-1:1); return; }
 
@@ -555,7 +557,7 @@ function kadr_(){
     $('#knobs').innerHTML=ruchki();
     $('#line').innerHTML=
       `  <b>Tab</b> — пересобрать · <b>⌘</b> втрое · <b>shift</b> вдесятеро · пробел — толчок · `+
-      `<b>цифры 1–8</b> — площадки · <b>p</b> — сохранить пресет · <b>o</b> — листать`+
+      `<b>цифры 1–8</b> — площадки · <b>j</b> — другой прибор · <b>p</b> — сохранить · <b>o</b> — листать`+
       (vest && performance.now()<vestdo ? `   <span class="hot">${vest}</span>`
        : presets.length ? `   <span class="dim2">${presets.length} пресетов</span>` : '');
   }
