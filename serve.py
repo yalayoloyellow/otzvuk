@@ -51,6 +51,17 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(200, {"rows": []})
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
+        if p == "/исток/мета":
+            # что известно о фрагментах: запрос, близость, темп, длина
+            try:
+                rows = []
+                with open(os.path.join(STORE, "исток.jsonl"), encoding="utf-8") as f:
+                    rows = [json.loads(x) for x in f if x.strip()]
+                return self._json(200, {"rows": rows})
+            except FileNotFoundError:
+                return self._json(200, {"rows": []})
+            except (ValueError, OSError) as e:
+                return self._json(500, {"error": str(e)})
         if p == "/исток":
             # что уже породил генератор: список готовых файлов
             try:

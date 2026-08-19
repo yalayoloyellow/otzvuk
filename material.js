@@ -185,7 +185,12 @@ export async function истокЗагрузи(ctx,имя){
   const buf=await r.arrayBuffer();
   return await ctx.decodeAudioData(buf);
 }
-export async function истокЗакажи(текст,вариантов,секунд){
+export async function истокЗакажи(текст,вариантов,секунд,bpm,тактов){
   await fetch('/заказ',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({t:Date.now(),текст,вариантов:вариантов||3,секунд:секунд||8})});
+    body:JSON.stringify({t:Date.now(),текст,вариантов:вариантов||3,секунд:секунд||8,
+      bpm:bpm||null,тактов:тактов||2})});
+}
+export async function истокМета(){
+  try{ const d=await fetch('/исток/мета',{cache:'no-store'}).then(r=>r.json());
+    return d.rows||[]; }catch(e){ return []; }
 }

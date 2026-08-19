@@ -19,7 +19,7 @@
 //  движок (post), контекст (ctx), подмену материала (swap) и строку формы
 //  (onForm). Так композитора можно гонять в стенде без страницы.
 // ============================================================================
-import {genMaterial, mul32} from './material.js';
+import {genMaterial, mul32, истокМета, истокЗагрузи} from './material.js';
 import {pickGroove} from './groove.js';
 import {extract} from './feat.js';
 import {emptyModel, score as vscore, fitness} from './vkus.js';
@@ -204,6 +204,10 @@ export function makeComposer(env){
   let srPlanT=null, curCrunch=0;
   let curBar=0, lastBpm=0;
   let curGroove=null, curPerc=null, curHat=null;
+  // Библиотека фрагментов. Решение yala: нужен поток СЭМПЛОВ, а не поток,
+  // где каждая секунда своя. Поэтому тема — готовый фрагмент, который
+  // повторяется; движок его модулирует, режет и меняет окружение.
+  let фрагменты=[], фрагмент=null;
   // Отбор темы: кандидаты рендерятся беззвучно ЗАРАНЕЕ, пока играет текущая.
   // Иначе смена темы ждала бы пару секунд, а этого слышно нельзя.
   let nextTheme=null, picking=false, model=emptyModel(), lastPick=null;
@@ -326,6 +330,27 @@ export function makeComposer(env){
     finally{ picking=false; }
   }
 
+  // Фрагменты обновляются редко и лениво: библиотека растёт в фоне.
+  async function обновиФрагменты(){
+    try{ фрагменты=(await истокМета()).filter(r=>r.файл); }catch(e){}
+  }
+
+  // Тема из библиотеки: берём фрагмент, ставим его темп, зацикливаем.
+  async function темаИзФрагмента(){
+    if(!фрагменты.length) return false;
+    const f=pick(фрагменты);
+    try{
+      const buf=await истокЗагрузи(env.ctx(),f.файл);
+      фрагмент=f; curMat='фрагмент';
+      env.swap(buf,.6);
+      if(f.bpm) post({t:'bpm',lock:1,hard:1,v:Math.round(f.bpm),mul:1});
+      // Память движка становится петлёй: фрагмент звучит по кругу, а не
+      // затирается новым входом — ровно то, ради чего он и порождался.
+      post({t:'loop',v:1});
+      return true;
+    }catch(e){ return false; }
+  }
+
   function sendTilt(){ post({t:'tilt',v:TILTS[profile]}); }
 
   // Заполнение: кит тот же, меняется только рисунок хэтов и клэпа. Это то,
@@ -397,11 +422,17 @@ export function makeComposer(env){
       nextTheme=null;
       hookBar=curBar; phraseN=0;
       prepareTheme();                       // готовим следующую впрок
+      обновиФрагменты();
       curSeed=hookSeed;
       post({t:'xf',sec:rnd(1.5,4)});
       post({t:'preset',seed:hookSeed,layer:0});
       post({t:'preset',seed:(hookSeed^0x5bf03635)>>>0,layer:1});
-      const mm=material(hookSeed); curMat=mm.name; env.swap(mm.buf,2.5);
+      // Сначала пробуем фрагмент из библиотеки; процедурный материал —
+      // запасной путь, пока библиотека пуста.
+      темаИзФрагмента().then(взяли=>{
+        if(!взяли){ post({t:'loop',v:0});
+          const mm=material(hookSeed); curMat=mm.name; env.swap(mm.buf,2.5); }
+      });
       sendGroove(hookSeed);
       post({t:'bpm',lock:1,hard:1,
         v:Math.round(rnd(PROFILES[profile].bpm[0],PROFILES[profile].bpm[1])),mul:1});
@@ -636,11 +667,13 @@ export function makeComposer(env){
     stepSection();
     started=true;
     setTimeout(()=>prepareTheme(),1500);
+    обновиФрагменты();
   }
 
   return {start, stepSection, vote, refresh, nextProfile, onBar,
           get groove(){return curGroove}, get perc(){return curPerc},
-          get pick(){return lastPick},
+          get pick(){return lastPick}, get фрагмент(){return фрагмент},
+          обновиФрагменты,
           setModel(m){ model=m; },
           get model(){return model},
           renderCandidate,
