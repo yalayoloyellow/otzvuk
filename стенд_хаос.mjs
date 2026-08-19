@@ -57,6 +57,6 @@ if (process.argv[1].endsWith('стенд_хаос.mjs')){
     writeFileSync(`/private/tmp/claude-502/-Users-yala/15a2ff36-fbf8-4b1e-9532-7ad769179edd/scratchpad/хаос-${имя}.wav`, wav(L,R,48000));
     let пик=0, сум=0; for(let i=0;i<L.length;i++){ const a=Math.abs(L[i]); if(a>пик)пик=a; сум+=L[i]*L[i]; }
     console.log(имя.padEnd(8), 'пик', пик.toFixed(3), 'ср', Math.sqrt(сум/L.length).toFixed(3),
-                'разброс', ((пр.разбр||0)*100).toFixed(0)+'%', 'срывы', пр.срывы||0);
+                'разброс А', ((пр.А?.разбр||0)*100).toFixed(0)+'%', 'Б', ((пр.Б?.разбр||0)*100).toFixed(0)+'%', 'срывы', пр.срывы||0);
   }
 }
