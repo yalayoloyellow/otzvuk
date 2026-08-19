@@ -478,12 +478,9 @@ class Device {
     this.razbr = 0; this.gc = 0;
   }
 
-  step(p, utechka, navodka, kontakt, vhSig, glubina, trakt){
+  step(p, utechka, navodka, kontakt){
     const sb = this.sb;
     let Vdd = this.bat.Vl * (kontakt === undefined ? 1 : kontakt);
-    // ГЕЙТ: вход снимает питание, пока он в нижней половине.
-    if (trakt === 3 && glubina > .002 && (vhSig || 0) < 0)
-      Vdd *= 1 - clamp(glubina, 0, 1) * .96;
     const u = this.swing.step(p.sway, p.drift, p.hit, Vdd, this.temp);
 
     // ХАРАКТЕР — подстроечник, задающий, в каких пределах ходит фоторезистор.
@@ -556,9 +553,6 @@ class Device {
       if (utechka > .001) R = 1 / (1/R + utechka / 2.6e6);
       const sosed = this.cells[(i + 1) % 3];
       const dVs = sosed.vyh - (sosed.prosh || 0);
-      // СИНХРО: фронт входа разряжает конденсатор — цикл начинается заново.
-      if (trakt === 1 && glubina > .002 && (vhSig || 0) > .35 && (this.prvh || 0) <= .35)
-        uzel.V = Vdd * .06;
       const v = sb.ves[i] * vkl[i];
       // Предел отвода считается по порогу ИМЕННО ЭТОГО элемента: точка покоя
       // разряда обязана остаться ниже него, иначе генератор запрётся. Пороги
@@ -569,29 +563,17 @@ class Device {
       // в конденсаторы: генератор бросает свой ход и захватывается — начинает
       // делить частоту входа на 2, 3, 5. Крутишь первый прибор — второй
       // перескакивает по делениям. Это и есть «один синт вошёл в другой».
-      const Rvh = glubina > .002 ? R * (14 / glubina) : 0;
-      const Vvh = Rvh ? Vdd * .5 * (1 + (vhSig || 0) * 1.6) : 0;
+      const Rvh = 0;
+      const Vvh = 0;
       summa += uzel.step(R, Vdd * (1 + utechka * .1), R * Math.max(ki, kmin),
                         dVs, sosed.V, Rsv, Vdd, this.temp, Vvh, Rvh) * v;
       vesov += v;
       tok += uzel.Ipit;
     }
     for (const u of this.cells) u.prosh = u.vyh;
-    this.prvh = vhSig || 0;
     if (vesov < 1e-6) vesov = 1;
     // суммирующая цепь: резисторы сводят выходы на базу транзистора
     let x = summa / vesov;
-    // КОЛЬЦО: балансный смеситель перемножает выходы. Основные тоны в нём
-    // подавлены, остаются суммы и разности — отсюда металл.
-    if (trakt === 2 && glubina > .002)
-      x = x * (1 - glubina) + x * (vhSig || 0) * 2.2 * glubina;
-    // Провод на следующий прибор снимается через разделительный конденсатор
-    // и нормируется питанием: наружу идёт переменная составляющая в долях
-    // шины, размахом около ±1. Без этого сигнал шёл в вольтах от нуля до
-    // девяти — гейт по знаку не срабатывал никогда, а кольцо умножало на
-    // восьмёрку вместо единицы.
-    this.scDC += (x - this.scDC) * (14 * 2 * Math.PI / FS);
-    this.scepi = clamp((x - this.scDC) * 2 / Math.max(1, Vdd), -1.5, 1.5);
 
     // ТУМБЛЕР ГРЯЗИ снимает конденсатор развязки питания логики.
     this.bat.step(tok + (this.tokdin || 0), p.dirt > .5 ? 0 : 1);
@@ -693,25 +675,15 @@ class Chaos extends AudioWorkletProcessor {
     // ДВА ПРИБОРА В ЦЕПИ. Первый работает сам по себе, его выход уходит
     // током в конденсаторы второго, а наружу идёт только второй — он и
     // подключён к колонкам. Ровно так стояли две коробки на столе.
-    const pusto = () => ({ sway:.55, tone:.5, depth:.75,
-                           pulse:.2, hit:.35, spread:.15, drift:0,
-                           // тумблеры: 0 или 1
-                           gen2:1, gen3:0, link:0, dirt:0, range:.5,
-                           // сколько выхода предыдущего втекает в этот прибор
-                           feed:0,
-                           // питание прибора: выключенный не считается вовсе
-                           on:1 });
-    this.devices = [new Device(1), new Device(2)];
-    this.p = [pusto(), pusto()];
-    this.p[1].feed = .35;
-    this.pr = this.devices[0];
+    this.p = { sway:.55, tone:.5, depth:.75,
+               pulse:.2, hit:.35, spread:.15, drift:0,
+               gen2:1, gen3:0, link:0, dirt:0, range:.5 };
+    this.pr = new Device(1);
     this.svod = new Decim();
     this.kont = new Contacts();
-    // У каждого прибора свой тумблер питания. Цепь собирается из включённых
-    // по порядку, а ВЫХОД — отдельная точка на конце: в него идёт последний
-    // включённый прибор. Выключили второй — первый идёт в выход напрямую;
-    // выключили первый — играет один второй. Выключены оба — тишина.
-    this.trakt = 0;                     // каким проводом связаны приборы
+    // ОДИН ПРИБОР. Две коробки в цепи пробовали — красивого звука это не
+    // давало ни при какой связи: внутри прибора осциллятор и так идёт в
+    // модулятор, а второй такой же поверх превращает всё в кашу.
     this.pl = new Float32Array(9);
     this.utechka = 0; this.navodka = 0;
     this.pik = 0; this.report = 0; this.okno = 0; this.sryvy = 0;
@@ -721,7 +693,7 @@ class Chaos extends AudioWorkletProcessor {
     this.port.onmessage = e => {
       const d = e.data;
       if (d.t === 'p'){
-        const n = d.i === 1 ? 1 : 0, nab = this.p[n];
+        const nab = this.p;
         for (const k in d.v){
           if (!(k in nab)) continue;
           const v = clamp(d.v[k], 0, 1), byl = nab[k];
@@ -738,17 +710,10 @@ class Chaos extends AudioWorkletProcessor {
         }
       }
       else if (d.t === 'pads'){ for (let i = 0; i < 9; i++) this.pl[i] = d.v[i] || 0; }
-      else if (d.t === 'seed'){
-        const n = d.i === 1 ? 1 : 0;
-        this.devices[n] = new Device(d.v);
-        this.pr = this.devices[0];
-        this.svod = new Decim();
-      }
-      else if (d.t === 'active'){ this.active = d.i === 1 ? 1 : 0; }
-      else if (d.t === 'trakt'){ this.trakt = d.v | 0; }
+      else if (d.t === 'seed'){ this.pr = new Device(d.v); this.svod = new Decim(); }
+
       else if (d.t === 'kick'){
-        for (const p of this.devices)
-          for (const g of p.cells) g.V += (Math.random() - .5) * 2;
+        for (const g of this.pr.cells) g.V += (Math.random() - .5) * 2;
       }
     };
   }
@@ -773,35 +738,19 @@ class Chaos extends AudioWorkletProcessor {
       const shoroh = this.kont.trenie();
       const ut = this.utechka + shoroh * .7, nav = this.navodka + shoroh * .04;
       for (let k = 0; k < OVER; k++){
-        // ЦЕПЬ собирается из ВКЛЮЧЁННЫХ приборов по порядку: каждый
-        // следующий получает током выход предыдущего, первый в цепи — ничего.
-        // ВЫХОД — отдельная точка на конце, в неё идёт последний включённый.
-        // Выключили второй — первый идёт в выход напрямую; выключили первый —
-        // играет один второй; выключены оба — тишина.
-        let syro = 0, signal = 0, bylo = false;
-        for (let d = 0; d < this.devices.length; d++){
-          if (!(this.p[d].on > .5)) continue;
-          syro = this.devices[d].step(this.p[d], ut, nav, kont,
-                                      bylo ? signal : 0, bylo ? this.p[d].feed : 0,
-                                      this.trakt);
-          signal = this.devices[d].scepi;
-          bylo = true;
-        }
-        y = this.svod.step(bylo ? syro : 0);
+        y = this.svod.step(this.pr.step(this.p, ut, nav, kont));
       }
-      if (!(y === y)){ y = 0;
-        for (const p of this.devices) p.zhivoy();
-        this.svod = new Decim(); this.sryvy++; }
+      if (!(y === y)){ y = 0; this.pr.zhivoy(); this.svod = new Decim(); this.sryvy++; }
       y = clamp(y, -1, 1);
-      if (++this.okno >= SR * .25){ this.okno = 0; for (const p of this.devices) p.mera(); }
+      if (++this.okno >= SR * .25){ this.okno = 0; this.pr.mera(); }
       const a = y < 0 ? -y : y;
       if (a > this.pik) this.pik = a;
       oL[s] = y; oR[s] = y;
-      const shago = clamp(Math.round(SR / (Math.max(20, this.devices[1].osn.f) * 128)), 1, 64);
+      const shago = clamp(Math.round(SR / (Math.max(20, this.pr.osn.f) * 128)), 1, 64);
       if (++this.oscsh >= shago){ this.oscsh = 0;
         this.osc[this.osci = (this.osci + 1) & 255] = y; }
       if (++this.prore >= SR / 100){ this.prore = 0;
-        this.sled[this.sli] = this.devices[this.active || 0].swing.u;
+        this.sled[this.sli] = this.pr.swing.u;
         this.sli = (this.sli + 1) % 200; }
     }
 
@@ -810,22 +759,17 @@ class Chaos extends AudioWorkletProcessor {
       this.report = 0;
       const l = new Float32Array(200);
       for (let i = 0; i < 200; i++) l[i] = this.sled[(this.sli + i) % 200];
-      const snimki = this.devices.map(p => {
-        const sb = p.sb;
-        return { razbros: p.razbr, gc: p.gc || 0, period: p.swing.period,
-                 pitch: p.osn.f || 0, duty: p.osn.skv,
-                 shina: p.bat.Vl / sb.EMF, batareya: p.bat.iznos, temp: p.temp,
-                 swing: p.swing.u, drift: p.swing.g,
-                 build: { imya: sb.imya, dinamik: sb.f0, emkost: sb.C[0],
-                           porog: sb.vt[0].vverh, emf: sb.EMF } };
-      });
-      const a = snimki[this.active || 0];
-      this.port.postMessage(Object.assign({}, a, {
+      const pr = this.pr, sb = pr.sb;
+      this.port.postMessage({
         pik: this.pik, sryvy: this.sryvy,
+        razbros: pr.razbr, period: pr.swing.period,
+        pitch: pr.osn.f || 0, duty: pr.osn.skv,
+        shina: pr.bat.Vl / sb.EMF,
+        swing: pr.swing.u, drift: pr.swing.g,
+        build: { imya: sb.imya, dinamik: sb.f0, emkost: sb.C[0] },
         osc: this.osc.slice(), sled: l,
-        devices: snimki, active: this.active || 0,
         pl: Array.from(this.pl), utechka: this.utechka
-      }));
+      });
       this.pik *= .6;
     }
     return true;

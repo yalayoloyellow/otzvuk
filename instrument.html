@@ -3,8 +3,10 @@
 <title>отзвук · инструмент</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-  :root{ --bg:#07070a; --fg:#c8ffb0; --dim:#3a5a34; --dim2:#22331f;
-         --hot:#d8ff4a; --warn:#ff7a3d; --line:#16210f }
+  /* Один цвет, три яркости. Жёлтый и оранжевый выбивались из фосфора и
+     ломали общий вид. */
+  :root{ --bg:#06080a; --fg:#a8f090; --dim:#4a7a44; --dim2:#264a26;
+         --hot:#d8ffc0; --warn:#d8ffc0; --line:#13210f }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--fg);
     font:400 13px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -16,6 +18,7 @@
   #screen{width:100%;margin:0 auto}
   #canvas{white-space:pre}
   .dim{color:var(--dim)}
+  .fg{color:var(--fg)}
   .dim2{color:var(--dim2)}
   .hot{color:var(--hot)}
   .warn{color:var(--warn)}
@@ -32,8 +35,6 @@
 <div id="screen">
 <pre id="head"></pre>
 <pre id="canvas"></pre>
-<pre id="tabs"></pre>
-<pre id="devices"></pre>
 <pre id="knobs"></pre>
 <pre id="line"></pre>
 </div>

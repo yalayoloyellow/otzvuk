@@ -41,9 +41,6 @@ const KNOBS=[
   {k:'spread',  m:['KeyD','KeyF'], imya:'РАЗВОД'},
   {k:'drift', m:['KeyZ','KeyX'], imya:'ГУЛЯНИЕ'},
   {k:'range',m:['KeyC','KeyV'], imya:'ДИАПАЗОН'},
-  // Только у второго прибора: сколько выхода первого втекает в его
-  // конденсаторы. У первого входа нет — перед ним ничего не стоит.
-  {k:'feed',    m:['KeyG','KeyH'], imya:'ВХОД', tolko:1}
 ];
 
 // ---- ТУМБЛЕРЫ --------------------------------------------------------------
@@ -57,18 +54,9 @@ const SWITCHES=[
   {k:'gen3',     kl:'KeyL', imya:'ГЕН 3',    podpis:['выкл','вкл']},
   {k:'link',    kl:'KeyB', imya:'СВЯЗЬ',    podpis:['нет','замкнута']},
   {k:'dirt',    kl:'KeyM', imya:'ГРЯЗЬ',    podpis:['развязка','снята']},
-  // Питание самого прибора: выключенный выпадает из цепи, и его сосед
-  // соединяется с выходом напрямую.
-  {k:'on',      kl:'KeyN', imya:'ПИТАНИЕ',  podpis:['выкл','вкл']}
 ];
 
-// ---- ТРАКТ -----------------------------------------------------------------
-// Каким ПРОВОДОМ соединены приборы. Это не настройка, а патч: разные гнёзда
-// на панели дают принципиально разный звук, а не оттенок одного.
-const TRAKTY=['ТОК','СИНХРО','КОЛЬЦО','ГЕЙТ'];
-const TRAKT_POYASN=['захват и деление частоты','жёсткая синхронизация',
-                    'кольцевой смеситель, металл','нарезка питанием'];
-let trakt=0;
+
 // Второй страницы нет и быть не должно. Всё, чего нет на панели, — это
 // номиналы деталей: конденсаторы, резисторы, пороги конкретной микросхемы,
 // ёмкость монтажа. Ими не «управляют», они впаяны.
@@ -84,7 +72,7 @@ for(const r of KNOBS) r.podpis=r.m.map(c=>c.replace('Key','').toLowerCase()).joi
 // генераторов, петля триггера, скорость фронта, динамик и монтаж. Панель
 // хранит только само семя и получает номиналы обратно в отчёте — здесь их
 // незачем считать второй раз.
-let seeds=[(Math.random()*4294967295)>>>0,(Math.random()*4294967295)>>>0];
+let seed=(Math.random()*4294967295)>>>0;
 
 // ---- ПРЕСЕТЫ ---------------------------------------------------------------
 // Снимок ВСЕГО состояния: положения всех ручек, всех тумблеров и номер
@@ -98,8 +86,7 @@ let presets=[], tekuschiy=-1, vest='', vestdo=0;
 function skazhi(t){ vest=t; vestdo=performance.now()+2600; }
 function snimok(){
   return {name:nazovis(), time:new Date().toISOString().slice(0,19).replace('T',' '),
-          seeds:[...seeds], sets:sets.map(x=>({...x})),
-          switches:tumbnabory.map(x=>({...x})), trakt, active};
+          seed, knobs:{...knobs}, switches:{...switches}};
 }
 function nazovis(){
   const p=report.period>0 ? report.period.toFixed(2)+'с' : '';
@@ -107,8 +94,7 @@ function nazovis(){
   const d=new Date();
   const data=`${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')} `+
              `${String(d.getHours()).padStart(2,'0')}-${String(d.getMinutes()).padStart(2,'0')}`;
-  return [data, (report.devices||[]).map(x=>x.build&&x.build.imya).filter(Boolean).join('-')||'····',
-          p, v].filter(Boolean).join(' ');
+  return [data, (report.build&&report.build.imya)||'····', p, v].filter(Boolean).join(' ');
 }
 async function sohrani(){
   try{
@@ -129,33 +115,26 @@ async function zagruzispisok(){
 }
 // Пресет мог быть записан и до перехода на латиницу, и до появления второго
 // прибора. Читаем оба написания и оба формата — терять сохранённое нельзя.
+// Пресет мог быть записан в любом из прежних форматов: с русскими ключами,
+// с одним прибором или с двумя. Берём первый прибор — он и есть весь прибор.
 function primenit(p){
   if(!p) return;
-  const наб = p.sets || p.наборы || [p.knobs || p.макро || {}, pustomakro()];
-  const тум = Array.isArray(p.switches) ? p.switches
-            : Array.isArray(p.тумблеры) ? p.тумблеры
-            : [p.switches || p.тумблеры || {}, pustotumb()];
-  const сем = p.seeds || p.семена || [p.seed ?? p.семя, seeds[1]];
-  const карта = {качание:'sway', характер:'tone', размах:'depth', импульс:'pulse',
+  const karta = {качание:'sway', характер:'tone', размах:'depth', импульс:'pulse',
                  удар:'hit', развод:'spread', гуляние:'drift', диапазон:'range',
-                 вход:'feed', ген2:'gen2', ген3:'gen3', связь:'link', грязь:'dirt'};
-  const перевод = о => {
+                 ген2:'gen2', ген3:'gen3', связь:'link', грязь:'dirt'};
+  const perevod = o => {
     const r={};
-    for(const k in (о||{})) r[карта[k]||k] = о[k];
+    for(const k in (o||{})) if(k in knobs || karta[k] in knobs ||
+                               k in switches || karta[k] in switches)
+      r[karta[k]||k] = o[k];
     return r;
   };
-  for(let i=0;i<2;i++){
-    Object.assign(sets[i], перевод(наб[i]));
-    Object.assign(tumbnabory[i], перевод(тум[i]));
-    const с = сем[i];
-    if(с!==undefined && с!==null){ seeds[i]=с>>>0;
-      node&&node.port.postMessage({t:'seed', i, v:seeds[i]}); }
-  }
-  // Пресет, записанный до появления второго прибора, знал только один —
-  // второй выключаем, иначе тот зазвучит через чужой прибор.
-  if(!(p.sets||p.наборы)) tumbnabory[1].on=0;
-  if(p.trakt!==undefined){ trakt=p.trakt|0;
-    node&&node.port.postMessage({t:'trakt', v:trakt}); }
+  const pervy = a => Array.isArray(a) ? a[0] : a;
+  Object.assign(knobs, perevod(pervy(p.sets || p.наборы || p.knobs || p.макро)));
+  Object.assign(switches, perevod(pervy(p.switches || p.тумблеры)));
+  const s = pervy(p.seeds || p.семена) ?? p.seed ?? p.семя;
+  if(s!==undefined && s!==null){ seed=s>>>0;
+    node&&node.port.postMessage({t:'seed', v:seed}); }
   send();
   skazhi('пресет: '+(p.name||p.имя||p.file));
 }
@@ -166,14 +145,9 @@ async function listay(step){
   primenit(presets[tekuschiy]);
 }
 function peresoberi(novoe){
-  seeds[active] = novoe!==undefined ? novoe>>>0 : (Math.random()*4294967295)>>>0;
-  node&&node.port.postMessage({t:'seed', i:active, v:seeds[active]});
+  seed = novoe!==undefined ? novoe>>>0 : (Math.random()*4294967295)>>>0;
+  node&&node.port.postMessage({t:'seed', v:seed});
   send();
-}
-function vyberi(i){
-  active = i ? 1 : 0;
-  node&&node.port.postMessage({t:'active', i:active});
-  skazhi('прибор '+(active+1));
 }
 
 // Разводка макро-ручек во внутренние величины. Здесь и живёт то, что в
@@ -192,27 +166,10 @@ function razvedi(){
 }
 
 // макро — то, что на панели; p — то, что уходит в движок
-// ДВА ПРИБОРА. У каждого свой набор ручек, тумблеров и своя сборка. Активный
-// тот, по которому щёлкнули мышью, — как переключение между окнами.
-const pustomakro = () => ({sway:.55, tone:.5, depth:.75, pulse:.2,
-                           hit:.35, spread:.15, drift:0, range:.5, feed:0});
-const pustotumb = () => ({gen2:1, gen3:0, link:0, dirt:0, on:1});
-const sets=[pustomakro(), pustomakro()];
-const tumbnabory=[pustotumb(), pustotumb()];
-sets[1].feed=.35;
-let active=0;
-const knobs=new Proxy({},{
-  get:(_,k)=>sets[active][k],
-  set:(_,k,v)=>{ sets[active][k]=v; return true; },
-  ownKeys:()=>Reflect.ownKeys(sets[active]),
-  getOwnPropertyDescriptor:(_,k)=>({enumerable:true,configurable:true,value:sets[active][k]})
-});
-const switches=new Proxy({},{
-  get:(_,k)=>tumbnabory[active][k],
-  set:(_,k,v)=>{ tumbnabory[active][k]=v; return true; },
-  ownKeys:()=>Reflect.ownKeys(tumbnabory[active]),
-  getOwnPropertyDescriptor:(_,k)=>({enumerable:true,configurable:true,value:tumbnabory[active][k]})
-});
+const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
+             hit:.35, spread:.15, drift:0, range:.5};
+const switches={gen2:1, gen3:0, link:0, dirt:0};
+
 const p={};
 
 let poslednyaya=null, vspyshka=0, vspyshkat=null, poslednieVkladki='';
@@ -244,11 +201,7 @@ setInterval(()=>{
 },1000/60);
 
 function send(){
-  // Оба набора уходят всегда: прибор, который сейчас не на экране, всё равно
-  // работает и звучит — он же стоит в цепи перед этим.
-  if(!node) return;
-  for(let i=0;i<2;i++)
-    node.port.postMessage({t:'p', i, v:{...sets[i], ...tumbnabory[i]}});
+  node&&node.port.postMessage({t:'p', v:{...knobs, ...switches}});
 }
 
 // Сцены переживают перезагрузку: найденную точку обидно терять.
@@ -292,9 +245,8 @@ async function pusk(){
   idet=true;
   // Обе сборки и оба набора ручек уходят в ядро сразу: второй прибор стоит
   // в цепи и звучит, даже когда на экране первый.
-  for(let i=0;i<2;i++) node.port.postMessage({t:'seed', i, v:seeds[i]});
-  node.port.postMessage({t:'active', i:active});
-  node.port.postMessage({t:'trakt', v:trakt});
+  node.port.postMessage({t:'seed', v:seed});
+
   send();
   window.dbg.sostoyanie='играет';
   }catch(e){ window.dbg.oshibka=''+e; window.dbg.sostoyanie='упал'; }
@@ -312,15 +264,6 @@ addEventListener('keydown',async e=>{
   // панели остаются где стояли — меняется сам прибор, а не настройка.
   if(c==='Tab'){ e.preventDefault(); peresoberi(); return; }
 
-  // Прибор переключается и клавишей — мышь не всегда под рукой.
-  // Тракт переключается на shift+B: b — связь узлов внутри прибора,
-  // shift+b — провод между приборами.
-  if(c==='KeyB' && e.shiftKey){ e.preventDefault();
-    if(!e.repeat){ trakt=(trakt+1)%TRAKTY.length;
-      node&&node.port.postMessage({t:'trakt', v:trakt});
-      skazhi('тракт: '+TRAKTY[trakt]+' — '+TRAKT_POYASN[trakt]); }
-    return; }
-  if(c==='KeyJ'){ e.preventDefault(); if(!e.repeat) vyberi(active?0:1); return; }
   if(c==='KeyP'){ e.preventDefault(); if(!e.repeat) sohrani(); return; }
   if(c==='KeyO'){ e.preventDefault(); if(!e.repeat) listay(e.shiftKey?-1:1); return; }
 
@@ -332,7 +275,6 @@ addEventListener('keydown',async e=>{
     if(e.repeat) return;
     const pol=t.pol||2;
     switches[t.k]=(switches[t.k]+1)%pol;
-    if(t.k==='on') skazhi(`прибор ${active+1}: `+(switches.on?'включён':'выключен'));
     vspyshkat=t; vspyshka=8; send();
     return;
   }
@@ -524,7 +466,10 @@ function kartina(){
   for(let y=0;y<V;y++){
     let s='';
     for(let x=0;x<Sh;x++){
-      const v=(pole[y*Sh+x]+shipy[y*Sh+x])/mx;
+      // Слабый фон не рисуем совсем: он сливал рисунок в кашу, в которой
+      // не читалось ни тело, ни щупальца.
+      let v=(pole[y*Sh+x]+shipy[y*Sh+x])/mx;
+      v = v<.045 ? 0 : (v-.045)/.955;
       s+=PHOSPHOR[clamp(Math.round(Math.pow(v,.55)*(PHOSPHOR.length-1)),0,PHOSPHOR.length-1)];
     }
     stroki.push(s);
@@ -561,66 +506,55 @@ function ritmzamer(){
 // Две коробки в цепи: первая работает сама, её выход втекает во вторую, а
 // наружу идёт только вторая. Мышь переключает, какая из них сейчас под
 // ручками, — как окна.
-function vkladki(){
-  const sn=report.devices||[];
-  return [0,1].map(i=>{
-    const s=sn[i]||{}, sb=s.build||{};
-    const zhiv = !tumbnabory[i].on ? 'выкл'
-               : s.pitch>1 ? `${Math.round(s.pitch)} Гц` : 'тихо';
-    const t=` ПРИБОР ${i+1} · ${sb.imya||'····'} · ${zhiv} ${i===0?'→':'⇒ выход'} `;
-    // Имя атрибута латиницей: кириллическое data-имя не превращается в
-    // свойство dataset, и клик молча не находил, по какому прибору попали.
-    return `<span class="tab ${i===active?'hot':'dim2'}" data-device="${i}">`+
-           `${i===active?'▍':' '}${t}</span>`;
-  }).join('  ');
+// ---- ПАНЕЛЬ ----------------------------------------------------------------
+// Всё рисуется одним шрифтом и одним цветом, тремя яркостями. Значения — не
+// цифры в строчку, а шкалы: глазу нужна форма, а не чтение. Цифра остаётся
+// там, где она правда нужна.
+function shkala(v, sh){
+  const n=clamp(Math.round(v*sh),0,sh);
+  return '▮'.repeat(n)+'·'.repeat(sh-n);
 }
-
-function devices(){
-  ritmzamer();
-  // Разброс интервалов между щелчками медленного узла: 0 — рисунок стоит
-  // как вкопанный, растёт — гуляет.
-  const l=report.razbros||0;
-  const gde = l<.02?'РОВНО' : l<.10?'дышит' : l<.28?'гуляет'
-            : l<.55?'КРАЙ' : 'распад';
-  const cvet = l<.10?'dim' : l<.55?'hot':'warn';
-  const per=report.period||0;
-  const vys=report.pitch||0, skv=report.duty||0;
-  return [
-`  период <b>${per>.02&&per<30?per.toFixed(2)+' с':'—'}</b>   высота <b>${vys.toFixed(0)}</b> Гц` +
-  `   импульс <b>${(skv*100).toFixed(0)}%</b>   <span class="${cvet}">${gde}</span>`,
-`  шина ${polosa(clamp(report.shina,0,1),12)}  уровень ${polosa(clamp(report.pik,0,1),12)}`
-  ].join('\n');
-}
-
 function ruchki(){
   const sb=report.build||{};
-  const stroki=[`  <span class="dim2">сборка</span> <b>${sb.imya||'····'}</b>`+
-                ` <span class="dim2">семя ${seeds[active]>>>0}</span>`+
-                (sb.dinamik?`  <span class="dim2">динамик ${sb.dinamik.toFixed(0)} Гц ·`+
-                 ` ${(sb.emkost*1e9).toFixed(1)} нФ · порог ${(sb.porog*100).toFixed(0)}% ·`+
-                 ` ${sb.emf.toFixed(1)} В</span>`:'')+
-                `  <span class="dim2">Tab — пересобрать</span>`, ''];
-  const vidimye=KNOBS.filter(r=>r.tolko===undefined||r.tolko===active);
-  for(let i=0;i<vidimye.length;i+=kolonok){
-    stroki.push(vidimye.slice(i,i+kolonok).map(r=>{
-      const svoy=r===poslednyaya&&vspyshka>0;
-      const imya=(r.imya+'        ').slice(0,8);
-      const kl=r.podpis;
-      const b=polosa(knobs[r.k]||0,10);
-      const s=`${imya} ${b} ${kl}`;
-      return svoy?`<span class="hot">${s}</span>`:`<span class="dim">${s}</span>`;
-    }).join('   '));
+  const uzko = Sh<80;
+  const shk = uzko ? 8 : 12;
+  const stroki=[];
+
+  // Показания прибора: период качелей, высота, ширина импульса, уровень.
+  const per=report.period>0&&report.period<30 ? report.period : 0;
+  const pit=report.pitch||0, duty=report.duty||0;
+  const l=clamp(report.pik||0,0,1), sh=clamp(report.shina||1,0,1);
+  const r=report.razbros||0;
+  const rezhim = r<.02?'ровно' : r<.10?'дышит' : r<.28?'гуляет' : r<.55?'край':'распад';
+  stroki.push(
+    `  ПЕРИОД  ${shkala(per?clamp(Math.log2(per/.02)/9,0,1):0,shk)} ${per?per.toFixed(2)+'с':'—'}`);
+  stroki.push(
+    `  ВЫСОТА  ${shkala(pit?clamp(Math.log2(pit/20)/8,0,1):0,shk)} ${pit?Math.round(pit)+'Гц':'—'}`);
+  stroki.push(
+    `  ИМПУЛЬС ${shkala(duty,shk)} ${Math.round(duty*100)}%   ${rezhim}`);
+  stroki.push(
+    `  УРОВЕНЬ ${shkala(l,shk)}   ШИНА ${shkala(sh,Math.max(4,shk-4))}`);
+  stroki.push('');
+
+  // Ручки: имя, шкала, клавиши. Ширина колонки и число колонок — от экрана.
+  const shr = uzko ? 10 : 14;
+  for(let i=0;i<KNOBS.length;i+=kolonok){
+    stroki.push('  '+KNOBS.slice(i,i+kolonok).map(rk=>{
+      const svoy=rk===poslednyaya&&vspyshka>0;
+      const imya=(rk.imya+'          ').slice(0,uzko?8:9);
+      const s=`${imya}${shkala(knobs[rk.k]||0,shr)} ${rk.podpis}`;
+      return svoy?`<span class="hot">${s}</span>`:`<span class="fg">${s}</span>`;
+    }).join('  '));
   }
   stroki.push('');
-  stroki.push(SWITCHES.map(t=>{
-    const pol=t.pol||2, z=switches[t.k];
-    const vid=pol>2 ? '['+'·'.repeat(z)+'▮'+'·'.repeat(pol-1-z)+']'
-                    : (z?'[▮]':'[·]');
-    const cv=z?'hot':'dim';
-    return `<span class="${cv}">${t.imya} ${vid}</span> <span class="dim2">${t.kl.replace('Key','').toLowerCase()}</span>`;
-  }).join('   ') + `   <span class="hot">ТРАКТ ${TRAKTY[trakt]}</span> <span class="dim2">⇧b</span>`);
-  stroki.push(`  <span class="dim2">${SWITCHES.map(t=>t.imya+': '+
-    (t.podpis[switches[t.k]]||'')).join(' · ')}</span>`);
+  stroki.push('  '+SWITCHES.map(t=>{
+    const z=switches[t.k];
+    return `<span class="${z?'hot':'dim'}">${t.imya} ${z?'▮':'·'}</span>`+
+           ` <span class="dim2">${t.kl.replace('Key','').toLowerCase()}</span>`;
+  }).join('  '));
+  stroki.push(`  <span class="dim2">СБОРКА ${sb.imya||'····'} ${seed>>>0}`+
+              (sb.dinamik?` · ${Math.round(sb.dinamik)}Гц · ${(sb.emkost*1e9).toFixed(1)}нФ`:'')+
+              `</span>`);
   return stroki.join('\n');
 }
 
@@ -639,35 +573,15 @@ function kadr_(){
     : `<span class="hot">о т з в у к · инструмент</span>\n\n  нажми любую клавишу`;
   if(idet){
     $('#canvas').textContent=kartina();
-    $('#devices').innerHTML=devices();
     // Перерисовываем вкладки только когда они правда изменились: лишняя
     // замена разметки съедала клики.
-    const v=vkladki();
-    if(v!==poslednieVkladki){ $('#tabs').innerHTML=v; poslednieVkladki=v; }
-    poveshaytabs();
     $('#knobs').innerHTML=ruchki();
     $('#line').innerHTML=
-      `  <b>Tab</b> — пересобрать · <b>⌘</b> втрое · <b>shift</b> вдесятеро · пробел — толчок · `+
-      `<b>цифры 1–8</b> — площадки · <b>j</b> — другой прибор · <b>p</b> — сохранить · <b>o</b> — листать`+
+      `  <span class="dim2">tab пересобрать · ⌘ втрое · ⇧ вдесятеро · пробел толчок · `+
+      `1–8 площадки · p сохранить · o листать</span>`+
       (vest && performance.now()<vestdo ? `   <span class="hot">${vest}</span>`
        : presets.length ? `   <span class="dim2">${presets.length} пресетов</span>` : '');
   }
-}
-// Клик по вкладке переключает прибор.
-// Обработчик висит на КОНТЕЙНЕРЕ вкладок, а не на самих вкладках: их
-// разметка переписывается тридцать раз в секунду, и элемент успевал
-// подмениться между нажатием и обработкой — клик пропадал. Контейнер же
-// не пересоздаётся никогда.
-function poveshaytabs(){
-  const box=$('#tabs');
-  if(!box || box.dataset.gotov) return;
-  box.dataset.gotov='1';
-  box.addEventListener('mousedown',ev=>{
-    const el=ev.target.closest && ev.target.closest('.tab');
-    if(!el) return;
-    ev.preventDefault();
-    vyberi(+el.dataset.device);
-  });
 }
 pomer();
 kadr();
