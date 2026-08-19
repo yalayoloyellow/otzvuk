@@ -1,0 +1,134 @@
+<meta charset="utf-8">
+<title>отзвук · стенд</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{ --bg:#08080a; --fg:#e8e6e1; --dim:#63636b; --line:#1c1c22; --hot:#d8ff4a; --warn:#c9502f }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--fg);
+    font:400 13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;padding:20px;max-width:820px;margin:0 auto}
+  h1{font-size:13px;font-weight:400;letter-spacing:.34em;text-transform:uppercase;margin-bottom:14px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  input,select,button{font:inherit;color:var(--fg);background:transparent;
+    border:1px solid var(--line);padding:7px 10px}
+  input{width:120px}
+  button{cursor:pointer;letter-spacing:.12em;text-transform:uppercase;font-size:10px}
+  button:hover{border-color:var(--dim)}
+  pre{border:1px solid var(--line);padding:12px;font-size:12px;white-space:pre-wrap;
+    color:var(--dim);min-height:120px}
+  pre b{color:var(--fg)} pre .bad{color:var(--warn)} pre .ok{color:var(--hot)}
+</style>
+
+<h1>отзвук · стенд</h1>
+<div class="row">
+  семя <input id="seed" value="123456789">
+  <select id="prof"><option>авангард</option><option>хип-хоп</option><option>техно</option></select>
+  секунд <input id="dur" value="20" style="width:60px">
+  <button id="go">прогнать</button>
+  <button id="det">дважды · детерминизм</button>
+</div>
+<pre id="out">Офлайн-рендер того же engine.worklet.js, что играет в живой странице.
+Материал — из того же material.js. Композитора здесь нет: движок получает
+фиксированный простой сценарий (пресет, темп 120, прямой бит), чтобы замеры
+сравнивали ДВИЖОК до/после правок, а не случайность композитора.</pre>
+
+<script type="module">
+import {genMaterial, mul32} from './material.js';
+const $=s=>document.querySelector(s);
+const out=$('#out');
+const log=h=>{ out.innerHTML=h; };
+
+async function render(seed, profile, dur){
+  const sr=48000;
+  const off=new OfflineAudioContext(2, Math.ceil(sr*dur), sr);
+  await off.audioWorklet.addModule('./engine.worklet.js');
+  const node=new AudioWorkletNode(off,'otzvuk',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});
+  node.connect(off.destination);
+  const mat=genMaterial(off,seed,profile,()=>1);
+  const src=off.createBufferSource(); src.buffer=mat.buf; src.loop=true;
+  src.connect(node); src.start();
+  const post=m=>node.port.postMessage(m);
+  post({t:'preset',seed:seed>>>0,layer:0});
+  post({t:'preset',seed:(seed^0x5bf03635)>>>0,layer:1});
+  post({t:'bpm',lock:1,hard:1,v:120,mul:1});
+  post({t:'xf',sec:.3});
+  post({t:'lufs',v:-14});
+  const pK=new Float32Array(16), pH=new Float32Array(16), pC=new Float32Array(16);
+  for(let i=0;i<16;i+=4) pK[i]=1;
+  for(let i=2;i<16;i+=4) pH[i]=.8;
+  pC[4]=1; pC[12]=1;
+  post({t:'drums',mode:profile==='техно'?2:1,pK,pH,pC,
+        kF:48,kDec:.25,kSweep:2.5,kDrive:1.2,kLvl:1,hDec:.05,hLvl:.5,cLvl:.5});
+  post({t:'rhy',v:1,lvl:1});
+  post({t:'run',v:1});
+  // сообщения долетают до аудиопотока асинхронно — даём им сесть до рендера
+  await new Promise(r=>setTimeout(r,80));
+  const t0=performance.now();
+  const buf=await off.startRendering();
+  return {buf, ms:Math.round(performance.now()-t0), mat:mat.name};
+}
+
+function metrics(buf){
+  const L=buf.getChannelData(0), R=buf.getChannelData(1), n=L.length, sr=buf.sampleRate;
+  let peak=0,sum=0;
+  const mono=new Float32Array(n);
+  for(let i=0;i<n;i++){ const a=Math.abs(L[i]),b=Math.abs(R[i]);
+    if(a>peak)peak=a; if(b>peak)peak=b; sum+=L[i]*L[i]+R[i]*R[i]; mono[i]=(L[i]+R[i])*.5; }
+  const rms=Math.sqrt(sum/(2*n));
+  // след РМС 30 мс: рвань = обвал из громкого в почти-ноль за одно окно
+  const win=Math.round(sr*.03), tr=[];
+  for(let s=0;s+win<=n;s+=win){ let e=0;
+    for(let i=s;i<s+win;i++) e+=L[i]*L[i]+R[i]*R[i];
+    const r=Math.sqrt(e/(2*win)); tr.push(r>1e-7?20*Math.log10(r):-140); }
+  const skip=Math.ceil(2/.03);              // первые 2 с — разгон кроссфейда
+  let maxDrop=0,collapses=0;
+  for(let i=skip+1;i<tr.length;i++){ const d=tr[i-1]-tr[i];
+    if(d>maxDrop&&tr[i-1]>-45)maxDrop=d;
+    if(tr[i-1]>-35&&tr[i]<-55)collapses++; }
+  // 8 октавных полос: разность энергий каскада однополюсных ФНЧ
+  const lpE=fc=>{ const a=1-Math.exp(-2*Math.PI*fc/sr); let p=0,e=0;
+    for(let i=0;i<n;i++){ p+=(mono[i]-p)*a; e+=p*p; } return e; };
+  const F=[62.5,125,250,500,1000,2000,4000,8000];
+  const es=F.map(f=>Math.max(0,lpE(f*1.414)-lpE(f/1.414)));
+  const tot=es.reduce((a,b)=>a+b,0)||1;
+  const spec=es.map(e=>Math.round(e/tot*100));
+  // хэш для сравнения детерминизма (каждый 97-й сэмпл)
+  let h=0; for(let i=0;i<n;i+=97) h=(h*31+((L[i]*32768)|0))|0;
+  return {peak, rms, maxDrop, collapses, spec, hash:h>>>0,
+          dB:x=>x>1e-7?(20*Math.log10(x)).toFixed(1):'-∞'};
+}
+
+function report(m,extra){
+  const c=m.collapses?`<span class="bad">${m.collapses}</span>`:`<span class="ok">0</span>`;
+  return `${extra}
+пик <b>${m.dB(m.peak)} дБ</b> · среднее <b>${m.dB(m.rms)} дБ</b>
+обвалов ${c} · макс перепад <b>${m.maxDrop.toFixed(1)} дБ</b> (окна 30 мс, первые 2 с не в счёт)
+спектр по октавам, % · <b>${m.spec.join(' ')}</b>  (62 Гц … 8 кГц)
+хэш <b>${m.hash.toString(16)}</b>`;
+}
+
+$('#go').onclick=async()=>{
+  log('рендер…');
+  try{
+    const seed=parseInt($('#seed').value)>>>0, prof=$('#prof').value, dur=+$('#dur').value||20;
+    const r=await render(seed,prof,dur);
+    log(report(metrics(r.buf),`материал <b>${r.mat}</b> · рендер ${r.ms} мс на ${dur} с звука`));
+  }catch(e){ log(`<span class="bad">ошибка: ${e.message||e}</span>`); }
+};
+
+$('#det').onclick=async()=>{
+  log('два рендера…');
+  try{
+    const seed=parseInt($('#seed').value)>>>0, prof=$('#prof').value, dur=+$('#dur').value||20;
+    const a=await render(seed,prof,dur), b=await render(seed,prof,dur);
+    const la=a.buf.getChannelData(0), lb=b.buf.getChannelData(0);
+    let md=0; for(let i=0;i<la.length;i+=13){ const d=Math.abs(la[i]-lb[i]); if(d>md)md=d; }
+    const ok=md<1e-9;
+    log(report(metrics(a.buf),`материал <b>${a.mat}</b> · рендер ${a.ms}+${b.ms} мс`)+
+      `\nдетерминизм: ${ok?'<span class="ok">да, рендеры совпадают</span>'
+                        :`<span class="bad">НЕТ, макс расхождение ${md.toExponential(2)}</span>`}`);
+  }catch(e){ log(`<span class="bad">ошибка: ${e.message||e}</span>`); }
+};
+
+// ручка для прогонов из консоли и автоматики
+window.stand={render,metrics};
+</script>

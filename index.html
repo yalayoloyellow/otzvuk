@@ -1,0 +1,105 @@
+<meta charset="utf-8">
+<title>отзвук</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+  :root{ --bg:#08080a; --fg:#e8e6e1; --dim:#63636b; --dim2:#3c3c44; --line:#1c1c22;
+         --hot:#d8ff4a; --warn:#c9502f; --low:#ff8a3d }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--fg);
+    font:400 13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;
+    display:flex;justify-content:center;padding:20px 14px;-webkit-font-smoothing:antialiased}
+  #wrap{width:min(96vw,940px);display:flex;flex-direction:column;gap:13px}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  h1{font-size:13px;font-weight:400;letter-spacing:.34em;text-transform:uppercase}
+  #state{color:var(--dim);font-size:11px;letter-spacing:.05em}
+
+  .panel{border:1px solid var(--line);padding:10px 12px}
+  .panel h2{font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim2);
+    font-weight:400;margin-bottom:8px;display:flex;justify-content:space-between;gap:8px}
+
+  /* такт */
+  #bars{display:flex;gap:3px;margin-bottom:10px}
+  #bars div{flex:1;height:24px;background:var(--line);cursor:pointer}
+  #bars div:hover{outline:1px solid var(--dim)}
+  #bars div.b{background:#25252d}
+  #bars div.lo{background:var(--low)}
+  #bars div.gh{background:#5a4a2a}
+  #bars div.on{box-shadow:inset 0 0 0 2px var(--hot)}
+  .prow{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  #pname{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim2)}
+
+  /* память как луп */
+  #memwrap{position:relative;border:1px solid var(--line)}
+  #memwrap.loop{border-color:var(--hot)}
+  #mem{width:100%;height:74px;display:block}
+  #memlab{position:absolute;left:0;top:0;right:0;padding:5px 9px;font-size:9px;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--dim2);pointer-events:none;
+    background:linear-gradient(#08080ae8,#08080a00)}
+  #memwrap.loop #memlab{color:var(--hot)}
+
+  #inside{font-size:10.5px;line-height:1.75;color:var(--dim);
+    display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+  @media(max-width:620px){#inside{grid-template-columns:1fr}}
+  #inside .n{color:var(--fg)} #inside .fb{color:var(--warn)} #inside .out{color:var(--hot)}
+  #inside .row{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  footer{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  button,select{font:inherit;letter-spacing:.12em;text-transform:uppercase;font-size:10px;
+    color:var(--fg);background:transparent;border:1px solid var(--line);padding:9px 13px;cursor:pointer}
+  select{padding:8px 9px}
+  button:hover:not(:disabled),select:hover{border-color:var(--dim)}
+  button:disabled{color:#2a2a31;cursor:default;border-color:#141419}
+  button.on{border-color:var(--hot);color:var(--hot)}
+  #next{border-color:#33333c}
+  .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+  #hint{color:var(--dim2);font-size:10px;margin-left:auto;text-align:right}
+  #hint b{color:var(--warn);font-weight:400}
+
+  #decks{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+  @media(max-width:620px){#decks{grid-template-columns:1fr}}
+  .list{height:120px;overflow-y:auto;font-size:11px;line-height:1.6}
+  .list::-webkit-scrollbar{width:5px}
+  .list::-webkit-scrollbar-thumb{background:var(--line)}
+  .it{display:flex;align-items:center;gap:7px;cursor:pointer;color:var(--dim)}
+  .it:hover{color:var(--fg)} .it.cur{color:var(--hot)}
+  .it .code{min-width:52px}
+  .it .sig{font-size:9.5px;color:var(--dim2);overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;flex:1}
+  .it:hover .sig{color:var(--dim)}
+  .it .x{color:var(--dim2);opacity:0;padding:0 3px}
+  .it:hover .x{opacity:1} .it .x:hover{color:var(--warn)}
+  .empty{color:var(--dim2);font-size:10px}
+</style>
+
+<div id="wrap">
+  <header>
+    <h1>отзвук</h1>
+    <div id="state">запускается…</div>
+  </header>
+
+  <div id="memwrap">
+    <canvas id="mem" width="1880" height="148"></canvas>
+    <div id="memlab">память</div>
+  </div>
+
+  <div class="panel">
+    <h2><span>что происходит</span><span id="form">—</span></h2>
+    <div id="tl"></div>
+  </div>
+
+  <footer>
+    <button id="run" class="on">■ стоп</button>
+    <button id="prof">авангард</button>
+    <button id="ref">⟳ другое</button>
+    <button id="like">▲ нравится</button>
+    <button id="dis">▼ не то</button>
+    <button id="rec">● запись</button>
+    <div id="hint">запись ложится несжатым wav в <b>~/Documents/otzvuk/записи</b></div>
+  </footer>
+</div>
+
+
+
+<script type="module" src="ui.js"></script>
