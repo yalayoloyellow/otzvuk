@@ -22,7 +22,7 @@ INBOX = os.path.join(STORE, "обмен")
 # Пресеты лежат по одному файлу на штуку: так их не потерять целиком и можно
 # унести по одному. Папка в Документах — она переживает и порт, и профиль
 # браузера, и переустановку.
-ПРЕСЕТЫ = os.path.join(STORE, "пресеты")
+ПРЕСЕТЫ = os.path.join(STORE, "presets")
 PORT = 8781
 
 
@@ -48,7 +48,7 @@ class Handler(SimpleHTTPRequestHandler):
         # Путь приходит в процентной кодировке, а имена у нас кириллические —
         # без разбора обратно ни один такой адрес не совпадёт.
         p = unquote(self.path.split("?")[0])
-        if p == "/пресеты":
+        if p == "/presets":
             try:
                 os.makedirs(ПРЕСЕТЫ, exist_ok=True)
                 строки = []
@@ -140,7 +140,7 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(500, {"error": str(e)})
 
     def do_POST(self):
-        if unquote(self.path.split("?")[0]) == "/пресеты":
+        if unquote(self.path.split("?")[0]) == "/presets":
             try:
                 n = int(self.headers.get("Content-Length") or 0)
                 д = json.loads(self.rfile.read(n) or b"{}")
