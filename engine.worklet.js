@@ -423,6 +423,7 @@ class Otzvuk extends AudioWorkletProcessor{
     // дорожки, металл даётся кольцевой модуляцией (принцип 808 без единого
     // осциллятора: перемножение, а не подмешанная нота).
     this.hNz=1; this.hTone=.62; this.hRing=0; this.hRingF=3200; this.hPh=0;
+    this.hK1=.4; this.hK2=.56; this.hb0=0; this.hb1=0; this.hc0=0; this.hc1=0;
     this.hRollN=0; this.hRollCd=0; this.hRollP=0; this.hVel=1;
     this.cTapsN=3; this.cGap=.009; this.cK=.19; this.cQ=.7; this.cTail=.9997;
     this.cNz=1; this.cGapV=0;
@@ -487,7 +488,9 @@ class Otzvuk extends AudioWorkletProcessor{
         if(d.hNz!==undefined) this.hNz=d.hNz;
         if(d.hTone!==undefined) this.hTone=d.hTone;
         if(d.hRing!==undefined) this.hRing=d.hRing;
-        if(d.hRingF!==undefined) this.hRingF=d.hRingF;
+        if(d.hRingF!==undefined){ this.hRingF=d.hRingF;
+          this.hK1=clamp(2*Math.sin(Math.PI*d.hRingF/SR),.01,1.3);
+          this.hK2=clamp(2*Math.sin(Math.PI*d.hRingF*1.41/SR),.01,1.3); }
         if(d.cTapsN!==undefined) this.cTapsN=d.cTapsN|0;
         if(d.cGap!==undefined) this.cGap=d.cGap;
         if(d.cFreq!==undefined) this.cK=clamp(2*Math.sin(Math.PI*d.cFreq/SR),.01,.6);
@@ -896,8 +899,16 @@ class Otzvuk extends AudioWorkletProcessor{
           const hi=(m-this.lb0)*3;
           let src=nz*this.hNz+hi*(1-this.hNz);
           if(this.hRing>0){
-            this.hPh+=this.hRingF/SR; if(this.hPh>=1) this.hPh-=1;
-            src=src*(1-this.hRing)+src*S(this.hPh)*this.hRing*1.7;
+            // Металл — не подмешанная нота и не кольцевая модуляция (шум,
+            // умноженный на синус, остаётся шумом). Металличность 808 живёт
+            // в НЕГАРМОНИЧНОСТИ: две узкие полосы с отношением 1.41 звенят
+            // как сплав. Это фильтрация источника, то есть модуляция.
+            const q=.05;
+            this.hb0+=this.hK1*this.hb1; this.hb1+=this.hK1*(src-this.hb0-q*this.hb1);
+            this.hc0+=this.hK2*this.hc1; this.hc1+=this.hK2*(src-this.hc0-q*this.hc1);
+            let met=this.hb1+this.hc1*.75;
+            if(met>3) met=3; else if(met<-3) met=-3;
+            src=src*(1-this.hRing)+met*this.hRing*1.6;
           }
           this.hLp+=(src-this.hLp)*this.hTone;
           this.hEnv*=this.hDec;
