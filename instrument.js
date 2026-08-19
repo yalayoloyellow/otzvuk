@@ -41,6 +41,9 @@ const KNOBS=[
   {k:'spread',  m:['KeyD','KeyF'], imya:'РАЗВОД'},
   {k:'drift', m:['KeyZ','KeyX'], imya:'ГУЛЯНИЕ'},
   {k:'range',m:['KeyC','KeyV'], imya:'ДИАПАЗОН'},
+  // Ритм-секция: сколько шагов из шестнадцати ударные. Такт берётся от того
+  // же медленного генератора, что качает прибор, — отдельного темпа нет.
+  {k:'plotnost',m:['KeyG','KeyH'], imya:'СЕТКА'},
 ];
 
 // ---- ТУМБЛЕРЫ --------------------------------------------------------------
@@ -214,7 +217,7 @@ function razvedi(){
 
 // макро — то, что на панели; p — то, что уходит в движок
 const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
-             hit:.35, spread:.15, drift:0, range:.5};
+             hit:.35, spread:.15, drift:0, range:.5, plotnost:0};
 const switches={gen2:1, gen3:0, link:0, dirt:0};
 
 const p={};
@@ -586,6 +589,13 @@ function ruchki(){
     `  ИМПУЛЬС ${shkala(duty,shk)} ${Math.round(duty*100)}%   ${rezhim}`);
   stroki.push(
     `  УРОВЕНЬ ${shkala(l,shk)}   ШИНА ${shkala(sh,Math.max(4,shk-4))}`);
+  // Сетка ритма: где удары и где сейчас счётчик.
+  const ris=report.risunok||[];
+  if(ris.length){
+    const shag=report.shag|0;
+    const s=ris.map((v,i)=> i===shag ? (v?'█':'▒') : (v?'▮':'·')).join('');
+    stroki.push(`  СЕТКА   ${s}`);
+  }
   stroki.push('');
 
   // Ручки: имя, шкала, клавиши. Ширина колонки и число колонок — от экрана.

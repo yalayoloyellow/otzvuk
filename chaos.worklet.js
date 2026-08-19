@@ -89,6 +89,8 @@ class Build {
     const m = (a, b) => a + r() * (b - a);
     this.r = r;
 
+    this.sbivka = m(0, .95);           // поворот рисунка — впаян, не ручка
+    this.gruv   = m(.05, .55);         // насколько ленив счётчик на нечётных
     this.EMF   = m(8.2, 9.4);          // свежая крона, В
     this.Rvn   = m(2.5, 26);           // внутреннее сопротивление батареи, Ом
     this.Crazv = m(47e-6, 220e-6);     // ёмкость по батарее, Ф
@@ -457,6 +459,56 @@ class Speaker {
   }
 }
 
+// ---- СЕТКА -----------------------------------------------------------------
+// РИТМ-СЕКЦИЯ, собранная из той же логики, что и прибор. Никаких семплов и
+// никаких приклеенных слоёв: счётчик делит частоту тактового генератора на
+// шестнадцать шагов, а логика на каждом шаге КОММУТИРУЕТ НОМИНАЛЫ самого
+// прибора — освещённость оптопары и питание. Звучит при этом всё тот же
+// прибор, просто его дёргают по рисунку.
+//
+// Рисунок — евклидов (алгоритм Бьорклунда): k ударов расставляются по n
+// шагам максимально ровно. Это не выдумка для красоты: именно такие сетки
+// дают ритмы, которые слышатся как музыка, а не как метроном, и в старом
+// отзвуке они уже были отлажены на перкуссии.
+//
+// ГРУВ сдвигает нечётные доли назад по времени — то самое «не по линейке»,
+// снятое с живых барабанщиков.
+class Setka {
+  constructor(){ this.faza = 0; this.shag = 0; this.risunok = []; this.k = -1; }
+  // n — сколько шагов в такте, k — сколько из них ударные
+  static evklid(n, k){
+    k = clamp(k, 0, n);
+    const r = [];
+    let ostatok = 0;
+    for (let i = 0; i < n; i++){
+      ostatok += k;
+      if (ostatok >= n){ ostatok -= n; r.push(1); } else r.push(0);
+    }
+    return r;
+  }
+  // temp — период такта в секундах; plotnost — доля ударных шагов;
+  // sbivka — поворот рисунка; gruv — насколько запаздывают нечётные доли
+  step(period, plotnost, sbivka, gruv){
+    const N = 16;
+    const k = Math.round(clamp(plotnost, 0, 1) * N);
+    if (k !== this.k){ this.risunok = Setka.evklid(N, k); this.k = k; }
+    const shagT = Math.max(1e-4, period) / N;
+    this.faza += dt / shagT;
+    // Грув: нечётный шаг начинается позже, чем велит сетка.
+    const zaderzhka = (this.shag & 1) ? gruv * .38 : 0;
+    if (this.faza >= 1 + zaderzhka){
+      this.faza = 0;
+      this.shag = (this.shag + 1) % N;
+      const i = (this.shag + Math.round(sbivka * (N - 1))) % N;
+      this.udar = this.risunok[i] ? 1 : 0;
+      this.novy = 1;
+    } else this.novy = 0;
+    // Огибающая шага: удар — резкий спад, между ударами тихо.
+    this.ogib = this.udar ? Math.pow(1 - clamp(this.faza, 0, 1), 2.2) : 0;
+    return this.ogib;
+  }
+}
+
 // ---- ПРИБОР ----------------------------------------------------------------
 class Device {
   constructor(semya){
@@ -472,6 +524,7 @@ class Device {
     }
     this.osn = this.cells[0];
     this.din = new Speaker(this.sb);
+    this.setka = new Setka();
     this.Cvyh = 0; this.scDC = 0; this.temp = 0; this.moschn = 0;
     this.vyh = 0;
     this.int = new Float32Array(32); this.inti = 0; this.intN = 0; this.ssch = 0;
@@ -481,6 +534,7 @@ class Device {
   step(p, utechka, navodka, kontakt){
     const sb = this.sb;
     let Vdd = this.bat.Vl * (kontakt === undefined ? 1 : kontakt);
+
     const u = this.swing.step(p.sway, p.drift, p.hit, Vdd, this.temp);
 
     // ХАРАКТЕР — подстроечник, задающий, в каких пределах ходит фоторезистор.
@@ -508,7 +562,30 @@ class Device {
     // ХАРАКТЕРА; верхняя растёт с ручкой. Раскрытие идёт от середины, поэтому
     // нулевой depth даёт ровный тон, а не гул на самом низу.
     const svmin = .05, svmaks = .34 + har * .62;
-    const yarkost = svmin + (svmaks - svmin) * clamp(.5 + (u - .5) * rzm, 0, 1);
+    let yarkost = svmin + (svmaks - svmin) * clamp(.5 + (u - .5) * rzm, 0, 1);
+
+    // СЕТКА. Ключи по фронтам счётчика коммутируют те же номиналы, что и
+    // ручки: на ударном шаге лампочка гаснет, фоторезистор уходит в темноту
+    // и прибор проваливается в треск, а между ударами возвращается. Питание
+    // при этом на миг подсаживается, как от любого ключа на плате. Звучит
+    // всё тот же прибор — просто его дёргают по рисунку.
+    // Такт берётся от ТОГО ЖЕ медленного генератора, что качает прибор: в
+    // железе счётчик делит его фронты, отдельного тактового генератора не
+    // ставят. Поэтому ритм всегда синхронен качанию — период такта равен
+    // четырём качаниям.
+    const ritm = this.setka.step(this.swing.period * 4,
+                                 p.plotnost, this.sb.sbivka, this.sb.gruv);
+    // Ключ на питании: между ударами элемент обесточен и прибор молчит, на
+    // ударе питание возвращается рывком. Это и есть нарезка — не гашение
+    // звука фильтром, а разрыв цепи, как ключом на транзисторе.
+    let kluch = 1;
+    if (p.plotnost > .002){
+      kluch = .10 + .90 * ritm;
+      // Заодно на ударе лампочка гаснет — прибор ныряет в треск и
+      // возвращается, отсюда телесность удара, а не голый щелчок.
+      yarkost = yarkost * (1 - ritm * .55) + svmin * ritm * .55;
+    }
+    Vdd *= kluch;
     // ИМПУЛЬС — постоянное смещение через управляющий резистор: подгоняет
     // заряд и тормозит разряд, симметричный прямоугольник делается узким.
     // ИМПУЛЬС — отвод того же подстроечника, что задаёт частоту. Постоянный
@@ -677,7 +754,9 @@ class Chaos extends AudioWorkletProcessor {
     // подключён к колонкам. Ровно так стояли две коробки на столе.
     this.p = { sway:.55, tone:.5, depth:.75,
                pulse:.2, hit:.35, spread:.15, drift:0,
-               gen2:1, gen3:0, link:0, dirt:0, range:.5 };
+               gen2:1, gen3:0, link:0, dirt:0, range:.5,
+               // ритм-секция: одна ручка — сколько шагов из шестнадцати ударные
+               plotnost:0 };
     this.pr = new Device(1);
     this.svod = new Decim();
     this.kont = new Contacts();
@@ -788,6 +867,8 @@ class Chaos extends AudioWorkletProcessor {
         shina: pr.bat.Vl / sb.EMF,
         swing: pr.swing.u, drift: pr.swing.g,
         build: { imya: sb.imya, dinamik: sb.f0, emkost: sb.C[0] },
+        shag: this.pr.setka.shag, udar: this.pr.setka.udar,
+        risunok: this.pr.setka.risunok.slice(),
         osc: this.osc.slice(), sled: l,
         pl: Array.from(this.pl), utechka: this.utechka
       });
