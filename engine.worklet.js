@@ -684,8 +684,10 @@ class Otzvuk extends AudioWorkletProcessor{
     }
     this.step=(this.step+1)&15;
     if(this.step===0){ this.bar++;
+      // Раньше смена рисунка стирала очереди темпа и вычитания — жанровый
+      // темп терялся, и хип-хоп играл на авангардных 94. Очереди независимы.
       if(this.pendS){ this.pS.set(this.pendS); this.pB.set(this.pendB);
-        this.pendS=null; this.pendB=null; this.qMute=null; this.qBpm=null; }
+        this.pendS=null; this.pendB=null; }
       if(this.qMute){ this.applyMute(this.qMute); this.qMute=null; }
       if(this.qBpm){ this.bpm=this.bpmT=this.qBpm;
         this.stepLen=SR*60/this.bpm/4/this.rhyMul; this.qBpm=null; } }
