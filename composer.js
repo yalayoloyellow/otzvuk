@@ -21,7 +21,8 @@
 // ============================================================================
 import {genMaterial, mul32} from './material.js';
 import {pickGroove} from './groove.js';
-import {features, score, DEFAULT_W} from './theme.js';
+import {extract} from './feat.js';
+import {emptyModel, score as vscore, fitness} from './vkus.js';
 
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 const rnd=(a,b)=>a+Math.random()*(b-a);
@@ -205,7 +206,7 @@ export function makeComposer(env){
   let curGroove=null, curPerc=null, curHat=null;
   // Отбор темы: кандидаты рендерятся беззвучно ЗАРАНЕЕ, пока играет текущая.
   // Иначе смена темы ждала бы пару секунд, а этого слышно нельзя.
-  let nextTheme=null, picking=false, weights={...DEFAULT_W}, lastPick=null;
+  let nextTheme=null, picking=false, model=emptyModel(), lastPick=null;
 
   const material=seed=>genMaterial(env.ctx(),seed,profile,tasteW);
   const form=(bars,bpm)=>env.onForm({sec:curSec,mat:curMat,bars,bpm,tension,
@@ -285,8 +286,8 @@ export function makeComposer(env){
 
   // Беззвучный рендер голой темы: тот же движок, тот же материал, без
   // ударных и баса — оцениваем саму тему, а не бит вокруг неё.
-  async function renderCandidate(seed){
-    const sr=44100, dur=4.5;
+  async function renderCandidate(seed,secs){
+    const sr=44100, dur=secs||4.5;
     const off=new OfflineAudioContext(2,Math.ceil(sr*dur),sr);
     await off.audioWorklet.addModule(env.workletUrl);
     const nd=new AudioWorkletNode(off,'otzvuk',
@@ -315,8 +316,8 @@ export function makeComposer(env){
         const seed=(Math.random()*4294967295)>>>0;
         const r=await renderCandidate(seed);
         if(profile!==forProfile) return;          // профиль сменили — бросаем
-        const f=features(r.buf);
-        out.push({seed,f,mat:r.mat,s:score(f,weights)});
+        const f=extract(r.buf);
+        out.push({seed,f,mat:r.mat,s:vscore(model,f),ok:fitness(model,f)});
         await new Promise(r2=>setTimeout(r2,30));
       }
       out.sort((a,b)=>b.s-a.s);
@@ -570,11 +571,11 @@ export function makeComposer(env){
   function saveTaste(){ if(saveT) clearTimeout(saveT);
     saveT=setTimeout(()=>{ fetch('/state',{method:'PUT',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({tastes,weights})}).catch(()=>{}); },600); }
+      body:JSON.stringify({tastes})}).catch(()=>{}); },600); }
   async function loadTaste(){
     try{ const r=await fetch('/state',{cache:'no-store'}); const d=await r.json();
       if(d.tastes) tastes=d.tastes;
-      if(d.weights) weights={...DEFAULT_W,...d.weights};
+
       else if(d.taste&&d.taste.mat) tastes['авангард']=d.taste;  // перенос прежнего
     }catch(e){}
   }
@@ -639,8 +640,9 @@ export function makeComposer(env){
 
   return {start, stepSection, vote, refresh, nextProfile, onBar,
           get groove(){return curGroove}, get perc(){return curPerc},
-          get pick(){return lastPick}, get weights(){return weights},
-          setWeights(w){ weights={...weights,...w}; saveTaste(); },
+          get pick(){return lastPick},
+          setModel(m){ model=m; },
+          get model(){return model},
           renderCandidate,
           get profile(){return profile}, get started(){return started},
           get curSec(){return curSec}, get curMat(){return curMat}};

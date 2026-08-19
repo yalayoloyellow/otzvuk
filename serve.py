@@ -12,6 +12,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STORE = os.path.expanduser("~/Documents/otzvuk")
 STATE = os.path.join(STORE, "state.json")
+VKUS = os.path.join(STORE, "вкус.jsonl")
 RECS = os.path.join(STORE, "записи")
 PORT = 8781
 
@@ -35,7 +36,18 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.path.split("?")[0] != "/state":
+        p = self.path.split("?")[0]
+        if p == "/vkus":
+            # журнал кликов: одна строка на пару, дописывается, не переписывается
+            try:
+                with open(VKUS, encoding="utf-8") as f:
+                    rows = [json.loads(x) for x in f if x.strip()]
+                return self._json(200, {"rows": rows})
+            except FileNotFoundError:
+                return self._json(200, {"rows": []})
+            except (ValueError, OSError) as e:
+                return self._json(500, {"error": str(e)})
+        if p != "/state":
             return super().do_GET()
         try:
             with open(STATE, encoding="utf-8") as f:
@@ -63,6 +75,16 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(500, {"error": str(e)})
 
     def do_POST(self):
+        if self.path.split("?")[0] == "/vkus":
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                row = json.loads(self.rfile.read(n) or b"{}")
+                os.makedirs(STORE, exist_ok=True)
+                with open(VKUS, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+                return self._json(200, {"ok": True})
+            except (ValueError, OSError) as e:
+                return self._json(500, {"error": str(e)})
         if self.path.split("?")[0] != "/rec":
             return self._json(404, {"error": "нет такой ручки"})
         try:

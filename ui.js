@@ -3,7 +3,8 @@
 //  Вся композиция — в composer.js; сюда она приходит через узкий env.
 // ============================================================================
 import {makeComposer} from './composer.js';
-import {features, score, learnPair, learnBothBad} from './theme.js';
+import {extract} from './feat.js';
+import {emptyModel, train, score as vscore, fitness, explain} from './vkus.js';
 
 const $=s=>document.querySelector(s);
 const stateEl=$('#state'), formEl=$('#form'), tlEl=$('#tl');
@@ -124,21 +125,20 @@ addEventListener('keydown',e=>{
 
 // ============================================================================
 //  НАСТРОЙКА ВКУСА
-//  Отбор тем считает «цепкость» по четырём числам, но чей это вкус — решает
-//  ухо. Десяток пар: две темы подряд, выбор из трёх — первая, вторая, обе
-//  мимо. Веса двигаются в сторону выбранного (правило перцептрона).
+//  Восемь тем из десяти были «мимо» — значит главный вопрос не «какая из
+//  двух лучше», а «годится ли вообще». Поэтому: восемнадцать признаков,
+//  журнал каждого клика на диске и две модели (годность и предпочтение),
+//  которые переобучаются на всём журнале после каждой пары.
+//  Пар не десять, а сколько прокликаешь: закономерность видна на сотнях.
 // ============================================================================
 let calOn=false, calPair=null, calDone=0, calPlaying=null, calWasPlaying=false;
-let calGen=0;                       // поколение: старое прослушивание глохнет
-const CAL_TARGET=10;
-// Кнопки гаснут, пока пара готовится: раньше нажатие в этот момент молча
-// пропадало, и «обе мимо» выглядела сломанной.
+let calGen=0, calLog=[], calModel=emptyModel(), calAhead=null, calPending=false;
+const CAL_DUR=3.2;               // короче: за 300 пар это часы разницы
+
 function calReady(on){
   for(const id of ['#calA','#calB','#calnone','#calR']) $(id).disabled=!on;
 }
-
 function calStop(){ if(calPlaying){ try{calPlaying.stop();}catch(e){} calPlaying=null; } }
-
 function calPlay(buf,label){
   calStop();
   const s=ctx.createBufferSource(); s.buffer=buf; s.connect(ctx.destination);
@@ -146,27 +146,61 @@ function calPlay(buf,label){
   $('#calmsg').textContent=label;
 }
 
+// Кандидаты: пока модель ничего не знает — чистая случайность; как только
+// журнал набрал вес, из пятёрки берём двух самых перспективных по модели.
+// Так пары становятся всё лучше, а не остаются вечной лотереей.
+async function calMakePair(){
+  const pool=[], want=calLog.length>=25?5:2;
+  for(let i=0;i<want;i++){
+    const seed=(Math.random()*4294967295)>>>0;
+    const r=await composer.renderCandidate(seed,CAL_DUR);
+    pool.push({seed,buf:r.buf,mat:r.mat,f:extract(r.buf)});
+  }
+  if(pool.length>2){
+    pool.sort((a,b)=>vscore(calModel,b.f)-vscore(calModel,a.f));
+    // лучший против случайного из остальных: сравнивать только лидеров
+    // бессмысленно, модели нужны и отрицательные примеры
+    const rest=pool.slice(1);
+    return {a:pool[0], b:rest[(Math.random()*rest.length)|0]};
+  }
+  return {a:pool[0], b:pool[1]};
+}
+
+async function calPrepareAhead(){
+  if(calPending) return;
+  calPending=true;
+  try{ calAhead=await calMakePair(); }catch(e){} finally{ calPending=false; }
+}
+
 async function calNext(){
   const gen=++calGen;
   calReady(false);
-  $('#calmsg').textContent='готовлю пару…';
-  const a=await composer.renderCandidate((Math.random()*4294967295)>>>0);
-  const b=await composer.renderCandidate((Math.random()*4294967295)>>>0);
+  // Ждём готовую пару циклом, а не одним await: при быстрых кликах
+  // накладывались поколения, и кнопки оставались навсегда серыми.
+  let waited=0;
+  while(!calAhead){
+    if(gen!==calGen||!calOn) return;
+    if(!calPending){ $('#calmsg').textContent='готовлю пару…'; calPrepareAhead(); }
+    await new Promise(r=>setTimeout(r,120));
+    waited+=120;
+    if(waited>20000){ $('#calmsg').textContent='не получается собрать пару'; return; }
+  }
   if(gen!==calGen||!calOn) return;
-  calPair={a:{buf:a.buf,f:features(a.buf),mat:a.mat},
-           b:{buf:b.buf,f:features(b.buf),mat:b.mat}};
+  calPair=calAhead; calAhead=null;
   calReady(true);
+  calPrepareAhead();                       // следующая готовится, пока слушаешь
   await calAudition(gen);
 }
 
 async function calAudition(gen){
   if(gen===undefined) gen=calGen;
   if(!calPair) return;
+  const ms=CAL_DUR*1000+120;
   calPlay(calPair.a.buf,'первая…  (можно выбирать не дослушивая)');
-  await new Promise(r=>setTimeout(r,4600));
+  await new Promise(r=>setTimeout(r,ms));
   if(gen!==calGen||!calOn) return;
   calPlay(calPair.b.buf,'вторая…');
-  await new Promise(r=>setTimeout(r,4600));
+  await new Promise(r=>setTimeout(r,ms));
   if(gen!==calGen||!calOn) return;
   calStop();
   $('#calmsg').textContent='какая цепляет?';
@@ -174,26 +208,36 @@ async function calAudition(gen){
 
 function calChoose(which){
   if(!calPair) return;
-  calGen++;                          // прерываем прослушивание текущей пары
-  calStop();
+  calGen++; calStop();
   const {a,b}=calPair;
-  if(which==='a') composer.setWeights(learnPair(composer.weights,a.f,b.f));
-  else if(which==='b') composer.setWeights(learnPair(composer.weights,b.f,a.f));
-  else composer.setWeights(learnBothBad(composer.weights,a.f,b.f));
-  calDone++;
-  calPair=null;
-  $('#caln').textContent=calDone+' из '+CAL_TARGET;
-  if(calDone>=CAL_TARGET){ calFinish(); return; }
+  const row={t:Date.now(), profile:composer.profile, win:which,
+             a:a.f, b:b.f, matA:a.mat, matB:b.mat, seedA:a.seed, seedB:b.seed};
+  calLog.push(row);
+  fetch('/vkus',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(row)}).catch(()=>{});
+  calModel=train(calModel,calLog);
+  composer.setModel(calModel);
+  calDone++; calPair=null;
+  calShowStat();
   calNext();
 }
 
-function calFinish(){
-  calReady(false);
-  const w=composer.weights;
-  $('#calmsg').textContent='готово. веса: '+
-    Object.keys(w).map(k=>k+' '+w[k].toFixed(2)).join(' · ');
-  $('#caln').textContent=calDone+' пар';
-  calPair=null;
+function calShowStat(){
+  const miss=calLog.filter(r=>r.win==='none').length;
+  const pct=calLog.length?Math.round(100-miss/calLog.length*100):0;
+  $('#caln').textContent=calLog.length+' пар · годных '+pct+'%';
+  if(calLog.length>=12){
+    const top=explain(calModel,4).map(r=>r.k).join(', ');
+    $('#calhint').textContent='модель смотрит прежде всего на: '+top;
+  }
+}
+
+async function calLoad(){
+  try{
+    const d=await fetch('/vkus',{cache:'no-store'}).then(r=>r.json());
+    calLog=d.rows||[];
+    if(calLog.length){ calModel=train(calModel,calLog); composer.setModel(calModel); }
+  }catch(e){}
 }
 
 function calToggle(){
@@ -202,8 +246,8 @@ function calToggle(){
   $('#cal').classList.toggle('on',calOn);
   if(calOn){
     calWasPlaying=playing;
-    if(playing) $('#run').click();          // подложка молчит, пока слушаем пары
-    calDone=0; $('#caln').textContent='0 из '+CAL_TARGET; calNext();
+    if(playing) $('#run').click();
+    calShowStat(); calNext();
   } else {
     calGen++; calStop(); calPair=null;
     if(calWasPlaying && !playing) $('#run').click();
@@ -229,6 +273,7 @@ async function boot(){
     draw(d);
   };
   composer.start();
+  calLoad();
   // Первый клик страницы и запускает движок, и может попасть по «стоп»:
   // переключение тогда уходит в ещё не созданный узел и теряется.
   node.port.postMessage({t:'run',v:playing?1:0});
