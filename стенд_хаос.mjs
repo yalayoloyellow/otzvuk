@@ -10,9 +10,10 @@ globalThis.AudioWorkletProcessor = class { constructor(){ this.port = {
 const src = readFileSync(new URL('./хаос.worklet.js', import.meta.url), 'utf8');
 new Function(src)();
 
-export function прогон(парам, секунд){
+export function прогон(парам, секунд, площадки){
   const пр = new Кл();
   if (пр.port._f) пр.port._f({data:{t:'p', v:парам||{}}});
+  if (площадки && пр.port._f) пр.port._f({data:{t:'площадки', v:площадки}});
   const n = Math.round(48000*секунд), L = new Float32Array(n), R = new Float32Array(n);
   const блок = 128;
   for (let i = 0; i < n; i += блок){
