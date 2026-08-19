@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>качели</title>
+<style>
+  body{background:#07070a;color:#c8ffb0;font:400 14px/1.5 ui-monospace,Menlo,monospace;
+       padding:24px;text-shadow:0 0 6px rgba(160,255,120,.25)}
+  pre{white-space:pre;font:inherit}
+  b{color:#d8ff4a;font-weight:400}
+  .d{color:#3a5a34}
+</style>
+<pre id="э">нажми пробел</pre>
+<script type="module">
+// КАЧЕЛИ. Ровно два узла, но на РАЗНЫХ шкалах: один в звуке, второй
+// медленный (0.2–20 Гц) и он качает первый. Внизу качели звуковой узел
+// проваливается в 25–45 Гц, где прямоугольник слышен отдельными
+// импульсами — «трррр». Наверху уходит в 0.5–3 кГц — «виииии».
+// Две ручки: период качелей и характер (высота верха + перекос импульса).
+const $=s=>document.querySelector(s);
+let ctx=null,node=null,идёт=false;
+const p={качание:.42, характер:.5};
+const РУЧКИ=[
+  {к:'качание',  м:['KeyQ','KeyW'], имя:'КАЧАНИЕ  (период рисунка)'},
+  {к:'характер', м:['KeyE','KeyR'], имя:'ХАРАКТЕР (высота и перегруз)'}
+];
+let отч={f:0,период:0,скв:.5,след:new Float32Array(200)};
+
+const код=`
+const SR=sampleRate;
+class Качели extends AudioWorkletProcessor{
+  constructor(){
+    super();
+    this.vм=.4;this.qм=1;this.v=.4;this.q=1;
+    this.p={качание:.42,характер:.5};
+    this.дс=0; this.след=new Float32Array(200); this.и=0; this.проре=0;
+    this.f=0; this.скв=.5; this.тзар=0; this.тразр=0; this.отч=0;
+    this.port.onmessage=e=>{const d=e.data;
+      if(d.t==='p') for(const k in d.v) this.p[k]=d.v[k];};
+  }
+  process(_,outs){
+    const oL=outs[0][0],oR=outs[0][1],n=oL.length,p=this.p;
+    // МЕДЛЕННЫЙ УЗЕЛ. Тот же релаксационный генератор, только резистор
+    // такой, что период измеряется долями секунды. Ручка КАЧАНИЕ — это
+    // буквально он: 0.2 Гц слева, 20 Гц справа, в середине два раза в секунду.
+    const F = .20*Math.pow(2, p.качание*6.8);
+    const RCм = 1/(1.508*F);
+    // ЗВУКОВОЙ УЗЕЛ. Низ качелей держится в области треска на всём ходу
+    // ручки — там паттерн и читается. Характер поднимает верхнюю точку
+    // и вместе с ней глубину перекоса: чем выше визг, тем уже импульс внизу.
+    const fн = 22*Math.pow(2, p.характер*1.2);
+    const fв = 300*Math.pow(2, p.характер*4.0);
+    const aмакс = .12 + p.характер*.19;
+    const шагМ = 1-Math.exp(-1/(SR*RCм));
+    for(let s=0;s<n;s++){
+      const цм=this.qм?1:0;
+      this.vм += (цм-this.vм)*шагМ;
+      if(this.qм? this.vм>.68 : this.vм<.32) this.qм^=1;
+      const u=Math.max(0,Math.min(1,(this.vм-.32)/.36));
+      // Управляющее напряжение делает две вещи разом, как один резистор
+      // на железе: ведёт ток заряда (высота) и смещает точку разряда
+      // (перекос скважности). Разделить их нельзя — это одна величина.
+      const f0 = fн*Math.pow(fв/fн, u);
+      const a  = aмакс*(1-u);
+      const RC = 1/(1.508*f0);
+      const ц  = (this.q?1:0) + a;
+      const прошл=this.v;
+      this.v += (ц-this.v)*(1-Math.exp(-1/(SR*RC)));
+      let вых = this.q?1:-1;
+      if(this.q? this.v>.68 : this.v<.32){
+        // субсэмпловый переход: иначе фронт садится на сетку сэмплов
+        // и на верхней точке качелей лезет алиасинг
+        const порог=this.q?.68:.32;
+        const доля=Math.max(0,Math.min(1,(порог-прошл)/(this.v-прошл)));
+        const стар=вых; this.q^=1; const нов=this.q?1:-1;
+        вых = стар*доля + нов*(1-доля);
+        if(this.q){ this.скв = this.тзар/Math.max(1,this.тзар+this.тразр);
+                    this.f = SR/Math.max(1,this.тзар+this.тразр);
+                    this.тзар=0; this.тразр=0; }
+      }
+      if(this.q) this.тзар++; else this.тразр++;
+      // перекос даёт постоянку — снимаю, иначе просадка и щелчки
+      this.дс += (вых-this.дс)*(12*6.283/SR);
+      const o=(вых-this.дс)*.25;
+      oL[s]=o; if(oR) oR[s]=o;
+      if(++this.проре>=SR/100){ this.проре=0;
+        this.след[this.и]=u; this.и=(this.и+1)%200; }
+    }
+    if((this.отч+=n)>=2048){ this.отч=0;
+      const л=new Float32Array(200);
+      for(let i=0;i<200;i++) л[i]=this.след[(this.и+i)%200];
+      this.port.postMessage({f:this.f,скв:this.скв,период:1/F,след:л});
+    }
+    return true;
+  }
+}
+registerProcessor('качели',Качели);`;
+
+async function пуск(){
+  ctx=new AudioContext({latencyHint:'interactive'});
+  const url=URL.createObjectURL(new Blob([код],{type:'text/javascript'}));
+  await ctx.audioWorklet.addModule(url);
+  node=new AudioWorkletNode(ctx,'качели',{outputChannelCount:[2]});
+  node.port.onmessage=e=>{отч=e.data};
+  node.connect(ctx.destination);
+  node.port.postMessage({t:'p',v:p});
+  идёт=true;
+}
+
+const Ш=76, В=7;
+function рисуй(){
+  const л=отч.след||new Float32Array(200);
+  // след качелей: линия ведёт глаз тем же рисунком, что слышно ухом
+  const сетка=[]; for(let r=0;r<В;r++) сетка.push(new Array(Ш).fill(' '));
+  let пред=null;
+  for(let i=0;i<Ш;i++){
+    const u=Math.max(0,Math.min(1, л[Math.floor(i*200/Ш)]||0));
+    const r=(В-1)-Math.round(u*(В-1));
+    if(пред!==null){
+      const a=Math.min(пред,r), b=Math.max(пред,r);
+      for(let y=a;y<=b;y++) сетка[y][i]='│';
+    }
+    сетка[r][i]='━';
+    пред=r;
+  }
+  let s='';
+  s+=`  <b>${идёт?'идёт':'стоит'}</b>   высота <b>${(отч.f||0).toFixed(0)}</b> Гц`;
+  s+=`   импульс <b>${((отч.скв||0)*100).toFixed(0)}%</b>`;
+  s+=`   период <b>${(отч.период||0).toFixed(2)}</b> с\n\n`;
+  s+='  <span class="d">виии</span>\n';
+  for(let r=0;r<В;r++) s+='  '+сетка[r].join('')+'\n';
+  s+='  <span class="d">тррр</span>\n';
+  s+=`  <span class="d">${'└'+'─'.repeat(Ш-2)+'┘ две секунды'}</span>\n\n`;
+  for(const р of РУЧКИ){
+    const v=p[р.к], n=Math.round(v*22);
+    s+=`  ${р.имя.padEnd(30)} ${'▮'.repeat(n)}${'·'.repeat(22-n)}  ${р.м[0][3].toLowerCase()}${р.м[1][3].toLowerCase()}\n`;
+  }
+  s+=`\n  <span class="d">пробел — пуск/стоп</span>`;
+  $('#э').innerHTML=s;
+  requestAnimationFrame(рисуй);
+}
+
+const жмут=new Set();
+addEventListener('keydown',e=>{
+  if(e.code==='Space'){ e.preventDefault();
+    if(!ctx) пуск(); else if(идёт){node.disconnect();идёт=false} else {node.connect(ctx.destination);идёт=true}
+    return; }
+  жмут.add(e.code);
+});
+addEventListener('keyup',e=>жмут.delete(e.code));
+addEventListener('blur',()=>жмут.clear());
+setInterval(()=>{
+  let изм=false;
+  for(const р of РУЧКИ){
+    if(жмут.has(р.м[0])){ p[р.к]=Math.max(0,p[р.к]-.008); изм=true; }
+    if(жмут.has(р.м[1])){ p[р.к]=Math.min(1,p[р.к]+.008); изм=true; }
+  }
+  if(изм&&node) node.port.postMessage({t:'p',v:p});
+},16);
+рисуй();
+</script>
