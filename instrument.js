@@ -57,8 +57,9 @@ const SWITCHES=[
   {k:'gen3',     kl:'KeyL', imya:'ГЕН 3',    podpis:['выкл','вкл']},
   {k:'link',    kl:'KeyB', imya:'СВЯЗЬ',    podpis:['нет','замкнута']},
   {k:'dirt',    kl:'KeyM', imya:'ГРЯЗЬ',    podpis:['развязка','снята']},
-  // Не в приборе, а между приборами: стоит ли второй в цепи вообще.
-  {k:'chain',   kl:'KeyN', imya:'ЦЕПЬ',     podpis:['один прибор','два в цепи'], obschiy:1}
+  // Питание самого прибора: выключенный выпадает из цепи, и его сосед
+  // соединяется с выходом напрямую.
+  {k:'on',      kl:'KeyN', imya:'ПИТАНИЕ',  podpis:['выкл','вкл']}
 ];
 // Второй страницы нет и быть не должно. Всё, чего нет на панели, — это
 // номиналы деталей: конденсаторы, резисторы, пороги конкретной микросхемы,
@@ -90,7 +91,7 @@ function skazhi(t){ vest=t; vestdo=performance.now()+2600; }
 function snimok(){
   return {name:nazovis(), time:new Date().toISOString().slice(0,19).replace('T',' '),
           seeds:[...seeds], sets:sets.map(x=>({...x})),
-          switches:tumbnabory.map(x=>({...x})), chain, active};
+          switches:tumbnabory.map(x=>({...x})), active};
 }
 function nazovis(){
   const p=report.period>0 ? report.period.toFixed(2)+'с' : '';
@@ -143,9 +144,8 @@ function primenit(p){
       node&&node.port.postMessage({t:'seed', i, v:seeds[i]}); }
   }
   // Пресет, записанный до появления второго прибора, знал только один —
-  // цепь для него выключаем, иначе он зазвучит через чужой прибор.
-  chain = p.chain!==undefined ? (p.chain?1:0) : (p.sets||p.наборы ? 1 : 0);
-  node&&node.port.postMessage({t:'chain', v:chain});
+  // второй выключаем, иначе тот зазвучит через чужой прибор.
+  if(!(p.sets||p.наборы)) tumbnabory[1].on=0;
   send();
   skazhi('пресет: '+(p.name||p.имя||p.file));
 }
@@ -175,7 +175,6 @@ function vyberi(i){
 function razvedi(){
   const v={...knobs};
   for(const t of SWITCHES){
-    if(t.obschiy) continue;            // общий тумблер уходит своим сообщением
     const pol=t.pol||2;
     v[t.k] = pol>2 ? switches[t.k]/(pol-1) : switches[t.k];
   }
@@ -187,8 +186,7 @@ function razvedi(){
 // тот, по которому щёлкнули мышью, — как переключение между окнами.
 const pustomakro = () => ({sway:.55, tone:.5, depth:.75, pulse:.2,
                            hit:.35, spread:.15, drift:0, range:.5, feed:0});
-const pustotumb = () => ({gen2:1, gen3:0, link:0, dirt:0});
-let chain=1;
+const pustotumb = () => ({gen2:1, gen3:0, link:0, dirt:0, on:1});
 const sets=[pustomakro(), pustomakro()];
 const tumbnabory=[pustotumb(), pustotumb()];
 sets[1].feed=.35;
@@ -286,7 +284,6 @@ async function pusk(){
   // в цепи и звучит, даже когда на экране первый.
   for(let i=0;i<2;i++) node.port.postMessage({t:'seed', i, v:seeds[i]});
   node.port.postMessage({t:'active', i:active});
-  node.port.postMessage({t:'chain', v:chain});
   send();
   window.dbg.sostoyanie='играет';
   }catch(e){ window.dbg.oshibka=''+e; window.dbg.sostoyanie='упал'; }
@@ -316,11 +313,8 @@ addEventListener('keydown',async e=>{
     e.preventDefault();
     if(e.repeat) return;
     const pol=t.pol||2;
-    if(t.obschiy){
-      chain=(chain+1)%pol;
-      node&&node.port.postMessage({t:'chain', v:chain});
-      skazhi(chain?'два прибора в цепи':'играет только первый');
-    } else switches[t.k]=(switches[t.k]+1)%pol;
+    switches[t.k]=(switches[t.k]+1)%pol;
+    if(t.k==='on') skazhi(`прибор ${active+1}: `+(switches.on?'включён':'выключен'));
     vspyshkat=t; vspyshka=8; send();
     return;
   }
@@ -403,69 +397,76 @@ addEventListener('resize',pomer);
 
 function kartina(){
   const o=report.osc||new Float32Array(256), n=o.length;
-  // Осциллограмма строится в долях СВОЕГО размаха, а не в абсолютных
-  // вольтах: на тихой настройке фигура иначе схлопывается в точку, хотя
-  // форма у неё та же самая.
-  let mxo=1e-4;
-  for(let i=0;i<n;i++){ const a=o[i]<0?-o[i]:o[i]; if(a>mxo) mxo=a; }
-  const k=1/mxo;
-  const u=clamp(report.swing??.5,0,1);            // положение качелей
-  const g=clamp(report.drift??.5,0,1);
-  const ut=clamp(report.utechka||0,0,1.4);          // пальцы на площадках
 
-  // ПОСЛЕСВЕЧЕНИЕ. Внизу качелей звук трещит отдельными импульсами — там
-  // след держится дольше и рисунок стоит в воздухе; наверху, на визге,
-  // фигура гаснет быстро. Так sway видно даже боковым зрением.
+  // Осциллограф не бесконечно широкополосный: у луча своя инерция. Без неё
+  // узкие импульсы кладут точки на две голые горизонтали, и фигура
+  // вырождается в гору с лучами.
+  const sgl=new Float32Array(n);
+  let akk=0;
+  for(let pr=0;pr<2;pr++) for(let i=0;i<n;i++){ akk += (o[i]-akk)*.34; sgl[i]=akk; }
+  let mxo=1e-4;
+  for(let i=0;i<n;i++){ const a=sgl[i]<0?-sgl[i]:sgl[i]; if(a>mxo) mxo=a; }
+  const ks=1/mxo;
+
+  // Вторая координата — ИНТЕГРАЛ сигнала, а не он же со сдвигом. Сдвиг
+  // годится для гладкой волны; у импульсной он даёт ту самую гору. Интеграл
+  // даёт настоящую квадратуру, и любая периодическая волна замыкается в
+  // петлю — овал, ромб, узел, смотря какая в ней гармоника главная.
+  const inte=new Float32Array(n);
+  let aki=0;
+  for(let pr=0;pr<2;pr++) for(let i=0;i<n;i++){ aki = aki*.992 + sgl[i]*.05; inte[i]=aki; }
+  let sri=0;
+  for(let i=0;i<n;i++) sri+=inte[i];
+  sri/=n;                                        // петля должна быть вокруг центра
+  let mxi=1e-4;
+  for(let i=0;i<n;i++){ const a=Math.abs(inte[i]-sri); if(a>mxi) mxi=a; }
+  const ki=1/mxi;
+
+  const u=clamp(report.swing??.5,0,1);
+  const g=clamp(report.drift??.5,0,1);
+  const ut=clamp(report.utechka||0,0,1.4);
+
+  // ПОСЛЕСВЕЧЕНИЕ: внизу качелей след держится дольше, наверху гаснет быстро.
   const spad=.87 + (1-u)*.09 + (1-clamp(report.shina||1,0,1))*.03;
   for(let i=0;i<pole.length;i++) pole[i]*=spad;
 
-  // Траектория в фазовом пространстве: сигнал против себя же, сдвинутого по
-  // времени. Сдвиг должен идти за ВЫСОТОЙ — четверть периода волны, иначе
-  // портрет вырождается в отрезок вместо кольца. Качели подгибают его сверх
-  // того, и от этого фигура раскрывается и складывается на ходу.
-  // В буфере всегда около двух периодов волны, поэтому четверть периода —
-  // это просто четверть от его половины, независимо от высоты.
-  const sdv=clamp(Math.round(32*(.8+u*.6)),4,60);
   const cx=(Sh-1)/2, cy=(V-1)/2;
   ugol += .003 + u*.016;
   const ko=Math.cos(ugol), si=Math.sin(ugol);
-  // ЗАКРУТКА. Чем ниже качели, тем сильнее внешние витки отстают от
-  // внутренних — фигура сворачивается в вихрь; наверху распрямляется в
-  // ровное кольцо. Это тот же самый ход, который слышно.
-  const tvist=(1-u)*2.6 - 1.1 + (g-.5)*1.4;
-  // ДЫХАНИЕ: качели растягивают фигуру по вертикали и поджимают по
-  // горизонтали, как меняется сама волна.
-  const rx=.80+u*.42, ry=1.18-u*.44;
-  // Точки траектории СОЕДИНЯЮТСЯ отрезками, а не сыплются россыпью: на
-  // резком фронте соседние отсчёты разлетаются далеко, и между ними
-  // протягивается длинный луч. Отсюда щупальца — они рисуют ровно то, где
-  // сигнал рвётся, а плавные участки остаются плотным телом.
+  // Закрутка: внизу качелей внешние витки отстают от внутренних и петля
+  // сворачивается, наверху распрямляется в ровное кольцо.
+  const tvist=(1-u)*1.1 - .45 + (g-.5)*.6;
+  // Дыхание: качели растягивают фигуру по одной оси и поджимают по другой.
+  const rastx=.82+u*.34, rasty=1.12-u*.34;
+
   const mazok=(x0,y0,x1,y1,sila)=>{
     const dx=Math.abs(x1-x0), dy=Math.abs(y1-y0);
     const shagov=Math.max(dx,dy);
     if(shagov>Sh) return;
     const yar=sila/Math.max(1,Math.pow(shagov,.45));
-    for(let k=0;k<=shagov;k++){
-      const t=shagov?k/shagov:0;
+    for(let q=0;q<=shagov;q++){
+      const t=shagov?q/shagov:0;
       const x=Math.round(x0+(x1-x0)*t), y=Math.round(y0+(y1-y0)*t);
       if(x>=0&&x<Sh&&y>=0&&y<V) pole[y*Sh+x]+=yar;
-      const xm=Sh-1-x;
+      const xm=Sh-1-x;                            // зеркало — орнамент
       if(xm>=0&&xm<Sh&&y>=0&&y<V) pole[y*Sh+xm]+=yar*.4;
     }
   };
+
   let px=null, py=null;
-  for(let i=0;i<n-sdv;i++){
-    const a=clamp(o[i]*k,-1,1), b=clamp(o[i+sdv]*k,-1,1);
-    let rx=a*ko - b*si, ry=a*si + b*ko;
-    const rad=Math.sqrt(rx*rx+ry*ry);
+  for(let i=0;i<n;i++){
+    const a=clamp(sgl[i]*ks,-1,1), b=clamp((inte[i]-sri)*ki,-1,1);
+    const qx=a*ko - b*si, qy=a*si + b*ko;
+    const rad=Math.sqrt(qx*qx+qy*qy);
     const t=tvist*rad*rad;
     const kt=Math.cos(t), st=Math.sin(t);
-    const wx=rx*kt - ry*st, wy=rx*st + ry*kt;
+    const wx=qx*kt - qy*st, wy=qx*st + qy*kt;
     // палец на площадке мутит саму фигуру, а не рисует поверх неё
     const mut=ut>.01 ? (Math.random()-.5)*ut*.18 : 0;
-    const x=Math.round(cx + (wx+mut)*cx*.96*rx);
-    const y=Math.round(cy - (wy+mut)*cy*.96*ry);
-    if(px!==null) mazok(px,py,x,y,.85); else if(x>=0&&x<Sh&&y>=0&&y<V) pole[y*Sh+x]+=.85;
+    const x=Math.round(cx + (wx+mut)*cx*.82*rastx);
+    const y=Math.round(cy - (wy+mut)*cy*.82*rasty);
+    if(px!==null) mazok(px,py,x,y,.85);
+    else if(x>=0&&x<Sh&&y>=0&&y<V) pole[y*Sh+x]+=.85;
     px=x; py=y;
   }
 
@@ -516,7 +517,8 @@ function vkladki(){
   const sn=report.devices||[];
   return [0,1].map(i=>{
     const s=sn[i]||{}, sb=s.build||{};
-    const zhiv=s.pitch>1 ? `${Math.round(s.pitch)} Гц` : 'тихо';
+    const zhiv = !tumbnabory[i].on ? 'выкл'
+               : s.pitch>1 ? `${Math.round(s.pitch)} Гц` : 'тихо';
     const t=` ПРИБОР ${i+1} · ${sb.imya||'····'} · ${zhiv} ${i===0?'→':'⇒ выход'} `;
     // Имя атрибута латиницей: кириллическое data-имя не превращается в
     // свойство dataset, и клик молча не находил, по какому прибору попали.
@@ -563,14 +565,14 @@ function ruchki(){
   }
   stroki.push('');
   stroki.push(SWITCHES.map(t=>{
-    const pol=t.pol||2, z=t.obschiy ? chain : switches[t.k];
+    const pol=t.pol||2, z=switches[t.k];
     const vid=pol>2 ? '['+'·'.repeat(z)+'▮'+'·'.repeat(pol-1-z)+']'
                     : (z?'[▮]':'[·]');
     const cv=z?'hot':'dim';
     return `<span class="${cv}">${t.imya} ${vid}</span> <span class="dim2">${t.kl.replace('Key','').toLowerCase()}</span>`;
   }).join('   '));
   stroki.push(`  <span class="dim2">${SWITCHES.map(t=>t.imya+': '+
-    (t.podpis[t.obschiy?chain:switches[t.k]]||'')).join(' · ')}</span>`);
+    (t.podpis[switches[t.k]]||'')).join(' · ')}</span>`);
   return stroki.join('\n');
 }
 

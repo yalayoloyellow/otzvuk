@@ -680,17 +680,19 @@ class Chaos extends AudioWorkletProcessor {
                            // тумблеры: 0 или 1
                            gen2:1, gen3:0, link:0, dirt:0, range:.5,
                            // сколько выхода предыдущего втекает в этот прибор
-                           feed:0 });
+                           feed:0,
+                           // питание прибора: выключенный не считается вовсе
+                           on:1 });
     this.devices = [new Device(1), new Device(2)];
     this.p = [pusto(), pusto()];
     this.p[1].feed = .35;
     this.pr = this.devices[0];
     this.svod = new Decim();
     this.kont = new Contacts();
-    // ТУМБЛЕР ЦЕПИ. Выключен — провод с первого прибора идёт прямо на
-    // капсюль, второй обесточен и не считается вовсе. Включён — первый
-    // втекает во второй, а наружу идёт второй.
-    this.chain = 1;
+    // У каждого прибора свой тумблер питания. Цепь собирается из включённых
+    // по порядку, а ВЫХОД — отдельная точка на конце: в него идёт последний
+    // включённый прибор. Выключили второй — первый идёт в выход напрямую;
+    // выключили первый — играет один второй. Выключены оба — тишина.
     this.pl = new Float32Array(9);
     this.utechka = 0; this.navodka = 0;
     this.pik = 0; this.report = 0; this.okno = 0; this.sryvy = 0;
@@ -724,7 +726,6 @@ class Chaos extends AudioWorkletProcessor {
         this.svod = new Decim();
       }
       else if (d.t === 'active'){ this.active = d.i === 1 ? 1 : 0; }
-      else if (d.t === 'chain'){ this.chain = d.v ? 1 : 0; }
       else if (d.t === 'kick'){
         for (const p of this.devices)
           for (const g of p.cells) g.V += (Math.random() - .5) * 2;
@@ -752,12 +753,20 @@ class Chaos extends AudioWorkletProcessor {
       const shoroh = this.kont.trenie();
       const ut = this.utechka + shoroh * .7, nav = this.navodka + shoroh * .04;
       for (let k = 0; k < OVER; k++){
-        // Первый прибор работает сам по себе; его выход уходит током в
-        // конденсаторы второго. Наружу идёт только второй — он подключён к
-        // колонкам. Именно так стояли две коробки в цепи.
-        this.devices[0].step(this.p[0], ut, nav, kont, 0, 0);
-        y = this.svod.step(this.devices[1].step(this.p[1], ut, nav, kont,
-                                              this.devices[0].scepi, this.p[1].feed));
+        // ЦЕПЬ собирается из ВКЛЮЧЁННЫХ приборов по порядку: каждый
+        // следующий получает током выход предыдущего, первый в цепи — ничего.
+        // ВЫХОД — отдельная точка на конце, в неё идёт последний включённый.
+        // Выключили второй — первый идёт в выход напрямую; выключили первый —
+        // играет один второй; выключены оба — тишина.
+        let syro = 0, signal = 0, bylo = false;
+        for (let d = 0; d < this.devices.length; d++){
+          if (!(this.p[d].on > .5)) continue;
+          syro = this.devices[d].step(this.p[d], ut, nav, kont,
+                                      bylo ? signal : 0, bylo ? this.p[d].feed : 0);
+          signal = this.devices[d].scepi;
+          bylo = true;
+        }
+        y = this.svod.step(bylo ? syro : 0);
       }
       if (!(y === y)){ y = 0;
         for (const p of this.devices) p.zhivoy();
