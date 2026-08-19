@@ -405,6 +405,10 @@ class Otzvuk extends AudioWorkletProcessor{
     this.gKick=1; this.gHat=1; this.gClap=1; this.gBass=1; this.gHook=1;
     this.pK=new Uint8Array(16); this.pH=new Uint8Array(16); this.pC=new Uint8Array(16);
     this.kEnv=0; this.kPh=0; this.kDrop=0;
+    // Щелчок атаки: без него 808 не читается в миксе и слышится тупым.
+    // Источник щелчка — верх самой дорожки, то есть по-прежнему модуляция.
+    this.kClk=0; this.kClick=0; this.kClkDec=Math.exp(-1/(SR*.004));
+    this.kDropDec=Math.exp(-1/(SR*.030));
     this.hEnv=0; this.hLp=0; this.hRs=7331;
     this.cEnvD=0; this.cTaps=0; this.cCd=0; this.cRs=99; this.cf0=0; this.cf1=0;
     // Грув: сдвиги от сетки и велосити. Выключен (null) = жёсткая сетка,
@@ -480,6 +484,9 @@ class Otzvuk extends AudioWorkletProcessor{
         if(d.kDec) this.kDec=Math.exp(-1/(SR*d.kDec));
         if(d.kSweep!==undefined) this.kSweep=d.kSweep;
         if(d.kDrive!==undefined) this.kDrive=d.kDrive;
+        if(d.kClick!==undefined) this.kClick=d.kClick;
+        if(d.kClkMs!==undefined) this.kClkDec=Math.exp(-1/(SR*Math.max(.001,d.kClkMs)));
+        if(d.kDropMs!==undefined) this.kDropDec=Math.exp(-1/(SR*Math.max(.006,d.kDropMs)));
         if(d.kLvl!==undefined) this.kLvl=d.kLvl;
         if(d.hDec) this.hDec=Math.exp(-1/(SR*d.hDec));
         if(d.hLvl!==undefined) this.hLvl=d.hLvl;
@@ -642,7 +649,7 @@ class Otzvuk extends AudioWorkletProcessor{
     if(this.dr){
       if(this.pK[st]){
         if(g){ this.gDelK=D(dK); this.gVelK=vK; }
-        else { this.kEnv=1; this.kDrop=1; this.kPh=0; this.pump=1; } }
+        else { this.kEnv=1; this.kDrop=1; this.kPh=0; this.kClk=1; this.pump=1; } }
       if(this.pH[st]){
         if(g){ this.gDelH=D(dH); this.gVelH=vH; }
         else this.hEnv=1; }
@@ -761,7 +768,8 @@ class Otzvuk extends AudioWorkletProcessor{
       // Отложенные удары грува: onStep только назначает время, срабатывание
       // происходит здесь, с точностью до сэмпла.
       if(this.gDelK>=0 && --this.gDelK<0){
-        this.kEnv=this.gVelK; this.kDrop=1; this.kPh=0; this.pump=1; }
+        this.kEnv=this.gVelK; this.kDrop=1; this.kPh=0; this.kClk=this.gVelK;
+        this.pump=1; }
       if(this.gDelH>=0 && --this.gDelH<0){ this.hEnv=this.gVelH; this.hVel=this.gVelH; }
       if(this.hRollN>0 && --this.hRollCd<=0){
         this.hRollCd=this.hRollP; this.hRollN--;
@@ -882,8 +890,12 @@ class Otzvuk extends AudioWorkletProcessor{
       // ---- жанровые ударные -----------------------------------------------
       let drm=0;
       if(this.dr){
+        if(this.kClk>1e-5){
+          drm+=(m-this.lb0)*this.kClk*this.kClk*this.kClick*2.2*this.gKick;
+          this.kClk*=this.kClkDec;
+        }
         if(this.kEnv>1e-5){
-          this.kDrop*=dropDec;
+          this.kDrop*=this.kDropDec;
           const f=this.kF*(1+this.kDrop*this.kDrop*this.kSweep);
           this.kPh+=f/SR; if(this.kPh>=1) this.kPh-=1;
           // цвет атаки — транзиент самой дорожки, поэтому бочка не одинаковая

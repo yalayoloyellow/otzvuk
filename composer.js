@@ -62,9 +62,13 @@ export const PROFILES={
 export const KITS={
   'хип-хоп':{
     // Семейства бочки: без них тембр всегда один и тот же и приедается
-    fam:[ {kF:[38,46], kDec:[.55,.95], kSweep:[1.6,2.4], kDrive:[.75,.95]},  // длинный 808
-          {kF:[46,58], kDec:[.22,.45], kSweep:[2.6,3.8], kDrive:[.5,.75]},   // короткий панч
-          {kF:[34,42], kDec:[.7,1.2],  kSweep:[1.2,1.9], kDrive:[.85,1]} ],  // глубокий гул
+    fam:[ // щелчок и форма спада высоты — то, чем 808 читается в миксе
+          {kF:[38,46], kDec:[.55,.95], kSweep:[1.6,2.4], kDrive:[.75,.95],
+           kClick:[.5,.9],  kClkMs:[.003,.006], kDropMs:[.03,.07]},   // длинный 808
+          {kF:[46,58], kDec:[.22,.45], kSweep:[2.6,3.8], kDrive:[.5,.75],
+           kClick:[.7,1.2], kClkMs:[.002,.004], kDropMs:[.012,.03]},  // короткий панч
+          {kF:[34,42], kDec:[.7,1.2],  kSweep:[1.2,1.9], kDrive:[.85,1],
+           kClick:[.25,.55],kClkMs:[.004,.008], kDropMs:[.05,.11]} ], // глубокий гул
     k:['1000000010000000','1000000010010000','1000001000100000','1001000010000000'],
     h:['1010101010101010','1111111111111111','1010111010101110','1110101011101010'],
     c:['0000100000001000'],
@@ -72,9 +76,12 @@ export const KITS={
     kLvl:[.95,1.3], hDec:[.012,.035], hLvl:[.35,.6], cLvl:[.5,.85], hRoll:[.12,.4]
   },
   'техно':{
-    fam:[ {kF:[42,50], kDec:[.22,.38], kSweep:[1.8,2.6], kDrive:[.5,.7]},    // ровный
-          {kF:[38,44], kDec:[.32,.5],  kSweep:[1.4,2.1], kDrive:[.7,.9]},    // тяжёлый
-          {kF:[48,58], kDec:[.14,.24], kSweep:[2.6,3.6], kDrive:[.4,.65]} ], // сухой
+    fam:[ {kF:[42,50], kDec:[.22,.38], kSweep:[1.8,2.6], kDrive:[.5,.7],
+           kClick:[.35,.7], kClkMs:[.002,.004], kDropMs:[.014,.03]},  // ровный
+          {kF:[38,44], kDec:[.32,.5],  kSweep:[1.4,2.1], kDrive:[.7,.9],
+           kClick:[.2,.5],  kClkMs:[.003,.006], kDropMs:[.03,.06]},   // тяжёлый
+          {kF:[48,58], kDec:[.14,.24], kSweep:[2.6,3.6], kDrive:[.4,.65],
+           kClick:[.6,1.1], kClkMs:[.0015,.003],kDropMs:[.008,.018]} ], // сухой
     k:['1000100010001000'],
     h:['0010001000100010','0010101000101010','0010001010100010'],
     c:['0000000000000000','0000100000000000'],
@@ -101,28 +108,40 @@ export const TILTS={
 export const ARR={
   'хип-хоп':{
     phrase:4,                      // сетка по четыре такта
-    life:[96,192],                 // сколько тактов живёт тема
-    plan(n){                       // n — номер фразы
-      const m=n%8;
-      if(m===0) return {hook:1,bass:0,kick:0,hat:0,clap:0};   // тема одна
-      if(m===1) return {hook:1,bass:1,kick:1,hat:1,clap:1};   // бит вошёл
-      if(m===4) return {hook:1,bass:0,kick:1,hat:1,clap:1};   // яма: без баса
-      if(m===6) return {hook:1,bass:1,kick:0,hat:1,clap:0};   // без бочки
-      if(m===7) return {hook:1,bass:1,kick:1,hat:1,clap:1};
-      return {hook:1,bass:1,kick:1,hat:1,clap:1};
+    life:[48,112],                 // сколько тактов живёт тема
+    // Цикл на шестнадцать фраз, а не на восемь: восьми хватало на минуту,
+    // дальше начинался слышимый повтор — ровно та скука, на которую жалоба.
+    plan(n){
+      const m=n%16;
+      switch(m){
+        case 0:  return {hook:1,bass:0,kick:0,hat:0,clap:0};  // тема одна
+        case 1:  return {hook:1,bass:1,kick:1,hat:1,clap:1};  // бит вошёл
+        case 4:  return {hook:1,bass:0,kick:1,hat:1,clap:1};  // яма: без баса
+        case 6:  return {hook:1,bass:1,kick:0,hat:1,clap:0};  // без бочки
+        case 8:  return {hook:1,bass:1,kick:1,hat:0,clap:1};  // сняли хэты
+        case 11: return {hook:1,bass:1,kick:1,hat:1,clap:0};  // без клэпа
+        case 12: return {hook:1,bass:0,kick:1,hat:0,clap:0};  // голая бочка с темой
+        case 14: return {hook:0,bass:1,kick:1,hat:1,clap:1};  // тема ушла, бит остался
+        default: return {hook:1,bass:1,kick:1,hat:1,clap:1};
+      }
     }
   },
   'техно':{
     phrase:8,                      // техно дышит длиннее
-    life:[160,320],
+    life:[96,224],
     plan(n){
-      const m=n%8;
-      if(m===0) return {hook:1,bass:0,kick:1,hat:0,clap:0};   // только бочка и тема
-      if(m===1) return {hook:1,bass:0,kick:1,hat:1,clap:0};   // вошли хэты
-      if(m===2) return {hook:1,bass:1,kick:1,hat:1,clap:0};   // вошёл низ
-      if(m===5) return {hook:1,bass:1,kick:0,hat:1,clap:1};   // брейкдаун
-      if(m===6) return {hook:1,bass:1,kick:1,hat:1,clap:1};   // всё вернулось
-      return {hook:1,bass:1,kick:1,hat:1,clap:1};
+      const m=n%16;
+      switch(m){
+        case 0:  return {hook:1,bass:0,kick:1,hat:0,clap:0};  // только бочка и тема
+        case 1:  return {hook:1,bass:0,kick:1,hat:1,clap:0};  // вошли хэты
+        case 2:  return {hook:1,bass:1,kick:1,hat:1,clap:0};  // вошёл низ
+        case 5:  return {hook:1,bass:1,kick:0,hat:1,clap:1};  // брейкдаун
+        case 8:  return {hook:1,bass:1,kick:1,hat:0,clap:1};  // сняли хэты
+        case 10: return {hook:1,bass:0,kick:1,hat:1,clap:1};  // яма без низа
+        case 12: return {hook:0,bass:1,kick:1,hat:1,clap:0};  // тема ушла
+        case 13: return {hook:1,bass:1,kick:1,hat:1,clap:0};  // вернулась
+        default: return {hook:1,bass:1,kick:1,hat:1,clap:1};
+      }
     }
   }
 };
@@ -279,17 +298,28 @@ export function makeComposer(env){
     if(Math.random()<.5) return pick(K.h).split('').map(Number);
     if(profile==='техно'){
       // техно живёт офбитом: поворот на 2 ставит удары между долями
-      const k=pick([4,6,8,8,12]);
-      return euclid(k,16,2);
+      return euclid(pick([4,4,4,6,8,8]),16,2);
     }
-    const k=pick([6,7,9,10,11,13,16]);
-    return euclid(k,16,pick([0,0,1,2]));
+    // Реже, чем было: сплошные шестнадцатые утомляют за пару минут, а в
+    // рэпе густой хэт — приём на несколько тактов, а не постоянный фон.
+    return euclid(pick([4,4,6,6,7,8,9,11]),16,pick([0,0,0,1,2]));
+  }
+  // Ворота фактуры и бас должны идти ПО БОЧКЕ. Без этого они брались из
+  // семени пресета (евклидов остов), часто выходили ровной четвёркой и жили
+  // своей жизнью — отсюда «прямая бочка» и «кик выбивается из остального».
+  function sendPat(kickPat){
+    const pS=kickPat.split('').map(Number);
+    // подбивки баса: редкие, только там, где бочки нет
+    const extra=euclid(pick([2,3,3,4]),16,pick([2,3,5,6]));
+    const pB=pS.map((v,i)=>v?0:(extra[i]||0));
+    post({t:'pat',lock:1,pS,pB});
   }
   function sendDrums(){
     const K=KITS[profile];
     if(!K){ post({t:'drums',mode:0}); return; }
     const P=a=>a.split('').map(Number);
     curKit.k=pick(K.k);
+    sendPat(curKit.k);
     const fam=K.fam?pick(K.fam):K;
     const H=pick(HATS[profile]), C=pick(CLAPS[profile]);
     curHat=H;
@@ -303,6 +333,9 @@ export function makeComposer(env){
       pK:P(curKit.k), pH:hatPattern(K), pC:P(pick(K.c)),
       kF:rnd(fam.kF[0],fam.kF[1]), kDec:rnd(fam.kDec[0],fam.kDec[1]),
       kSweep:rnd(fam.kSweep[0],fam.kSweep[1]), kDrive:rnd(fam.kDrive[0],fam.kDrive[1]),
+      kClick:fam.kClick?rnd(fam.kClick[0],fam.kClick[1]):0,
+      kClkMs:fam.kClkMs?rnd(fam.kClkMs[0],fam.kClkMs[1]):.004,
+      kDropMs:fam.kDropMs?rnd(fam.kDropMs[0],fam.kDropMs[1]):.03,
       kLvl:rnd(K.kLvl[0],K.kLvl[1]), hDec:rnd(H.hDec[0],H.hDec[1]),
       hLvl:rnd(K.hLvl[0],K.hLvl[1]), cLvl:rnd(K.cLvl[0],K.cLvl[1]),
       hRoll:rnd(H.hRoll[0],H.hRoll[1])});
@@ -328,10 +361,20 @@ export function makeComposer(env){
       post(Object.assign({t:'mute'},st));
       // фишечки: одноразовые выходки, не ломающие бит
       const r=Math.random();
-      if(r<.18) fillDrums();
-      else if(r<.26) pushSR(clamp(curCrunch+3,0,SRD.length-1)),
+      if(r<.22) fillDrums();
+      else if(r<.30) pushSR(clamp(curCrunch+3,0,SRD.length-1)),
                      setTimeout(()=>setCrunch(0,true),rnd(300,900));
-      else if(r<.31) post({t:'rhy',v:1,lvl:rnd(.8,1.4)});
+      else if(r<.35) post({t:'rhy',v:1,lvl:rnd(.8,1.4)});
+      // Раз в четыре фразы окружение темы меняется всерьёз: сама тема живёт
+      // долго, и без этого она к третьей минуте становится обоями.
+      if(phraseN%4===3){
+        const w=Math.random();
+        if(w<.4) sendDrums();                        // новый кит и тембры
+        else if(w<.7){                               // новый верхний слой
+          post({t:'xf',sec:rnd(1,4),layer:1});
+          post({t:'preset',seed:(Math.random()*4294967295)>>>0,layer:1});
+        } else setCrunch(1+(Math.random()*4|0),true);
+      }
       curSec = st.bass&&st.kick ? 'бит' : st.bass ? 'без бочки' : st.kick ? 'яма' : 'тема';
     }
     phraseN++;
@@ -509,6 +552,7 @@ export function makeComposer(env){
     // и после техно в авангарде оставалась прямая бочка.
     post({t:'drums',mode:0});
     post({t:'groove',g:null});
+    if(!KITS[profile]) post({t:'pat',lock:0});
     era=null; tabu=[]; memory=[]; tension=.2; tDir=1;
     // Переход берётся не из нового профиля (там бывает до 20 секунд), а
     // осмысленно быстрый — иначе смена режима просто не слышна.
