@@ -225,7 +225,9 @@ class Handler(SimpleHTTPRequestHandler):
             n = int(self.headers.get("Content-Length", 0))
             if n <= 44:
                 return self._json(400, {"error": "пустая запись"})
-            name = self.headers.get("X-Name") or "отзвук.wav"
+            # Имя приходит в процентной кодировке: в заголовке HTTP можно
+            # только латиницу, а имена у записей человеческие.
+            name = unquote(self.headers.get("X-Name") or "otzvuk.wav")
             name = os.path.basename(name).replace("/", "_")
             os.makedirs(RECS, exist_ok=True)
             path = os.path.join(RECS, name)

@@ -684,6 +684,7 @@ class Chaos extends AudioWorkletProcessor {
     // ОДИН ПРИБОР. Две коробки в цепи пробовали — красивого звука это не
     // давало ни при какой связи: внутри прибора осциллятор и так идёт в
     // модулятор, а второй такой же поверх превращает всё в кашу.
+    this.rec = false; this.recBuf = [];
     this.pl = new Float32Array(9);
     this.utechka = 0; this.navodka = 0;
     this.pik = 0; this.report = 0; this.okno = 0; this.sryvy = 0;
@@ -712,6 +713,19 @@ class Chaos extends AudioWorkletProcessor {
       else if (d.t === 'pads'){ for (let i = 0; i < 9; i++) this.pl[i] = d.v[i] || 0; }
       else if (d.t === 'seed'){ this.pr = new Device(d.v); this.svod = new Decim(); }
 
+      // ЗАПИСЬ. Копию выхода собираем прямо в ядре и отдаём блоками: так
+      // пишется ровно то, что слышно, без пересборки цепи и без кодеков.
+      else if (d.t === 'rec'){
+        const bylo = this.rec;
+        this.rec = !!d.v;
+        if (this.rec && !bylo) this.recBuf = [];      // старт: с чистого листа
+        else if (!this.rec && bylo){
+          // Стоп: отдаём последнюю порцию вместе с признаком конца. Раньше
+          // буфер обнулялся тут же, и конец записи не приходил вовсе.
+          this.port.postMessage({t:'rec', v:Float32Array.from(this.recBuf), stop:true});
+          this.recBuf = [];
+        }
+      }
       else if (d.t === 'kick'){
         for (const g of this.pr.cells) g.V += (Math.random() - .5) * 2;
       }
@@ -746,12 +760,19 @@ class Chaos extends AudioWorkletProcessor {
       const a = y < 0 ? -y : y;
       if (a > this.pik) this.pik = a;
       oL[s] = y; oR[s] = y;
+      if (this.rec) this.recBuf.push(y);
       const shago = clamp(Math.round(SR / (Math.max(20, this.pr.osn.f) * 128)), 1, 64);
       if (++this.oscsh >= shago){ this.oscsh = 0;
         this.osc[this.osci = (this.osci + 1) & 255] = y; }
       if (++this.prore >= SR / 100){ this.prore = 0;
         this.sled[this.sli] = this.pr.swing.u;
         this.sli = (this.sli + 1) % 200; }
+    }
+
+    // Записанное отдаём порциями, чтобы не копить в ядре мегабайты.
+    if (this.rec && this.recBuf.length >= SR){
+      this.port.postMessage({t:'rec', v:Float32Array.from(this.recBuf)});
+      this.recBuf = [];
     }
 
     this.report += n;

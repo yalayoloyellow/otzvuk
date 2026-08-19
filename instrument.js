@@ -138,6 +138,53 @@ function primenit(p){
   send();
   skazhi('пресет: '+(p.name||p.имя||p.file));
 }
+// ---- ЗАПИСЬ ----------------------------------------------------------------
+// Пишется ровно то, что слышно: копия выхода приходит из ядра порциями,
+// здесь копится и на остановке уходит файлом в ~/Documents/otzvuk/записи.
+let pishem=false, kuski=[], vsego=0;
+function zapisPrishla(d){
+  if(!d.v) return;
+  kuski.push(d.v); vsego+=d.v.length;
+  if(d.stop) sohraniZapis();
+}
+function zapis(){
+  if(!node) return;
+  pishem=!pishem;
+  if(pishem){ kuski=[]; vsego=0; node.port.postMessage({t:'rec', v:true}); skazhi('запись пошла'); }
+  else node.port.postMessage({t:'rec', v:false});
+}
+function wav(dan, sr){
+  const n=dan.length, buf=new ArrayBuffer(44+n*2), v=new DataView(buf);
+  const str=(o,t)=>{ for(let i=0;i<t.length;i++) v.setUint8(o+i,t.charCodeAt(i)); };
+  str(0,'RIFF'); v.setUint32(4,36+n*2,true); str(8,'WAVEfmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true);
+  v.setUint16(32,2,true); v.setUint16(34,16,true);
+  str(36,'data'); v.setUint32(40,n*2,true);
+  let o=44;
+  for(let i=0;i<n;i++){ let x=dan[i]; x=x<-1?-1:x>1?1:x;
+    v.setInt16(o,x*32767,true); o+=2; }
+  return new Blob([buf],{type:'audio/wav'});
+}
+async function sohraniZapis(){
+  if(!vsego){ skazhi('записывать было нечего'); return; }
+  const dan=new Float32Array(vsego); let k=0;
+  for(const ch of kuski){ dan.set(ch,k); k+=ch.length; }
+  kuski=[];
+  const sek=(vsego/(ctx?ctx.sampleRate:48000)).toFixed(1);
+  const d=new Date();
+  const imya=`${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')} `+
+             `${String(d.getHours()).padStart(2,'0')}-${String(d.getMinutes()).padStart(2,'0')}-`+
+             `${String(d.getSeconds()).padStart(2,'0')} `+
+             `${(report.build&&report.build.imya)||'····'}.wav`;
+  try{
+    const o=await fetch('/rec',{method:'POST',
+      headers:{'Content-Type':'application/octet-stream','X-Name':encodeURIComponent(imya)},
+      body: wav(dan, ctx?ctx.sampleRate:48000)});
+    skazhi(o.ok ? `записано ${sek} с → ${imya}` : 'не записалось');
+  }catch(e){ skazhi('не записалось: '+e.message); }
+}
+
 async function listay(step){
   if(!presets.length) await zagruzispisok();
   if(!presets.length){ skazhi('пресетов пока нет'); return; }
@@ -240,7 +287,11 @@ async function pusk(){
   node=new AudioWorkletNode(ctx,'chaos',{numberOfInputs:0,numberOfOutputs:1,
     outputChannelCount:[2]});
   node.connect(ctx.destination);
-  node.port.onmessage=e=>{ report=e.data; window.dbg.otchetov=(window.dbg.otchetov||0)+1; window.dbg.o=report; };
+  node.port.onmessage=e=>{
+    const d=e.data;
+    if(d && d.t==='rec'){ zapisPrishla(d); return; }
+    report=d; window.dbg.otchetov=(window.dbg.otchetov||0)+1; window.dbg.o=report;
+  };
   await ctx.resume();
   idet=true;
   // Обе сборки и оба набора ручек уходят в ядро сразу: второй прибор стоит
@@ -264,6 +315,7 @@ addEventListener('keydown',async e=>{
   // панели остаются где стояли — меняется сам прибор, а не настройка.
   if(c==='Tab'){ e.preventDefault(); peresoberi(); return; }
 
+  if(c==='KeyN'){ e.preventDefault(); if(!e.repeat) zapis(); return; }
   if(c==='KeyP'){ e.preventDefault(); if(!e.repeat) sohrani(); return; }
   if(c==='KeyO'){ e.preventDefault(); if(!e.repeat) listay(e.shiftKey?-1:1); return; }
 
@@ -578,7 +630,7 @@ function kadr_(){
     $('#knobs').innerHTML=ruchki();
     $('#line').innerHTML=
       `  <span class="dim2">tab пересобрать · ⌘ втрое · ⇧ вдесятеро · пробел толчок · `+
-      `1–8 площадки · p сохранить · o листать</span>`+
+      `1–8 площадки · n запись · p пресет · o листать</span>`+
       (vest && performance.now()<vestdo ? `   <span class="hot">${vest}</span>`
        : presets.length ? `   <span class="dim2">${presets.length} пресетов</span>` : '');
   }
