@@ -3,6 +3,7 @@
 //  Вся композиция — в composer.js; сюда она приходит через узкий env.
 // ============================================================================
 import {makeComposer} from './composer.js';
+import {features, score, learnPair, learnBothBad} from './theme.js';
 
 const $=s=>document.querySelector(s);
 const stateEl=$('#state'), formEl=$('#form'), tlEl=$('#tl');
@@ -37,9 +38,11 @@ function renderForm(f){
     '<i>напряжение</i><span>'+'▮'.repeat(bar)+'▯'.repeat(22-bar)+'</span>';
 }
 
+const WORKLET='engine.worklet.js?v='+Date.now();
 const composer=makeComposer({
   post:m=>{ node&&node.port.postMessage(m); },
   ctx:()=>ctx,
+  workletUrl:WORKLET,
   swap:swapSource,
   onForm:renderForm
 });
@@ -47,7 +50,8 @@ const composer=makeComposer({
 // Модуль прячет переменные от консоли; ручка для отладки и стенда сравнения.
 window.dbg={get ctx(){return ctx},get node(){return node},
   get profile(){return composer.profile},
-  get playing(){return playing},get started(){return composer.started}};
+  get playing(){return playing},get started(){return composer.started},
+  get pick(){return composer.pick}, composer};
 
 // ---- запись -----------------------------------------------------------------
 let recOn=false, recL=[], recR=[], recN=0, recT0=0;
@@ -118,11 +122,91 @@ addEventListener('keydown',e=>{
   else if(k===' '){ e.preventDefault(); $('#ref').click(); }
 });
 
+// ============================================================================
+//  НАСТРОЙКА ВКУСА
+//  Отбор тем считает «цепкость» по четырём числам, но чей это вкус — решает
+//  ухо. Десяток пар: две темы подряд, выбор из трёх — первая, вторая, обе
+//  мимо. Веса двигаются в сторону выбранного (правило перцептрона).
+// ============================================================================
+let calOn=false, calPair=null, calDone=0, calPlaying=null, calWasPlaying=false;
+const CAL_TARGET=10;
+
+function calStop(){ if(calPlaying){ try{calPlaying.stop();}catch(e){} calPlaying=null; } }
+
+function calPlay(buf,label){
+  calStop();
+  const s=ctx.createBufferSource(); s.buffer=buf; s.connect(ctx.destination);
+  s.start(); calPlaying=s;
+  $('#calmsg').textContent=label;
+}
+
+async function calNext(){
+  $('#calmsg').textContent='готовлю пару…';
+  const a=await composer.renderCandidate((Math.random()*4294967295)>>>0);
+  const b=await composer.renderCandidate((Math.random()*4294967295)>>>0);
+  calPair={a:{buf:a.buf,f:features(a.buf),mat:a.mat},
+           b:{buf:b.buf,f:features(b.buf),mat:b.mat}};
+  $('#caln').textContent=calDone+' из '+CAL_TARGET;
+  await calAudition();
+}
+
+async function calAudition(){
+  if(!calPair) return;
+  calPlay(calPair.a.buf,'первая…');
+  await new Promise(r=>setTimeout(r,4600));
+  if(!calOn) return;
+  calPlay(calPair.b.buf,'вторая…');
+  await new Promise(r=>setTimeout(r,4600));
+  if(!calOn) return;
+  calStop();
+  $('#calmsg').textContent='какая цепляет?';
+}
+
+function calChoose(which){
+  if(!calPair) return;
+  const {a,b}=calPair;
+  if(which==='a') composer.setWeights(learnPair(composer.weights,a.f,b.f));
+  else if(which==='b') composer.setWeights(learnPair(composer.weights,b.f,a.f));
+  else composer.setWeights(learnBothBad(composer.weights,a.f,b.f));
+  calDone++;
+  calPair=null;
+  if(calDone>=CAL_TARGET){ calFinish(); return; }
+  calNext();
+}
+
+function calFinish(){
+  const w=composer.weights;
+  $('#calmsg').textContent='готово. веса: '+
+    Object.keys(w).map(k=>k+' '+w[k].toFixed(2)).join(' · ');
+  $('#caln').textContent=calDone+' пар';
+  calPair=null;
+}
+
+function calToggle(){
+  calOn=!calOn;
+  $('#calp').hidden=!calOn;
+  $('#cal').classList.toggle('on',calOn);
+  if(calOn){
+    calWasPlaying=playing;
+    if(playing) $('#run').click();          // подложка молчит, пока слушаем пары
+    calDone=0; calNext();
+  } else {
+    calStop(); calPair=null;
+    if(calWasPlaying && !playing) $('#run').click();
+  }
+}
+$('#cal').onclick=()=>{ if(ctx) calToggle(); };
+$('#calA').onclick=()=>calChoose('a');
+$('#calB').onclick=()=>calChoose('b');
+$('#calN').onclick=()=>calChoose('none');
+$('#calR').onclick=()=>calAudition();
+$('#calX').onclick=()=>{ if(calOn) calToggle(); };
+
 // ---- запуск -------------------------------------------------------------------
 async function boot(){
   ctx=new AudioContext({latencyHint:'interactive'});
   // у модулей воркета свой кэш: без метки браузер держит старый движок
-  await ctx.audioWorklet.addModule('engine.worklet.js?v='+Date.now());
+  await ctx.audioWorklet.addModule(WORKLET);
   node=new AudioWorkletNode(ctx,'otzvuk',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});
   inGain=ctx.createGain(); inGain.connect(node); node.connect(ctx.destination);
   node.port.onmessage=e=>{

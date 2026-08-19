@@ -35,6 +35,7 @@
 import {genMaterial, mul32} from './material.js';
 import {pickGroove} from './groove.js';
 import {HATS,CLAPS,euclid} from './composer.js';
+import * as theme from './theme.js';
 const $=s=>document.querySelector(s);
 const out=$('#out');
 const log=h=>{ out.innerHTML=h; };
@@ -66,6 +67,9 @@ async function render(seed, profile, dur, groove, only){
   if(groove) post({t:'groove',g:groove});
   // режим «только бочка»: тема, бас, хэт и клэп выключены, чтобы детектор
   // мерил позиции ударов, а не транзиенты фактуры
+  // «голая тема»: без ударных и баса — то, что оценивает отбор
+  if(only==='theme'){ post({t:'drums',mode:0}); post({t:'rhy',v:0,lvl:0});
+    post({t:'mute',now:1,hook:1,bass:0,kick:0,hat:0,clap:0}); }
   if(only==='kick') post({t:'mute',now:1,hook:0,bass:0,kick:1,hat:0,clap:0});
   if(only&&only.hat){
     const h=new Float32Array(16).fill(1), z=new Float32Array(16);
@@ -215,5 +219,5 @@ async function measureSwing(seed,profile,groove,dur){
 // себе, а на тихих семействах детектор ловил фон вместо разрядов (при
 // одном разряде насчитывал четырнадцать). Различие семейств доказано
 // спектром, пиком и хэшем; форму судит ухо.
-window.stand={render,metrics,kickOffsets,measureGroove,measureSwing,pickGroove,mul32,HATS,CLAPS,euclid};
+window.stand={render,metrics,theme,kickOffsets,measureGroove,measureSwing,pickGroove,mul32,HATS,CLAPS,euclid};
 </script>

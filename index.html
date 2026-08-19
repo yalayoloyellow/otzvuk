@@ -96,10 +96,22 @@
     <button id="like">▲ нравится</button>
     <button id="dis">▼ не то</button>
     <button id="rec">● запись</button>
+    <button id="cal">◆ вкус</button>
     <div id="hint">запись ложится несжатым wav в <b>~/Documents/otzvuk/записи</b></div>
   </footer>
+
+  <div class="panel" id="calp" hidden>
+    <h2><span>настройка вкуса</span><span id="caln">—</span></h2>
+    <div id="calmsg" style="font-size:11px;color:var(--dim);line-height:1.7">
+      Слушай две темы и говори, какая цепляет. Десяти пар хватит.</div>
+    <footer style="margin-top:10px">
+      <button id="calA">◀ первая</button>
+      <button id="calB">вторая ▶</button>
+      <button id="calN">обе мимо</button>
+      <button id="calR">↻ ещё раз</button>
+      <button id="calX">выйти</button>
+    </footer>
+  </div>
 </div>
-
-
 
 <script type="module" src="ui.js"></script>

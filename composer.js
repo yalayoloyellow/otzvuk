@@ -21,6 +21,7 @@
 // ============================================================================
 import {genMaterial, mul32} from './material.js';
 import {pickGroove} from './groove.js';
+import {features, score, DEFAULT_W} from './theme.js';
 
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 const rnd=(a,b)=>a+Math.random()*(b-a);
@@ -202,6 +203,9 @@ export function makeComposer(env){
   let srPlanT=null, curCrunch=0;
   let curBar=0, lastBpm=0;
   let curGroove=null, curPerc=null, curHat=null;
+  // Отбор темы: кандидаты рендерятся беззвучно ЗАРАНЕЕ, пока играет текущая.
+  // Иначе смена темы ждала бы пару секунд, а этого слышно нельзя.
+  let nextTheme=null, picking=false, weights={...DEFAULT_W}, lastPick=null;
 
   const material=seed=>genMaterial(env.ctx(),seed,profile,tasteW);
   const form=(bars,bpm)=>env.onForm({sec:curSec,mat:curMat,bars,bpm,tension,
@@ -279,6 +283,48 @@ export function makeComposer(env){
     post({t:'groove',g:curGroove});
   }
 
+  // Беззвучный рендер голой темы: тот же движок, тот же материал, без
+  // ударных и баса — оцениваем саму тему, а не бит вокруг неё.
+  async function renderCandidate(seed){
+    const sr=44100, dur=4.5;
+    const off=new OfflineAudioContext(2,Math.ceil(sr*dur),sr);
+    await off.audioWorklet.addModule(env.workletUrl);
+    const nd=new AudioWorkletNode(off,'otzvuk',
+      {numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});
+    nd.connect(off.destination);
+    const mm=genMaterial(off,seed,profile,tasteW);
+    const src=off.createBufferSource(); src.buffer=mm.buf; src.loop=true;
+    src.connect(nd); src.start();
+    const p=m=>nd.port.postMessage(m);
+    p({t:'preset',seed:seed>>>0,layer:0});
+    p({t:'preset',seed:(seed^0x5bf03635)>>>0,layer:1});
+    p({t:'xf',sec:.25}); p({t:'lufs',v:-14});
+    p({t:'drums',mode:0}); p({t:'rhy',v:0,lvl:0});
+    p({t:'run',v:1});
+    await new Promise(r=>setTimeout(r,20));
+    return {buf:await off.startRendering(), mat:mm.name};
+  }
+
+  // Кандидаты готовятся впрок, по одному, чтобы не грузить машину пачкой.
+  async function prepareTheme(n){
+    if(picking||!env.workletUrl||!ARR[profile]) return;
+    picking=true;
+    const forProfile=profile, out=[];
+    try{
+      for(let i=0;i<(n||3);i++){
+        const seed=(Math.random()*4294967295)>>>0;
+        const r=await renderCandidate(seed);
+        if(profile!==forProfile) return;          // профиль сменили — бросаем
+        const f=features(r.buf);
+        out.push({seed,f,mat:r.mat,s:score(f,weights)});
+        await new Promise(r2=>setTimeout(r2,30));
+      }
+      out.sort((a,b)=>b.s-a.s);
+      if(out.length) nextTheme=out[0], lastPick={best:out[0],all:out};
+    }catch(e){ /* отбор — роскошь: если не вышло, играем случайное семя */ }
+    finally{ picking=false; }
+  }
+
   function sendTilt(){ post({t:'tilt',v:TILTS[profile]}); }
 
   // Заполнение: кит тот же, меняется только рисунок хэтов и клэпа. Это то,
@@ -345,7 +391,11 @@ export function makeComposer(env){
     const A=ARR[profile];
     // тема живёт долго и меняется редко — на ней и держится запоминаемость
     if(hookSeed===null || curBar-hookBar>rnd(A.life[0],A.life[1])){
-      hookSeed=(Math.random()*4294967295)>>>0; hookBar=curBar; phraseN=0;
+      // берём отобранное заранее; если не готово — обычное случайное
+      hookSeed=nextTheme?nextTheme.seed:(Math.random()*4294967295)>>>0;
+      nextTheme=null;
+      hookBar=curBar; phraseN=0;
+      prepareTheme();                       // готовим следующую впрок
       curSeed=hookSeed;
       post({t:'xf',sec:rnd(1.5,4)});
       post({t:'preset',seed:hookSeed,layer:0});
@@ -520,10 +570,11 @@ export function makeComposer(env){
   function saveTaste(){ if(saveT) clearTimeout(saveT);
     saveT=setTimeout(()=>{ fetch('/state',{method:'PUT',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({tastes})}).catch(()=>{}); },600); }
+      body:JSON.stringify({tastes,weights})}).catch(()=>{}); },600); }
   async function loadTaste(){
     try{ const r=await fetch('/state',{cache:'no-store'}); const d=await r.json();
       if(d.tastes) tastes=d.tastes;
+      if(d.weights) weights={...DEFAULT_W,...d.weights};
       else if(d.taste&&d.taste.mat) tastes['авангард']=d.taste;  // перенос прежнего
     }catch(e){}
   }
@@ -583,10 +634,14 @@ export function makeComposer(env){
     loadTaste();
     stepSection();
     started=true;
+    setTimeout(()=>prepareTheme(),1500);
   }
 
   return {start, stepSection, vote, refresh, nextProfile, onBar,
           get groove(){return curGroove}, get perc(){return curPerc},
+          get pick(){return lastPick}, get weights(){return weights},
+          setWeights(w){ weights={...weights,...w}; saveTaste(); },
+          renderCandidate,
           get profile(){return profile}, get started(){return started},
           get curSec(){return curSec}, get curMat(){return curMat}};
 }
