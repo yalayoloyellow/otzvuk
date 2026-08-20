@@ -664,8 +664,15 @@ function ruchki(){
   const l=clamp(report.pik||0,0,1), sh=clamp(report.shina||1,0,1);
   const r=report.razbros||0;
   const rezhim = r<.02?'ровно' : r<.10?'дышит' : r<.28?'гуляет' : r<.55?'край':'распад';
+  // ТЕМП. Качель = такт, шестнадцать шагов сетки укладываются в неё. Весь
+  // музыкальный темп 70–160 лежит на тринадцати процентах хода ручки
+  // КАЧАНИЕ, и без подписи в него не попасть — отсюда «получается только
+  // рейв». Ход ручки не тронут нарочно: он переопределил бы все пресеты.
+  const bpm = per>0 ? 240/per : 0;
+  const vtemp = bpm>=40 && bpm<=200;
   stroki.push(
-    `  ПЕРИОД  ${shkala(per?clamp(Math.log2(per/.02)/9,0,1):0,shk)} ${per?per.toFixed(2)+'с':'—'}`);
+    `  ПЕРИОД  ${shkala(per?clamp(Math.log2(per/.02)/9,0,1):0,shk)} ${per?per.toFixed(2)+'с':'—'}`+
+    (bpm ? `   <span class="${vtemp?'hot':'dim2'}">${Math.round(bpm)} уд/мин</span>` : ''));
   stroki.push(
     `  ВЫСОТА  ${shkala(pit?clamp(Math.log2(pit/20)/8,0,1):0,shk)} ${pit?Math.round(pit)+'Гц':'—'}`);
   stroki.push(
