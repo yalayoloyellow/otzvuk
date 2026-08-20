@@ -78,7 +78,11 @@ const KNOBS=[
 
   // ---- ПОСТ: дальний угол ----
   {k:'zhat',   m:['BracketLeft','BracketRight'], imya:'ЖАТЬ',   zona:'post'},
-  {k:'rel',    m:['Minus','Equal'],               imya:'RELEASE', zona:'post'},
+  // DRIVE опускает потолок ограничителя — единственный способ загнать в него
+  // сигнал, когда уровнем владеет петля громкости. RELEASE вторым слоем:
+  // им настраивают характер, а не играют.
+  {k:'drive',  m:['Minus','Equal'],               imya:'DRIVE',   zona:'post'},
+  {k:'rel',    m:['Minus','Equal'],               imya:'RELEASE', zona:'post', shift:1},
 ];
 
 // ---- ТУМБЛЕРЫ --------------------------------------------------------------
@@ -302,7 +306,7 @@ function peresoberi(novoe){
 // макро — то, что на панели; p — то, что уходит в движок
 const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
-             zhat:0, rel:.45, ist:0, ton:.35, temp:.5,
+             zhat:0, rel:.45, drive:0, ist:0, ton:.35, temp:.5,
              trakt:.3, naruzhu:0, kuda:0};
 const switches={gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0,
                 mix:0, povtor:0};
