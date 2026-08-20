@@ -82,6 +82,9 @@ const KNOBS=[
   // потом стена. Потолок при этом стоит намертво, и пик не вылезет ни при
   // каком положении.
   {k:'drive',  m:['Minus','Equal'],               imya:'DRIVE',   zona:'post'},
+  // MASTER только ОСЛАБЛЯЕТ и стоит после ограничителя: громкость без
+  // характера. Больше единицы ему нельзя — иначе он пробил бы потолок.
+  {k:'master', m:['Minus','Equal'],               imya:'MASTER',  zona:'post', shift:1},
 ];
 
 // ---- ТУМБЛЕРЫ --------------------------------------------------------------
@@ -305,7 +308,7 @@ function peresoberi(novoe){
 // макро — то, что на панели; p — то, что уходит в движок
 const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
-             zhat:0, drive:.15, ist:0, ton:.35, temp:.5,
+             zhat:0, drive:.15, master:1, ist:0, ton:.35, temp:.5,
              trakt:.3, naruzhu:0, kuda:0};
 const switches={gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0,
                 mix:0, povtor:0};
