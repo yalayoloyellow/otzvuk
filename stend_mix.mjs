@@ -19,7 +19,7 @@ function progon(mix, novoe){
   c.port.onmessage({data:{t:'seed', v:1626943591, p:{...BAZA, mix}}});
   const L = new Float32Array(N), R = new Float32Array(N);
   const og = []; let posl = 0, razr = 0, razrFon = 0;
-  const blokov = Math.round(SR * 4 / N), smena = Math.round(SR * 1.5 / N);
+  const blokov = Math.round(SR * 9 / N), smena = Math.round(SR * 2.5 / N);
   for (let b = 0; b < blokov; b++){
     if (b === smena) c.port.onmessage({data:{t:'seed', v:novoe.seed, p:{...BAZA, ...novoe.p, mix}}});
     c.process([[]], [[L, R]]);
@@ -61,5 +61,10 @@ function razbor(imya, r){
     ' срывов', r.sryvy);
 }
 const drugoy = {seed: 2861234501, p:{sway:.78, tone:.72, range:.35, depth:.5}};
-razbor('без микширования', progon(0, drugoy));
-razbor('с микшированием',  progon(1, drugoy));
+const taZhe  = {seed: 1626943591, p:{sway:.78, tone:.72, range:.35, depth:.5}};
+console.log('ДРУГАЯ СБОРКА — перевод между двумя приборами');
+razbor('  без микширования', progon(0, drugoy));
+razbor('  с микшированием',  progon(1, drugoy));
+console.log('ТА ЖЕ СБОРКА — второй прибор не нужен, едут движки');
+razbor('  без микширования', progon(0, taZhe));
+razbor('  с микшированием',  progon(1, taZhe));
