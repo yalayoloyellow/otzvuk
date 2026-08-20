@@ -34,7 +34,14 @@
     /* Разрядки нет: она растянула бы знакоместо, и картина с текстом
        перестали бы стоять в одной сетке. */
     letter-spacing:0;padding:32px 48px;-webkit-font-smoothing:antialiased;
-    text-shadow:0 0 6px rgba(160,255,120,.22)}
+    text-shadow:0 0 6px rgba(160,255,120,.22);
+    /* У картины пропорция постоянная, значит заполнить окно целиком она
+       не может и остаток неизбежен. Пусть он ложится сверху и снизу
+       поровну — тогда это поле, а не пустота под композицией. `safe`
+       снимает центрирование, когда содержимое не влезает: иначе верх
+       уехал бы за край и стал недоступен. */
+    min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr);
+    align-content:safe center}
   pre{white-space:pre;font:inherit}
   /* ДВЕ КОМПОНОВКИ, и это не подгонка под экран, а два вида прибора.
 
@@ -50,11 +57,18 @@
   #screen{width:100%;display:grid;gap:16px 32px;
     grid-template-columns:1fr;
     grid-template-areas:"ris" "panel" "line"}
-  @media (min-aspect-ratio:1/1){
+  /* Лёжа встаём не при любом перевесе ширины, а при заметном. У картины
+     своя постоянная пропорция — вдвое шире, чем выше, — и в почти
+     квадратном окне она стоя выходит КРУПНЕЕ: там ей достаётся вся ширина,
+     а не то, что осталось от панели. */
+  @media (min-aspect-ratio:5/4){
     #screen{grid-template-columns:auto 1fr;
             grid-template-areas:"panel ris" "line line"}
   }
-  #ris{grid-area:ris;min-width:0;overflow:hidden}
+  /* Картина стоит в своей клетке по центру: пропорция у неё постоянная, и
+     если клетка шире или выше — остаётся поле, а не растяжка. */
+  #ris{grid-area:ris;min-width:0;overflow:hidden;
+       display:flex;align-items:center;justify-content:center}
   #panel{grid-area:panel}
   #line{grid-area:line}
   #canvas{white-space:pre}
