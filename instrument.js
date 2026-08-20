@@ -524,7 +524,9 @@ let chasT = 0, chasZ = 0, poteryano = 0;
 function zapas(){
   if (!ctx) return 0;
   const t = performance.now() / 1000, z = ctx.currentTime;
-  if (chasT){
+  // Первые две секунды не в счёт: там идёт разогрев и компиляция, и потери
+  // на них неизбежны у кого угодно. Считать их значит врать про запас.
+  if (chasT && z > 2){
     const nado = t - chasT, bylo = z - chasZ;
     // Отставание больше пяти миллисекунд за кадр — это выброшенный буфер,
     // а не дрожание таймера.
