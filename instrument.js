@@ -56,10 +56,6 @@ const KNOBS=[
   {k:'spread', m:['KeyD','KeyF'], imya:'РАЗВОД'},
   {k:'drift',  m:['KeyG','KeyH'], imya:'ГУЛЯНИЕ'},
   {k:'gryzn',  m:['KeyJ','KeyK'], imya:'ГЕЙТ'},
-  // БАС — ударный контур, двойное Т в обратной связи транзистора. Ручка ведёт
-  // регенерацию, то есть добротность: на нуле контура в схеме нет вовсе и звук
-  // прежний. Стоит рядом с ГЕЙТОМ, потому что бьётся от его же акцентов.
-  {k:'bas',    m:['KeyJ','KeyK'], imya:'БАС', shift:1},
 
   // ---- ГОЛОС: правый край ----
   // ГОЛОС — насколько источник влияет на СХЕМУ. Это не громкость.
@@ -307,7 +303,7 @@ function peresoberi(novoe){
 const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
              zhat:0, master:.5, ist:0, ton:.35, temp:.5,
-             trakt:.3, naruzhu:0, kuda:0, bas:0};
+             trakt:.3, naruzhu:0, kuda:0};
 const switches={gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0,
                 mix:0, povtor:0};
 
