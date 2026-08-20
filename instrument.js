@@ -43,7 +43,7 @@ const KNOBS=[
   {k:'range',m:['KeyC','KeyV'], imya:'ДИАПАЗОН'},
   // Ритм-секция: насколько глубоко счётчик вмешивается в прибор. Такт идёт
   // от того же медленного генератора, что качает прибор.
-  {k:'gryzn',m:['KeyG','KeyH'], imya:'ДОЛБЁЖ'},
+  {k:'gryzn',m:['KeyG','KeyH'], imya:'ГЕЙТ'},
 ];
 
 // ---- ТУМБЛЕРЫ --------------------------------------------------------------
@@ -217,8 +217,8 @@ function razvedi(){
 
 // макро — то, что на панели; p — то, что уходит в движок
 const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
-             hit:.35, spread:.15, drift:0, range:.5, gryzn:0, risunok:0};
-const switches={gen2:1, gen3:0, link:0, dirt:0, risunok:0};
+             hit:.35, spread:.15, drift:0, range:.5, gryzn:0};
+const switches={gen2:1, gen3:0, link:0, dirt:0};
 
 const p={};
 

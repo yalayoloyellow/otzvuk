@@ -89,6 +89,10 @@ class Build {
     const m = (a, b) => a + r() * (b - a);
     this.r = r;
 
+    // Диодная матрица рисунка ВПАЯНА в этот экземпляр — как поворот и свинг.
+    // Переключателем она была зря: рисунок не настройка, а монтаж. Другой
+    // рисунок — другой прибор, то есть Tab.
+    this.risunok = Math.floor(m(0, 7.999));
     this.sbivka = m(0, .95);           // поворот рисунка — впаян, не ручка
     this.gruv   = m(.05, .55);         // насколько ленив счётчик на нечётных
     this.EMF   = m(8.2, 9.4);          // свежая крона, В
@@ -613,8 +617,7 @@ class Device {
     // равен ОДНОМУ качанию: шестнадцать шагов укладываются внутрь качели.
     // Когда такт был вчетверо длиннее, качели давали свой всплеск на каждой
     // четверти и перебивали рисунок — читалась не сетка, а они.
-    const ritm = this.setka.step(this.swing.period,
-                                 Math.round(clamp(p.risunok, 0, 1) * 7),
+    const ritm = this.setka.step(this.swing.period, this.sb.risunok,
                                  this.sb.sbivka, this.sb.gruv);
     // Сетка НЕ выключает прибор — это была бы драм-машина, где в паузах
     // тишина. Ключи коммутируют номиналы, от которых меняется ИСКАЖЕНИЕ:
@@ -813,8 +816,8 @@ class Chaos extends AudioWorkletProcessor {
     this.p = { sway:.55, tone:.5, depth:.75,
                pulse:.2, hit:.35, spread:.15, drift:0,
                gen2:1, gen3:0, link:0, dirt:0, range:.5,
-               // ритм-секция: глубина вмешательства и выбор рисунка
-               gryzn:0, risunok:0 };
+               // ритм-секция: одна ручка — насколько глубоко ключ вмешивается
+               gryzn:0 };
     this.pr = new Device(1);
     this.svod = new Decim();
     this.kont = new Contacts();
