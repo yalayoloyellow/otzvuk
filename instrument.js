@@ -59,10 +59,10 @@ const SWITCHES=[
   {k:'link',    kl:'KeyB', imya:'СВЯЗЬ',    podpis:['нет','замкнута']},
   {k:'dirt',    kl:'KeyM', imya:'ГРЯЗЬ',    podpis:['развязка','снята']},
   // Микрофон слышит динамик, круг замыкает комната. Три положения: без
-  // петли, лёгкая окраска помещением, самовозбуждение. Клавиша общая с
-  // ручкой ИМПУЛЬС, поэтому тумблер живёт на shift.
-  {k:'petlya',  kl:'KeyU', imya:'ПЕТЛЯ',    podpis:['нет','комната','вой'],
-   pol:3, mikro:1, shift:1},
+  // петли, лёгкая окраска помещением, самовозбуждение. Все двадцать шесть
+  // букв заняты, поэтому клавиша своя — крайняя справа, ни с чем не делится.
+  {k:'petlya',  kl:'Slash', imya:'ПЕТЛЯ',   podpis:['нет','комната','вой'],
+   pol:3, mikro:1},
 ];
 
 
@@ -649,8 +649,9 @@ function ruchki(){
     // У многопозиционного показываем подпись положения: голая цифра читалась
     // как «включено».
     const vid = pol>2 ? (t.podpis[z]||String(z)) : (z?'▮':'·');
+    const kl = t.kl==='Slash' ? '/' : t.kl.replace('Key','').toLowerCase();
     return `<span class="${z?'hot':'dim'}">${t.imya} ${vid}</span>`+
-           ` <span class="dim2">${t.kl.replace('Key','').toLowerCase()}</span>`;
+           ` <span class="dim2">${kl}</span>`;
   }).join('  '));
   stroki.push(`  <span class="dim2">СБОРКА ${sb.imya||'····'} ${seed>>>0}`+
               (sb.dinamik?` · ${Math.round(sb.dinamik)}Гц · ${(sb.emkost*1e9).toFixed(1)}нФ`:'')+
@@ -678,7 +679,7 @@ function kadr_(){
     $('#knobs').innerHTML=ruchki();
     $('#line').innerHTML=
       `  <span class="dim2">tab пересобрать · ⌘ втрое · ⇧ вдесятеро · пробел толчок · `+
-      `1–8 площадки · n запись · p пресет · o листать</span>`+
+      `1–8 площадки · / петля · n запись · p пресет · o листать</span>`+
       (vest && performance.now()<vestdo ? `   <span class="hot">${vest}</span>`
        : presets.length ? `   <span class="dim2">${presets.length} пресетов</span>` : '');
   }
