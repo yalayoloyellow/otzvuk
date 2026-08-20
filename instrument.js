@@ -620,14 +620,14 @@ const GRANI=new Float32Array(5);
 const MODUL=16, RAMKA_V=2*MODUL;
 // ПРОПОРЦИЯ КАРТИНЫ: вдвое шире, чем выше. Знакоместо 6.6 на 10 пикселей,
 // значит строк должно быть 6.6/(10·2) от числа знаков в строке.
-const OVAL=2, STROK_NA_ZNAK=6.6/(10*OVAL);
+const OVAL=2;
 // РАЗМЕР ФИГУРЫ ВНУТРИ ПОЛЯ. Тело занимает две трети полуразмера, щупальце
 // бьёт наружу не длиннее трети, и до рамки остаётся пустая полоса. Раньше
 // тело шло на 0.82, а щупальце на 0.46, и вместе они выходили за поле —
 // всё, что за краем, просто не записывалось, отчего у фигуры появлялся
 // ровный обрубленный край. Здесь это невозможно по построению: даже сумма
 // предельных значений остаётся внутри.
-const TELO=.38, SHIRE=1.55, SHIP=.36, POLYA=3, DOSTAT=.84;
+const TELO=.46, SHIRE=1.5, SHIP=.42, POLYA=3, DOSTAT=.86;
 // Сжатие тела к центру; наклон первого отрезка конечности от радиуса;
 // излом в суставе, радиан; сколько суставов на конечность; сколько
 // конечностей всего — их число задано, а не выведено из порога, иначе на
@@ -701,21 +701,23 @@ function pomer(){
   // Здесь стояло «картина принимает форму окна», и это было ошибкой в обе
   // стороны: в широком коротком окне фигура расплющивалась в ленту, в
   // высоком узком вытягивалась в вертикальный овал.
-  const str=parseFloat(getComputedStyle(ris).lineHeight)||10;
+  const str=parseFloat(getComputedStyle(ris).lineHeight)||8;
   const zanyato=($('#line').offsetHeight||MODUL)+MODUL
     + (lezha ? 0 : ($('#knobs').offsetHeight||24*MODUL)+MODUL);
-  const shirDost=(ris.parentElement.clientWidth||innerWidth-96);
+  const shirDost=(ris.parentElement.clientWidth||innerWidth-16*shs);
   const vysDost=(innerHeight||800)-2*RAMKA_V-zanyato;
+  const poShir=clamp(Math.floor(shirDost/shs),30,420);
+  const poVys=clamp(Math.floor(vysDost/str),10,200);
+  // Сколько строк картины приходится на знакоместо при нужной пропорции.
+  const naZnak=shs/(OVAL*str);
   // Вписываем прямоугольник постоянной пропорции в то, что осталось: по
-  // ширине или по высоте — что первым упрётся.
-  const poShir=clamp(Math.floor(shirDost/shs)-1,30,420);
-  const poVys=clamp(Math.floor(vysDost/str),10,140);
-  let nov, novv;
-  if(Math.round(poShir*STROK_NA_ZNAK) <= poVys){
-    nov=poShir; novv=Math.max(10, Math.round(poShir*STROK_NA_ZNAK));
-  } else {
-    novv=poVys; nov=clamp(Math.round(poVys/STROK_NA_ZNAK),30,420);
-  }
+  // ширине или по высоте — что первым упрётся. ЧИСЛО СТРОК ЧЁТНОЕ: строка
+  // картины — половина модуля, и только при чётном их числе низ картины
+  // садится на ту же линию, что и строки панели.
+  let novv=Math.min(poVys, Math.round(poShir*naZnak));
+  novv -= novv & 1;
+  novv = Math.max(10, novv);
+  const nov=clamp(Math.round(novv/naZnak),30,poShir);
   // Лёжа панель встаёт ОДНОЙ колонкой: она узкая и читается сверху вниз, как
   // ряд органов на боковой стенке. Стоя колонок столько, сколько влезает.
   kolonok = lezha ? 1 : nov>=96 ? 3 : nov>=66 ? 2 : 1;
@@ -1148,19 +1150,21 @@ function ruchki(){
   const bpm = per>0 ? 240/per : 0;
   const vtemp = bpm>=40 && bpm<=200;
   stroki.push(
-    `BPM    ${shkala(bpm?clamp(Math.log2(bpm/8)/8,0,1):0,shk)} `+
+    `<span class="dim">BPM    </span><span class="fg">`+
+    `${shkala(bpm?clamp(Math.log2(bpm/8)/8,0,1):0,shk)}</span> `+
     (bpm ? `<span class="${vtemp?'hot':'dim2'}">${Math.round(bpm)}</span>` : '—')+
-    `   ${rezhim}`);
+    `   <span class="dim">${rezhim}</span>`);
   // DROPOUT. Строка появляется только если звук правда рвался — иначе её нет.
   const pot = zapas();
+  // Строка была вшестеро длиннее всех прочих и одна задавала ширину панели.
   if (pot > 20) stroki.push(
-    `<span class="post">DROPOUT потеряно ${Math.round(pot)} мс звука — `+
-    `воркл не укладывается в срок</span>`);
+    `<span class="postdim">DROPOUT</span> <span class="post">`+
+    `${Math.round(pot)} мс — воркл не успевает</span>`);
   // INPUT. Без этой строки проверить микрофон нельзя вовсе: не слышно,
   // дошёл ли сигнал до ядра, или разрешение не дали, или он просто молчит.
   const mk=clamp(report.mik||0,0,1), vz=report.vozvrat||0;
   stroki.push(
-    `<span class="golos">INPUT  ${shkala(mk,shk)} ` +
+    `<span class="golosdim">INPUT  </span><span class="golos">${shkala(mk,shk)} ` +
     (mk>.002 ? 'идёт' : mikrofon ? 'тихо'
       : knobs.ist>.5 ? 'говорилка молчит' : 'микрофон не включён') +
     // ROOM — сколько из вышедшего комната вернула в микрофон. По нему ядро
@@ -1171,16 +1175,19 @@ function ruchki(){
   if(ris.length){
     const shag=report.shag|0;
     const s=ris.map((v,i)=> i===shag ? (v?'█':'▒') : (v?'▮':'·')).join('');
-    stroki.push(`SEQ    ${s}`);
+    stroki.push(`<span class="dim">SEQ    </span><span class="fg">${s}</span>`);
   }
   stroki.push('');
 
   // ЗОНЫ. Не оформление, а устройство прибора: схема, входное гнездо и слой
   // поверх. Разделены пустой строкой и цветом, вкладок нет — всё на виду.
+  // У каждой зоны три ступени: имя тише значения, значение тише активного.
+  // Прежде вся ячейка красилась одним цветом, и панель читалась ровным
+  // пятном — а глазу нужно, чтобы шкала выступала из подписи.
   const ZONY = [
-    {z:'shema', yark:'hot',      obych:'fg'},
-    {z:'golos', yark:'goloshot', obych:'golos'},
-    {z:'post',  yark:'posthot',  obych:'post'},
+    {z:'shema', imya:'dim',      obych:'fg',    yark:'hot'},
+    {z:'golos', imya:'golosdim', obych:'golos', yark:'goloshot'},
+    {z:'post',  imya:'postdim',  obych:'post',  yark:'posthot'},
   ];
   // Ручки: имя, шкала, клавиши. Ширина колонки и число колонок — от экрана.
   const shr = uzko ? 10 : 14;
@@ -1209,7 +1216,8 @@ function ruchki(){
     const predel = r.stupeni ? r.stupeni.reduce((a,b)=>a.length>b.length?a:b).length
                  : r.konci   ? r.konci.join('+').length : 0;
     const hvost = predel ? ' '.repeat(predel - (st.length - 1)) : '';
-    return {t:`${imya}${shkala(v,shr)}${st} ${r.podpis}${hvost}`,
+    return {imya, znach:`${shkala(v,shr)}${st}`, klav:r.podpis, hvost,
+            t:`${imya}${shkala(v,shr)}${st} ${r.podpis}${hvost}`,
             svoy:r===poslednyaya&&vspyshka>0};
   };
   const ryady=[];
@@ -1230,8 +1238,13 @@ function ruchki(){
       if(r.zn!==zn) continue;
       stroki.push(r.yach.map((c,i)=>{
         // Последнюю в ряду не добиваем: хвост пробелов ничего не держит.
-        const t = i===r.yach.length-1 ? c.t : (c.t+'              ').slice(0,shirina[i]);
-        return `<span class="${c.svoy?zn.yark:zn.obych}">${t}</span>`;
+        const dob = i===r.yach.length-1 ? ''
+                  : ' '.repeat(Math.max(0, shirina[i]-c.t.length));
+        // Тронутая ручка светится целиком: она сейчас главная на панели.
+        if(c.svoy) return `<span class="${zn.yark}">${c.imya}${c.znach} ${c.klav}</span>${c.hvost}${dob}`;
+        return `<span class="${zn.imya}">${c.imya}</span>`+
+               `<span class="${zn.obych}">${c.znach}</span>`+
+               ` <span class="dim2">${c.klav}</span>${c.hvost}${dob}`;
       }).join('  '));
     }
     const tm = SWITCHES.filter(t=>(t.zona||'shema')===zn.z);
@@ -1243,7 +1256,9 @@ function ruchki(){
       // переименовать положение, и вид строки менялся сам собой.
       const vid = pol>2 ? (t.podpis[z]||String(z)) : (z?'▮':'·');
       const kl = IMYAKL[t.kl] || t.kl.replace('Key','').toLowerCase();
-      return `<span class="${z?zn.yark:zn.obych}">${t.imya} ${vid}</span>`+
+      // Замкнутый тумблер стоит на ступени значения, разомкнутый — на
+      // ступени имени: разница видна раньше, чем прочтёшь подпись.
+      return `<span class="${z?zn.obych:zn.imya}">${t.imya} ${vid}</span>`+
              ` <span class="dim2">${kl}</span>`;
     }).join('  '));
     stroki.push('');
@@ -1259,9 +1274,9 @@ function ruchki(){
     : '';
   // Строка текста показывается всегда: без неё непонятно, что скажется.
   stroki.push(stroka.aktivna
-    ? `<span class="goloshot">TEXT   ${stroka.tekst}▏</span>`+
+    ? `<span class="golosdim">TEXT   </span><span class="goloshot">${stroka.tekst}▏</span>`+
       `  <span class="dim2">enter сказать · esc отменить</span>`
-    : `<span class="golos">TEXT   ${stroka.tekst||'—'}</span>`+
+    : `<span class="golosdim">TEXT   </span><span class="golos">${stroka.tekst||'—'}</span>`+
       `  <span class="dim2">enter — ввести</span>`);
   stroki.push(`<span class="dim2">BUILD  ${sb.imya||'····'} ${(sb.semya!==undefined?sb.semya:seed)>>>0}`+
               (sb.dinamik?` · ${Math.round(sb.dinamik)}Гц · ${(sb.emkost*1e9).toFixed(1)}нФ`:'')+
