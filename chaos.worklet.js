@@ -1855,6 +1855,14 @@ class Chaos extends AudioWorkletProcessor {
     this.pik = 0; this.report = 0; this.okno = 0; this.sryvy = 0;
     this.osc = new Float32Array(256); this.oscDo = new Float32Array(256);
     this.oscG = new Float32Array(256);
+    // Что делает ПОСТ и что делает ГОЛОС — по отсчётам, а не догадкой с
+    // картины. Панель прежде выводила работу поста из разницы двух следов, и
+    // это было неверно в самой основе: компрессор действует УРОВНЕМ, а следы
+    // нормируются каждый по себе, и уровень в них сокращается. Компрессор
+    // выходил невидимым, а красным светилось расхождение накопленных полей —
+    // то есть шум рисования.
+    this.oscP = new Float32Array(256);   // мгновенное усиление поста
+    this.oscX = new Float32Array(256);   // насколько голос ведёт схему
     this.osci = 0; this.oscsh = 0;
     this.sled = new Float32Array(200); this.sli = 0; this.prore = 0;
 
@@ -2129,7 +2137,14 @@ class Chaos extends AudioWorkletProcessor {
         // Считается по мгновенным множителям цепи, а не вторым прогоном:
         // компрессор и ограничитель на каждом отсчёте просто множители.
         this.oscG[this.osci] = gDo * this.zhmi.effekt * this.p.master
-                             * (.5 + this.p.drive * 7.5) * this.predel.g; }
+                             * (.5 + this.p.drive * 7.5) * this.predel.g;
+        // ТОЛЬКО ДИНАМИЧЕСКИЕ множители: сжатие и ограничение. DRIVE и
+        // MASTER сюда не входят — они постоянны, а постоянное усиление это
+        // громкость, а не изменение звука.
+        this.oscP[this.osci] = this.zhmi.effekt * this.predel.g;
+        // Голос ведёт схему через накал или шину: его огибающая, умноженная
+        // на глубину. Слышен он при этом или нет — отдельный вопрос.
+        this.oscX[this.osci] = (this.golos.ogib || 0) * (this.p.golos || 0); }
       if (++this.prore >= SR / 100){ this.prore = 0;
         this.sled[this.sli] = this.pr.swing.u;
         this.sli = (this.sli + 1) % 200; }
@@ -2168,7 +2183,8 @@ class Chaos extends AudioWorkletProcessor {
         shag: this.pr.setka.shag, udar: this.pr.setka.udar,
         risunok: this.pr.setka.risunok.slice(),
         osc: this.osc.slice(), oscDo: this.oscDo.slice(),
-        oscG: this.oscG.slice(), sled: l,
+        oscG: this.oscG.slice(), oscP: this.oscP.slice(),
+        oscX: this.oscX.slice(), sled: l,
         pl: Array.from(this.pl), utechka: this.utechka
       });
       this.pik *= .6; this.mikPik *= .5; this.predel.rabota = 1;

@@ -567,6 +567,12 @@ function zapas(){
     // Отставание больше пяти миллисекунд за кадр — это выброшенный буфер,
     // а не дрожание таймера.
     if (nado - bylo > .005) poteryano += (nado - bylo) * 1000;
+    // ПОТЕРИ ЗАБЫВАЮТСЯ. Счётчик копил их с запуска и не убывал никогда:
+    // одна заминка на старте — и строка о срывах висела до перезагрузки,
+    // хотя звук давно идёт ровно. Показывать надо СВЕЖИЕ потери, иначе
+    // показание перестаёт что-либо значить. Половина уходит секунд за
+    // двадцать.
+    poteryano *= Math.pow(.5, nado / 20);
   }
   chasT = t; chasZ = z;
   return poteryano;
@@ -583,14 +589,24 @@ function zapas(){
 // орнамент, который дышит вместе со звуком.
 // Размер поля считается по окну: сколько знакомест влезает, столько и
 // рисуем. Фиксированная сетка на узком экране уезжала за край.
-const PHOSPHOR=' ·∙:∴*≋≡▒▓█';
-// Яркость знакоместа падает на десяток ступеней фосфора через степень 0.55.
-// Ступеней десять, а знакомест в картине десятки тысяч на каждый отчёт —
-// таблица на тысячу делений даёт ту же ступень, что и степень, и стоит
-// одно обращение вместо логарифма с экспонентой.
+// ФОСФОР. Ни одного сплошного блока и ни одной горизонтальной черты: блоки
+// читались квадратиками, а черты складывались в ровные линии поперёк
+// фигуры — и то и другое ломало щупальцевидность. Яркость несёт не размер
+// знака, а свечение слоя; знак остаётся мелким и отвечает только за фактуру.
+const PHOSPHOR=' ·∙:∴*';
+const KOD=[...PHOSPHOR].map(c=>c.charCodeAt(0));
+// Ступень свечения растёт вместе со знаком: тихое — тёмная точка без
+// ореола, громкое — яркая звёздочка с ореолом. Границы сдвинуты вниз:
+// с прежними в верхнюю ступень попадало одно знакоместо из трёх тысяч, и
+// свечения не было видно вовсе.
+const STUPEN=[0,0,1,1,2,2];
+const CVETOV=3, STUPENEY=3, SLOEV=CVETOV*STUPENEY;
+// Яркость знакоместа падает на ступени фосфора через степень 0.55. Знакомест
+// в картине десятки тысяч на каждый отчёт — таблица на тысячу делений даёт
+// ту же ступень и стоит одно обращение вместо логарифма с экспонентой.
 const SVET=new Uint8Array(1024);
 for(let i=0;i<1024;i++)
-  SVET[i]=clamp(Math.round(Math.pow(i/1023,.55)*(PHOSPHOR.length-1)),
+  SVET[i]=clamp(Math.round(Math.pow(i/1023,.38)*(PHOSPHOR.length-1)),
                 0,PHOSPHOR.length-1);
 // СЕТКА. Те же числа, что и в разметке: модуль — строка, рамка — два
 // модуля сверху и снизу, три слева и справа. Держать их в одном месте
@@ -599,21 +615,29 @@ const MODUL=16, RAMKA_V=2*MODUL;
 // ПРОПОРЦИЯ КАРТИНЫ: вдвое шире, чем выше. Знакоместо 6.6 на 10 пикселей,
 // значит строк должно быть 6.6/(10·2) от числа знаков в строке.
 const OVAL=2, STROK_NA_ZNAK=6.6/(10*OVAL);
-// Пороги окраски: войти и выйти. Прежде порог был один на оба направления
-// (.05 и .14), и на нём состояние дребезжало.
-const VHOD2=.065, VYHOD2=.038, VHOD1=.165, VYHOD1=.115;
-let Sh=112, V=40, pole=new Float32Array(Sh*V), shipy=new Float32Array(Sh*V), kolonok=3;
-// Рабочие полосы на одну строку картины: яркость, разница, разница
-// сглаженная и чей это вклад. Заведены заранее — в кадре ничего не выделяем.
-let yark=new Float32Array(Sh), raz=new Float32Array(Sh),
-    razS=new Float32Array(Sh), chey=new Uint8Array(Sh);
-// Второй след — то, что отдал ПРИБОР, до поста. Разница между ними и есть
-// работа поста, и она рисуется красным.
-let poleD=new Float32Array(Sh*V), shipyD=new Float32Array(Sh*V);
-// Третий след — то, что звучало бы БЕЗ голоса. Разница с тем, что слышно,
-// и есть его вклад, и она рисуется синим.
-let poleG=new Float32Array(Sh*V), shipyG=new Float32Array(Sh*V);
-let ugol=0;
+let Sh=112, V=40, kolonok=3, ugol=0;
+// ОДНА ФИГУРА, ТРИ ПОЛЯ. Прежде рисовались ТРИ фигуры — слышимое, до поста и
+// без голоса, — а потом сравнивались их поля. Отсюда шло всё уродство: у
+// каждой фигуры свои щупальца, и они лезли поверх чужих ровными лучами; а
+// цвет получался сравнением двух независимо накопленных полей, то есть
+// дрожащей величиной, которую приходилось загонять порогом в кляксы.
+//
+// Рисуется ОДНА фигура — та, что слышно. Цвет берётся у КАЖДОЙ ЕЁ ТОЧКИ по
+// происхождению: насколько обработка изменила форму волны именно здесь и
+// сколько здесь голоса. Соседние отсчёты похожи, поэтому цвет ложится
+// связными участками сам собой — сглаживать нечего, и подробность цела.
+let POLE=[], SHIPY=[];
+// Слои разметки: свой на каждый цвет и ступень. В слое чистый текст.
+let SLOI=[], SHABLON=null, PRE=[], BYLO=new Uint8Array(SLOEV);
+// Дрожь от пальца на площадке и цвет каждого отсчёта — заводятся один раз.
+const TOCHEK=256;
+const MUTY=new Float32Array(TOCHEK), CVET=new Uint8Array(TOCHEK);
+// Медленное среднее усиления поста — та точка отсчёта, от которой считается
+// его работа. Ведётся между кадрами, потому что дыхание сжатия длиннее
+// одного окна осциллографа.
+let postSred=1;
+// Гистограмма яркости на 64 корзины: по ней берётся верхушка распределения.
+const GIST=new Int32Array(64);
 function pomer(){
   const ris=$('#canvas');
   if(!ris) return;
@@ -653,14 +677,32 @@ function pomer(){
   // Лёжа панель встаёт ОДНОЙ колонкой: она узкая и читается сверху вниз, как
   // ряд органов на боковой стенке. Стоя колонок столько, сколько влезает.
   kolonok = lezha ? 1 : nov>=96 ? 3 : nov>=66 ? 2 : 1;
-  if(nov!==Sh||novv!==V){ Sh=nov; V=novv;
-    // Оба слоя пересоздаются вместе: если пересоздать только один, второй
-    // остаётся прежней длины и на краях отдаёт undefined.
-    pole=new Float32Array(Sh*V); shipy=new Float32Array(Sh*V);
-    poleD=new Float32Array(Sh*V); shipyD=new Float32Array(Sh*V);
-    poleG=new Float32Array(Sh*V); shipyG=new Float32Array(Sh*V);
-    yark=new Float32Array(Sh); raz=new Float32Array(Sh);
-    razS=new Float32Array(Sh); chey=new Uint8Array(Sh); }
+  // Первый раз собираем в любом случае: размер может совпасть с исходным,
+  // а полей и слоёв ещё нет вовсе.
+  if(nov!==Sh||novv!==V||!SLOI.length){ Sh=nov; V=novv; peresoberiSloi(); }
+}
+
+// Поля и слои пересоздаются ВМЕСТЕ: пересоздать часть значит оставить
+// остальные прежней длины и получить на краях мусор.
+function peresoberiSloi(){
+  const ris=$('#canvas'); if(!ris) return;
+  POLE=[]; SHIPY=[];
+  for(let c=0;c<CVETOV;c++){
+    POLE.push(new Float32Array(Sh*V)); SHIPY.push(new Float32Array(Sh*V));
+  }
+  // В шаблоне пробелы и переводы строк. Каждый кадр слой не заполняется
+  // заново по знаку, а копируется целиком — это одно движение памяти.
+  const dlina=(Sh+1)*V;
+  SHABLON=new Uint16Array(dlina); SHABLON.fill(32);
+  for(let y=0;y<V;y++) SHABLON[y*(Sh+1)+Sh]=10;
+  ris.textContent='';
+  SLOI=[]; PRE=[]; BYLO=new Uint8Array(SLOEV);
+  for(let c=0;c<CVETOV;c++) for(let t=0;t<STUPENEY;t++){
+    SLOI.push(new Uint16Array(dlina));
+    const e=document.createElement('pre');
+    e.className='sl c'+c+' t'+t;
+    ris.appendChild(e); PRE.push(e);
+  }
 }
 addEventListener('resize',pomer);
 
@@ -686,23 +728,24 @@ function podgotov(o){
   return {sgl,inte,sri,mxo,mxi,n};
 }
 
-// Один проход по траектории. Геометрия приходит снаружи одна и та же для
-// обоих следов — иначе их разница означала бы не работу поста, а разный
-// поворот.
-function risuy(g, ks, ki, pole, shipy, geo, muty){
+// Один проход по траектории — она теперь одна. Каждый мазок кладётся в поле
+// СВОЕГО цвета, и цвет берётся у отсчёта, а не у поля: сравнивать поля
+// значило сравнивать две накопленные кляксы.
+function risuy(g, ks, ki, geo){
   const {sgl,inte,sri,n}=g;
   const {cx,cy,ko,si,tvist,rastx,rasty}=geo;
-  const mazok=(x0,y0,x1,y1,sila)=>{
-    const dx=Math.abs(x1-x0), dy=Math.abs(y1-y0);
-    const shagov=Math.max(dx,dy);
+  const mazok=(x0,y0,x1,y1,sila,c)=>{
+    const p=POLE[c];
+    const dx=x1>x0?x1-x0:x0-x1, dy=y1>y0?y1-y0:y0-y1;
+    const shagov=dx>dy?dx:dy;
     if(shagov>Sh) return;
     const yar=sila/Math.max(1,Math.pow(shagov,.45));
     for(let q=0;q<=shagov;q++){
       const t=shagov?q/shagov:0;
       const x=Math.round(x0+(x1-x0)*t), y=Math.round(y0+(y1-y0)*t);
-      if(x>=0&&x<Sh&&y>=0&&y<V) pole[y*Sh+x]+=yar;
+      if(x>=0&&x<Sh&&y>=0&&y<V) p[y*Sh+x]+=yar;
       const xm=Sh-1-x;                            // зеркало — орнамент
-      if(xm>=0&&xm<Sh&&y>=0&&y<V) pole[y*Sh+xm]+=yar*.4;
+      if(xm>=0&&xm<Sh&&y>=0&&y<V) p[y*Sh+xm]+=yar*.4;
     }
   };
   let px=null, py=null;
@@ -713,148 +756,181 @@ function risuy(g, ks, ki, pole, shipy, geo, muty){
     const t=tvist*rad*rad;
     const kt=Math.cos(t), st=Math.sin(t);
     const wx=qx*kt - qy*st, wy=qx*st + qy*kt;
-    const mut=muty[i];
+    const mut=MUTY[i];
     const x=Math.round(cx + (wx+mut)*cx*.82*rastx);
     const y=Math.round(cy - (wy+mut)*cy*.82*rasty);
+    const c=CVET[i];
     if(px!==null){
-      mazok(px,py,x,y,.8);
+      mazok(px,py,x,y,.8,c);
       // ЩУПАЛЬЦЕ выстреливает наружу там, где волна рвётся, и сходит на
       // остриё: яркость падает вдоль луча, а сам слой гаснет за пару кадров.
+      // Порог занижен: щупальца — главное в этой фигуре, и их должно быть
+      // много. Прежде их выдавал только самый резкий разрыв из двадцати.
       const dl=Math.hypot(x-px,y-py);
-      if(dl>Sh*.05){
+      if(dl>Sh*.024){
+        const sp=SHIPY[c];
         const dx=x-cx, dy=y-cy, r=Math.hypot(dx,dy)||1;
-        const dlin=Math.min(dl*1.9, Sh*.42);
+        const dlin=Math.min(dl*2.1, Sh*.46);
         const shagov=Math.round(dlin);
         for(let q=0;q<=shagov;q++){
           const tt=q/Math.max(1,shagov);
           const sx=Math.round(x+dx/r*dlin*tt), sy=Math.round(y+dy/r*dlin*tt);
           const yar=1.5*(1-tt)*(1-tt);            // сходит на остриё
-          if(sx>=0&&sx<Sh&&sy>=0&&sy<V) shipy[sy*Sh+sx]+=yar;
+          if(sx>=0&&sx<Sh&&sy>=0&&sy<V) sp[sy*Sh+sx]+=yar;
           const sxm=Sh-1-sx;
-          if(sxm>=0&&sxm<Sh&&sy>=0&&sy<V) shipy[sy*Sh+sxm]+=yar*.35;
+          if(sxm>=0&&sxm<Sh&&sy>=0&&sy<V) sp[sy*Sh+sxm]+=yar*.35;
         }
       }
     }
-    else if(x>=0&&x<Sh&&y>=0&&y<V) pole[y*Sh+x]+=.8;
+    else if(x>=0&&x<Sh&&y>=0&&y<V) POLE[c][y*Sh+x]+=.8;
     px=x; py=y;
   }
 }
 
-// КРАСНЫМ — РАБОТА ПОСТА. Рисуются два следа одной и той же геометрией: то,
-// что отдал прибор, и то, что слышно после компрессора, мастера и
-// ограничителя. Где они совпадают — обычный фосфор; где разошлись — красное.
+// Буфер знаков в строку. Через раскодировщик — одним нативным движением на
+// весь буфер. Сборка по восемь тысяч доводов за вызов оказалась в семьдесят
+// раз дороже: развернуть типизированный массив в список доводов само по
+// себе работа, и делается она девять раз за кадр.
+const RASKOD = typeof TextDecoder!=='undefined'
+  && new Uint16Array(new Uint8Array([65,0]).buffer)[0]===65   // порядок байт
+  ? new TextDecoder('utf-16le') : null;
+function vStroku(buf){
+  if(RASKOD) return RASKOD.decode(buf);
+  let s='';
+  for(let i=0;i<buf.length;i+=8192)
+    s += String.fromCharCode.apply(null, buf.subarray(i, Math.min(i+8192, buf.length)));
+  return s;
+}
+
+// СЛЕД ОСЦИЛЛОГРАФА. По горизонтали сигнал, по вертикали его интеграл —
+// настоящая квадратура, поэтому любая периодическая волна замыкается в
+// петлю. Фигура одна: та, что слышно.
 //
-// Каждый след меряется ПО СЕБЕ, а не общей мерой. Общая казалась честнее —
-// с ней было бы видно и изменение размаха, — но на деле она означала вот
-// что: МАСТЕР на 1.08 разводил две тонкие линии на несколько знакомест, и
-// краснела вся фигура при выключенной обработке. А громкость — не изменение
-// звука. С раздельной мерой красным идёт только то, что меняет ФОРМУ волны:
-// сжатие, ограничение, срез. Мастер не красит ничего, и это правильно —
-// уровень видно по работе ограничителя, а не по картине.
+// Цвет каждой её точки — происхождение этого отсчёта:
+//   зелёный  сам прибор
+//   красный  здесь обработка изменила ФОРМУ волны
+//   синий    здесь голос: и его влияние на схему, и он сам
+//
+// Форма, а не уровень: оба следа нормированы каждый по себе, поэтому MASTER
+// не красит ничего — уровень видно по работе ограничителя, а не по картине.
 function kartina(){
-  const oA=report.osc||new Float32Array(256);
-  const oG=report.oscG||new Float32Array(oA.length);
-  // Что звучало бы БЕЗ голоса: из слышимого вычтен его вклад, посчитанный по
-  // тем же множителям цепи, через которые он проходит.
-  const oB=new Float32Array(oA.length);
-  for(let i=0;i<oA.length;i++) oB[i]=oA[i]-(oG[i]||0);
+  const oA=report.osc||new Float32Array(TOCHEK);
+  const oG=report.oscG||new Float32Array(TOCHEK);
+  const oP=report.oscP, oX=report.oscX;
   const A=podgotov(oA);
-  const B=podgotov(report.oscDo||oA);
-  const G=podgotov(oB);
+  const G=podgotov(oG);
   const ks=1/A.mxo, ki=1/A.mxi;
-  const ksD=1/B.mxo, kiD=1/B.mxi;
-  const ksG=1/G.mxo, kiG=1/G.mxi;
+
+  // ЧЕЙ ЭТО ОТСЧЁТ.
+  //
+  // Работа поста берётся у САМОГО ПОСТА — его мгновенное усиление, — а не
+  // выводится из разницы двух нарисованных следов. Разница следов была
+  // неверна дважды: компрессор действует уровнем, а следы нормируются каждый
+  // по себе и уровень в них сокращается; и наоборот, любой сдвиг точки на
+  // соседнее знакоместо давал «разницу» там, где её нет. Отсюда и шло то,
+  // что компрессор при этом невидим, а красным светится крап.
+  //
+  // ОТ ЧЕГО СЧИТАТЬ ОТКЛОНЕНИЕ. Не от единицы: у сжатия есть постоянный
+  // добор, и с ним усиление поста втрое даже когда он ничего не делает —
+  // краснела бы вся фигура всегда. И не от среднего ПО ОКНУ: окно
+  // осциллографа короче, чем дыхание компрессора (замер: внутри окна разброс
+  // усиления два процента, а между окнами — десятки), и от оконного среднего
+  // компрессор невидим ровно так же.
+  //
+  // Считаем от МЕДЛЕННОГО среднего, около секунды. Тогда стоящий на месте
+  // пост не красит ничего, а всякий раз, когда он придавливает или отпускает,
+  // это видно там, где он это делает.
+  let okno=0;
+  if(oP){ for(let i=0;i<TOCHEK;i++) okno+=oP[i]; okno/=TOCHEK; }
+  if(okno>1e-6) postSred += (okno-postSred)*.04;
+  const obrS = oP && postSred>1e-6 ? 1/postSred : 0;
+  for(let i=0;i<A.n;i++){
+    const wp = obrS ? Math.abs(oP[i]*obrS - 1) : 0;
+    // Голос — и он сам, и его ведение схемы. Слышимая доля меряется по
+    // слышимому, иначе еле слышный голос красил бы фигуру во всю силу.
+    const svoy = Math.abs(G.sgl[i])*ks;
+    const vedet = oX ? oX[i] : 0;
+    const wg = svoy>vedet ? svoy : vedet;
+    CVET[i] = (wg>.13 && wg*1.4>=wp) ? 2 : wp>.045 ? 1 : 0;
+  }
 
   const u=clamp(report.swing??.5,0,1);
-  const g=clamp(report.drift??.5,0,1);
   const ut=clamp(report.utechka||0,0,1.4);
 
   // ПОСЛЕСВЕЧЕНИЕ: внизу качелей след держится дольше, наверху гаснет быстро.
   // Тело тлеет долго — оно и держит форму существа; щупальца гаснут почти
   // мгновенно, чтобы выстреливать и пропадать вместе с волной.
-  // Шаг теперь один на ОТЧЁТ, а их вдвое меньше, чем кадров экрана. Чтобы
-  // след держался ровно столько же, множитель берётся в квадрате — это в
-  // точности два прежних шага подряд, а не подобранное на глаз число.
+  // Шаг один на ОТЧЁТ, а их вдвое меньше, чем кадров экрана, поэтому
+  // множитель взят в квадрате — это в точности два прежних шага подряд.
   const spad1=.90 + (1-u)*.06, spad=spad1*spad1, shsp=.42*.42;
-  for(let i=0;i<pole.length;i++){
-    pole[i]*=spad; shipy[i]*=shsp;
-    poleD[i]*=spad; shipyD[i]*=shsp;
-    poleG[i]*=spad; shipyG[i]*=shsp;
+  for(let c=0;c<CVETOV;c++){
+    const p=POLE[c], sp=SHIPY[c];
+    for(let i=0;i<p.length;i++){ p[i]*=spad; sp[i]*=shsp; }
   }
 
   ugol += (.003 + u*.016)*2;
   const geo={ cx:(Sh-1)/2, cy:(V-1)/2, ko:Math.cos(ugol), si:Math.sin(ugol),
               // Закрутка: внизу качелей внешние витки отстают и петля
-              // сворачивается, наверху распрямляется в ровное кольцо.
-              tvist:(1-u)*1.1 - .45 + (g-.5)*.6,
+              // сворачивается туже.
+              tvist:(1-u)*2.4-.6,
               // Дыхание: качели растягивают фигуру по одной оси, поджимают
               // по другой.
               rastx:.82+u*.34, rasty:1.12-u*.34 };
-  // Палец на площадке мутит саму фигуру. Дрожь считается ОДИН раз на оба
-  // следа: разной она сделала бы их непохожими сама по себе.
-  const muty=new Float32Array(A.n);
-  if(ut>.01) for(let i=0;i<A.n;i++) muty[i]=(Math.random()-.5)*ut*.18;
+  // Палец на площадке мутит саму фигуру.
+  if(ut>.01) for(let i=0;i<A.n;i++) MUTY[i]=(Math.random()-.5)*ut*.18;
+  else MUTY.fill(0);
 
-  risuy(A, ks, ki, pole,  shipy,  geo, muty);
-  risuy(B, ksD, kiD, poleD, shipyD, geo, muty);
-  risuy(G, ksG, kiG, poleG, shipyG, geo, muty);
+  risuy(A, ks, ki, geo);
 
-  let mx=.001;
-  for(let i=0;i<pole.length;i++){
-    const v=pole[i]+shipy[i]; if(v>mx) mx=v;
-    const w=poleD[i]+shipyD[i]; if(w>mx) mx=w;
-    const u=poleG[i]+shipyG[i]; if(u>mx) mx=u;
+  // МЕРА ЯРКОСТИ — не одинокий пик. Одно знакоместо, куда сошлись несколько
+  // мазков, бывает вдесятеро ярче всего остального, и по нему вся фигура
+  // уезжала в нижнюю ступень: свечения не видно, картина плоская.
+  // Берём верхушку распределения — сотую долю самых ярких, — и уже она
+  // считается «полной яркостью». Что выше, то просто упирается в потолок.
+  const P0=POLE[0],P1=POLE[1],P2=POLE[2],S0=SHIPY[0],S1=SHIPY[1],S2=SHIPY[2];
+  const N=P0.length;
+  let mx=.001, gorit=0;
+  GIST.fill(0);
+  for(let i=0;i<N;i++){
+    const v=P0[i]+S0[i]+P1[i]+S1[i]+P2[i]+S2[i];
+    if(v>mx) mx=v;
   }
-  const stroki=[];
+  const shag=63.999/mx;
+  for(let i=0;i<N;i++){
+    const v=P0[i]+S0[i]+P1[i]+S1[i]+P2[i]+S2[i];
+    if(v>1e-4){ GIST[(v*shag)|0]++; gorit++; }
+  }
+  let nado=Math.max(1,Math.round(gorit*.06)), nakop=0, verh=63;
+  for(let k=63;k>=0;k--){ nakop+=GIST[k]; if(nakop>=nado){ verh=k; break; } }
+  const obr=1/Math.max(1e-4,(verh+1)/shag);
+
+  // Слои чистятся одним движением памяти и заполняются только там, где
+  // знакоместо горит. Тёмных знакомест большинство — их вообще не трогаем.
+  const est=new Uint8Array(SLOEV);
+  for(let k=0;k<SLOEV;k++) SLOI[k].set(SHABLON);
   for(let y=0;y<V;y++){
-    const yb=y*Sh;
-    // РАЗНИЦА СЧИТАЕТСЯ ПО ВСЕЙ СТРОКЕ ВПЕРЁД, и не зря. Работа обработки —
-    // величина непрерывная, а порог у неё резкий: там, где разница ходит
-    // около порога, соседние знакоместа красятся через одно. Глазу это
-    // читается крапом, а разметке обходится в отдельный пролёт на каждый
-    // знак: с включённым COMP их было девятьсот на кадр против сорока.
+    const yb=y*Sh, ob=y*(Sh+1);
     for(let x=0;x<Sh;x++){
       const i=yb+x;
-      const a=(pole[i]+shipy[i])/mx, b=(poleD[i]+shipyD[i])/mx,
-            g=(poleG[i]+shipyG[i])/mx;
-      const dp=a>b?a-b:b-a;              // сколько внёс ПОСТ
-      const dg=a>g?a-g:g-a;              // сколько внёс ГОЛОС
-      // Слабый фон не рисуем совсем: он сливал рисунок в кашу.
-      let v=Math.max(a,b,g);
-      yark[x] = v<.045 ? 0 : (v-.045)/.955;
-      raz[x]  = dp>dg?dp:dg;
-      // Где вмешались оба, показываем того, кто вмешался сильнее.
-      chey[x] = dg>dp?1:0;
+      const g0=P0[i]+S0[i], g1=P1[i]+S1[i], g2=P2[i]+S2[i];
+      const v=(g0+g1+g2)*obr;
+      const idx=SVET[v<=0?0:v>=1?1023:(v*1023)|0];
+      if(!idx) continue;
+      // Цвет знакоместа — у кого его больше. Смешивать нечего: точка либо
+      // принадлежит прибору, либо её сдвинула обработка, либо это голос.
+      const c = g1>g0 ? (g2>g1?2:1) : (g2>g0?2:0);
+      const k = c*STUPENEY + STUPEN[idx];
+      SLOI[k][ob+x]=KOD[idx];
+      est[k]=1;
     }
-    // Одиночная точка — это дрожь самой разницы, а не работа обработки.
-    // Сглаживаем по трём соседям: остаются связные пятна, и они и есть то,
-    // что происходит на самом деле.
-    for(let x=0;x<Sh;x++)
-      razS[x]=(raz[x>0?x-1:0]+raz[x]+raz[x<Sh-1?x+1:Sh-1])/3;
-
-    let s='', klass=null, kusok='', sost=0, kto='p';
-    for(let x=0;x<Sh;x++){
-      const ch=PHOSPHOR[SVET[yark[x]<=0?0:yark[x]>=1?1023:(yark[x]*1023)|0]];
-      // ГИСТЕРЕЗИС: войти в цвет труднее, чем в нём остаться. Иначе на самом
-      // пороге состояние дребезжит от знака к знаку — та же болезнь, от
-      // которой в электронике ставят триггер Шмитта, и лечится она тем же.
-      const d=razS[x];
-      if(sost===0){ if(d>VHOD2){ sost = d>VHOD1?2:1; kto = chey[x]?'g':'p'; } }
-      else if(sost===1){ if(d>VHOD1) sost=2; else if(d<VYHOD2) sost=0; }
-      else { if(d<VYHOD1) sost = d>VYHOD2?1:0; }
-      const kl = yark[x]<=0 || !sost ? null : kto+(sost===2?'1':'2');
-      if(kl!==klass){
-        if(kusok) s += klass ? `<span class="${klass}">${kusok}</span>` : kusok;
-        kusok=''; klass=kl;
-      }
-      kusok+=ch;
-    }
-    if(kusok) s += klass ? `<span class="${klass}">${kusok}</span>` : kusok;
-    stroki.push(s);
   }
-  return stroki.join('\n');
+  // Пустой слой не переводим в строку вовсе, и очищаем его только когда он
+  // ТОЛЬКО ЧТО опустел: без голоса и без обработки это сразу шесть слоёв.
+  for(let k=0;k<SLOEV;k++){
+    if(est[k]){ PRE[k].textContent=vStroku(SLOI[k]); BYLO[k]=1; }
+    else if(BYLO[k]){ PRE[k].textContent=''; BYLO[k]=0; }
+  }
 }
-
 
 function polosa(v,sh,simv){
   const n=clamp(Math.round(v*sh),0,sh);
@@ -1089,7 +1165,8 @@ function kadr_(){
   // те же данные легли бы дважды. Заодно уходит расхождение на экранах со
   // 120 Гц: там след гас вдвое быстрее просто потому, что кадров больше.
   const n = window.dbg.otchetov|0;
-  if(n!==bylOtchet){ bylOtchet=n; $('#canvas').innerHTML=kartina(); }
+  // Картина пишет себя в слои сама: разметку ей больше не отдают.
+  if(n!==bylOtchet){ bylOtchet=n; kartina(); }
 
   const r = ruchki();
   if(r!==byliRuchki){ byliRuchki=r; $('#knobs').innerHTML=r; }

@@ -90,19 +90,44 @@
   /* У картины СВОЙ межстрочный — плотный. Иначе знакоместо вытягивается по
      вертикали и фигура выходит узкой. Это второй ритм, и он намеренный:
      картина и текст остаются двумя блоками через один модуль. */
-  #canvas{color:var(--fg);line-height:10px;
-    text-shadow:0 0 8px rgba(150,255,110,.35),0 0 18px rgba(120,255,90,.14)}
-  /* Работа поста на картине: там, где след после обработки разошёлся с тем,
-     что отдал прибор. p1 — разошёлся сильно, p2 — слегка. */
-  #canvas .p1{color:var(--post);text-shadow:0 0 8px rgba(255,122,92,.45),
-    0 0 18px rgba(255,80,50,.18)}
-  #canvas .p2{color:var(--post);opacity:.42;
-    text-shadow:0 0 6px rgba(255,122,92,.18)}
-  /* Голос на картине: где он слышен сам по себе, поверх прибора. */
-  #canvas .g1{color:var(--golos);text-shadow:0 0 8px rgba(111,179,255,.45),
-    0 0 18px rgba(80,150,255,.18)}
-  #canvas .g2{color:var(--golos);opacity:.42;
-    text-shadow:0 0 6px rgba(111,179,255,.18)}
+  #canvas{position:relative;line-height:10px}
+
+  /* КАРТИНА СЛОЯМИ, И ЭТО НЕ УКРАШЕНИЕ, А УСТРОЙСТВО.
+
+     Цвет знакоместа в тексте требует обернуть его в отдельный элемент, и
+     элемент заводится на каждую СМЕНУ цвета вдоль строки. Раскрашенная
+     подробно картина упиралась в это намертво: девятьсот элементов на кадр,
+     тридцать раз в секунду, и подробность приходилось приносить в жертву.
+
+     Здесь картина разложена на слои: свой слой на каждый цвет и каждую
+     ступень свечения. В слое лежит ЧИСТЫЙ ТЕКСТ — где знакоместо не его,
+     там пробел. Ни одного элемента, ни одного разбора разметки: чистый
+     текст ставится в узел напрямую. Подробность стала бесплатной.
+
+     Ступени — это свечение, а не белизна. Громкое и плотное горит ярче и
+     даёт ореол, тихое и второстепенное уходит в темноту своего же цвета. */
+  #canvas .sl{position:absolute;top:0;left:0;margin:0;
+    white-space:pre;font:inherit;line-height:inherit}
+  #canvas .sl:first-child{position:relative}
+
+  /* СХЕМА — зелёный. Сам прибор. */
+  #canvas .c0.t0{color:#37623a}
+  #canvas .c0.t1{color:#79c96e;text-shadow:0 0 5px rgba(120,255,90,.34)}
+  #canvas .c0.t2{color:#a6ff82;
+    text-shadow:0 0 6px rgba(150,255,110,.85),0 0 16px rgba(100,255,60,.45),
+                0 0 34px rgba(60,230,40,.22)}
+  /* ПОСТ — красный. Там, где обработка изменила форму волны. */
+  #canvas .c1.t0{color:#6f3025}
+  #canvas .c1.t1{color:#d9614a;text-shadow:0 0 5px rgba(255,110,80,.34)}
+  #canvas .c1.t2{color:#ff8763;
+    text-shadow:0 0 6px rgba(255,130,95,.85),0 0 16px rgba(255,80,50,.45),
+                0 0 34px rgba(230,60,35,.22)}
+  /* ГОЛОС — синий. И его влияние на схему, и он сам. */
+  #canvas .c2.t0{color:#274a70}
+  #canvas .c2.t1{color:#589ada;text-shadow:0 0 5px rgba(95,175,255,.34)}
+  #canvas .c2.t2{color:#8ac6ff;
+    text-shadow:0 0 6px rgba(120,195,255,.85),0 0 16px rgba(70,150,255,.45),
+                0 0 34px rgba(50,120,230,.22)}
   #line{color:var(--fg);white-space:pre-wrap}
   #devices,#knobs{white-space:pre-wrap}
   b{font-weight:400;color:var(--hot)}
@@ -113,7 +138,7 @@
 </style>
 <pre id="head"></pre>
 <div id="screen">
-<div id="ris"><pre id="canvas"></pre></div>
+<div id="ris"><div id="canvas"></div></div>
 <div id="panel"><pre id="knobs"></pre></div>
 <pre id="line"></pre>
 </div>
