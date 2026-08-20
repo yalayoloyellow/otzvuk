@@ -615,6 +615,13 @@ const MODUL=16, RAMKA_V=2*MODUL;
 // ПРОПОРЦИЯ КАРТИНЫ: вдвое шире, чем выше. Знакоместо 6.6 на 10 пикселей,
 // значит строк должно быть 6.6/(10·2) от числа знаков в строке.
 const OVAL=2, STROK_NA_ZNAK=6.6/(10*OVAL);
+// РАЗМЕР ФИГУРЫ ВНУТРИ ПОЛЯ. Тело занимает две трети полуразмера, щупальце
+// бьёт наружу не длиннее трети, и до рамки остаётся пустая полоса. Раньше
+// тело шло на 0.82, а щупальце на 0.46, и вместе они выходили за поле —
+// всё, что за краем, просто не записывалось, отчего у фигуры появлялся
+// ровный обрубленный край. Здесь это невозможно по построению: даже сумма
+// предельных значений остаётся внутри.
+const TELO=.66, SHIP=.14, POLYA=2;
 let Sh=112, V=40, kolonok=3, ugol=0;
 // ОДНА ФИГУРА, ТРИ ПОЛЯ. Прежде рисовались ТРИ фигуры — слышимое, до поста и
 // без голоса, — а потом сравнивались их поля. Отсюда шло всё уродство: у
@@ -636,6 +643,24 @@ const MUTY=new Float32Array(TOCHEK), CVET=new Uint8Array(TOCHEK);
 // его работа. Ведётся между кадрами, потому что дыхание сжатия длиннее
 // одного окна осциллографа.
 let postSred=1;
+// Веса вмешательства по отсчётам и гистограмма для отсечки.
+const VESP=new Float32Array(TOCHEK), VESG=new Float32Array(TOCHEK);
+const GISTV=new Int32Array(32);
+// ГДЕ ОТСЕЧЬ. Возвращает порог, выше которого лежит не больше заданной доли
+// значений — и при этом не ниже нижней границы. Нижняя граница нужна, чтобы
+// при выключенной обработке доля не вытаскивала цвет из ничего.
+function otsechka(v, n, dolya, nizhniy){
+  let mx=0;
+  for(let i=0;i<n;i++) if(v[i]>mx) mx=v[i];
+  if(mx<=nizhniy) return Infinity;
+  GISTV.fill(0);
+  const shag=31.999/mx;
+  for(let i=0;i<n;i++) GISTV[(v[i]*shag)|0]++;
+  let nado=Math.max(1,Math.round(n*dolya)), nakop=0, k=31;
+  for(;k>0;k--){ nakop+=GISTV[k]; if(nakop>=nado) break; }
+  return Math.max(nizhniy, k/shag);
+}
+
 // Гистограмма яркости на 64 корзины: по ней берётся верхушка распределения.
 const GIST=new Int32Array(64);
 function pomer(){
@@ -680,6 +705,10 @@ function pomer(){
   // Первый раз собираем в любом случае: размер может совпасть с исходным,
   // а полей и слоёв ещё нет вовсе.
   if(nov!==Sh||novv!==V||!SLOI.length){ Sh=nov; V=novv; peresoberiSloi(); }
+  // Размер коробки задаётся ЧИСЛОМ, а не содержимым: все слои сняты с потока,
+  // и держать её было бы нечем.
+  ris.style.width=(Sh*shs)+'px';
+  ris.style.height=(V*str)+'px';
 }
 
 // Поля и слои пересоздаются ВМЕСТЕ: пересоздать часть значит оставить
@@ -756,9 +785,13 @@ function risuy(g, ks, ki, geo){
     const t=tvist*rad*rad;
     const kt=Math.cos(t), st=Math.sin(t);
     const wx=qx*kt - qy*st, wy=qx*st + qy*kt;
+    // Дрожь от пальца прибавляется ПОСЛЕ размаха и может вынести точку за
+    // единицу — то есть за поле. Держим в берегах здесь, а не обрезкой при
+    // записи: обрезка даёт ровный край, а он в этой фигуре читается швом.
     const mut=MUTY[i];
-    const x=Math.round(cx + (wx+mut)*cx*.82*rastx);
-    const y=Math.round(cy - (wy+mut)*cy*.82*rasty);
+    const nx=clamp(wx+mut,-1,1), ny=clamp(wy+mut,-1,1);
+    const x=Math.round(cx + nx*cx*TELO*rastx);
+    const y=Math.round(cy - ny*cy*TELO*rasty);
     const c=CVET[i];
     if(px!==null){
       mazok(px,py,x,y,.8,c);
@@ -770,7 +803,18 @@ function risuy(g, ks, ki, geo){
       if(dl>Sh*.024){
         const sp=SHIPY[c];
         const dx=x-cx, dy=y-cy, r=Math.hypot(dx,dy)||1;
-        const dlin=Math.min(dl*2.1, Sh*.46);
+        const ux=dx/r, uy=dy/r;
+        // ЩУПАЛЬЦЕ НЕ ВЫХОДИТ ЗА ПОЛЕ. Прежде оно било наружу на свою длину,
+        // а всё, что за краем, просто не записывалось — и десятки щупалец
+        // обрывались об одну и ту же черту, отчего у фигуры появлялся ровный
+        // край, будто её отрезали. Теперь длина заранее укорачивается до
+        // берега: щупальца у края короче, и никакого шва.
+        let mozhno=1e9;
+        if(ux>1e-6) mozhno=Math.min(mozhno,(Sh-1-POLYA-x)/ux);
+        else if(ux<-1e-6) mozhno=Math.min(mozhno,(POLYA-x)/ux);
+        if(uy>1e-6) mozhno=Math.min(mozhno,(V-1-POLYA-y)/uy);
+        else if(uy<-1e-6) mozhno=Math.min(mozhno,(POLYA-y)/uy);
+        const dlin=Math.min(dl*2.1, Sh*SHIP, Math.max(0,mozhno));
         const shagov=Math.round(dlin);
         for(let q=0;q<=shagov;q++){
           const tt=q/Math.max(1,shagov);
@@ -845,13 +889,29 @@ function kartina(){
   if(okno>1e-6) postSred += (okno-postSred)*.04;
   const obrS = oP && postSred>1e-6 ? 1/postSred : 0;
   for(let i=0;i<A.n;i++){
-    const wp = obrS ? Math.abs(oP[i]*obrS - 1) : 0;
+    VESP[i] = obrS ? Math.abs(oP[i]*obrS - 1) : 0;
     // Голос — и он сам, и его ведение схемы. Слышимая доля меряется по
     // слышимому, иначе еле слышный голос красил бы фигуру во всю силу.
     const svoy = Math.abs(G.sgl[i])*ks;
     const vedet = oX ? oX[i] : 0;
-    const wg = svoy>vedet ? svoy : vedet;
-    CVET[i] = (wg>.13 && wg*1.4>=wp) ? 2 : wp>.045 ? 1 : 0;
+    VESG[i] = svoy>vedet ? svoy : vedet;
+  }
+  // ЗЕЛЁНОЕ — ГЛАВНОЕ, И ЭТО ПРАВИЛО, А НЕ ПОРОГ.
+  //
+  // Сам прибор и есть основной звук; красное и синее — пометки поверх него.
+  // Одним порогом это не удержать: выкрути обработку на полную, и по всякому
+  // строгому счёту она касается почти каждой точки — фигура закрашивалась
+  // целиком, и зелёного не оставалось вовсе.
+  //
+  // Поэтому цветом идёт ДОЛЯ: только те точки, где вмешательство сильнее
+  // всего, и не больше трети фигуры на цвет. Порог для этого берётся не
+  // числом, а по самим весам — там, где отсечь. Картина здесь прежде всего
+  // украшение: её дело быть красивой, а не полной.
+  const porK = otsechka(VESP, A.n, .30, .085);
+  const porG = otsechka(VESG, A.n, .26, .24);
+  for(let i=0;i<A.n;i++){
+    const wp=VESP[i], wg=VESG[i];
+    CVET[i] = (wg>porG && wg*1.4>=wp) ? 2 : wp>porK ? 1 : 0;
   }
 
   const u=clamp(report.swing??.5,0,1);
