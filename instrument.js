@@ -673,9 +673,18 @@ function ruchki(){
     return `<span class="${z?'hot':'dim'}">${t.imya} ${vid}</span>`+
            ` <span class="dim2">${kl}</span>`;
   }).join('  '));
-  stroki.push(`  <span class="dim2">СБОРКА ${sb.imya||'····'} ${seed>>>0}`+
+  // Подпись сборки. Пока номиналы едут, играет ещё ПРЕЖНИЙ прибор — значит
+  // и подписан экран должен быть им, а новый показан как то, куда едем.
+  // Прежде тут стояло имя живого прибора рядом с семенем запрошенного, и на
+  // всём переходе буквы не менялись, а число уже было новым.
+  const bd=report.budet;
+  const put=bd
+    ? ` <span class="fg">→ ${bd.imya} ${bd.semya>>>0}</span>`+
+      ` <span class="dim">${Math.round((report.perehod||0)*100)}%</span>`
+    : '';
+  stroki.push(`  <span class="dim2">СБОРКА ${sb.imya||'····'} ${(sb.semya!==undefined?sb.semya:seed)>>>0}`+
               (sb.dinamik?` · ${Math.round(sb.dinamik)}Гц · ${(sb.emkost*1e9).toFixed(1)}нФ`:'')+
-              `</span>`);
+              `</span>`+put);
   return stroki.join('\n');
 }
 
