@@ -49,8 +49,8 @@ const KNOBS=[
   // ПОСТ. Единственные две ручки на панели, которых в приборе нет: сведение,
   // а не схема. ЖАТЬ подтягивает тихое к громкому, МАСТЕР — общий уровень,
   // середина хода это единица.
-  {k:'zhat', m:['BracketLeft','BracketRight'], imya:'ЖАТЬ'},
-  {k:'master', m:['Minus','Equal'], imya:'МАСТЕР'},
+  {k:'zhat', m:['BracketLeft','BracketRight'], imya:'ЖАТЬ', post:1},
+  {k:'master', m:['Minus','Equal'], imya:'МАСТЕР', post:1},
 ];
 
 // ---- ТУМБЛЕРЫ --------------------------------------------------------------
@@ -77,7 +77,7 @@ const SWITCHES=[
   // может. Это слой ПОСТА поверх схемы: включён — плавно едет всё, включая
   // смену пресета и пересборку, а переход между двумя приборами делается
   // так, как он и делается — две коробки играют разом, рука ведёт фейдер.
-  {k:'mix', kl:'Backslash', imya:'МИКШИР', podpis:['резко','плавно']},
+  {k:'mix', kl:'Backslash', imya:'МИКШИР', podpis:['резко','плавно'], post:1},
 ];
 
 
@@ -437,6 +437,9 @@ addEventListener('visibilitychange',()=>{ derzhim.clear(); ploschadki.clear(); }
 // рисуем. Фиксированная сетка на узком экране уезжала за край.
 const PHOSPHOR=' ·∙:∴*≋≡▒▓█';
 let Sh=112, V=40, pole=new Float32Array(Sh*V), shipy=new Float32Array(Sh*V), kolonok=3;
+// Второй след — то, что отдал ПРИБОР, до поста. Разница между ними и есть
+// работа поста, и она рисуется красным.
+let poleD=new Float32Array(Sh*V), shipyD=new Float32Array(Sh*V);
 let ugol=0;
 function pomer(){
   const ris=$('#canvas');
@@ -453,59 +456,41 @@ function pomer(){
   if(nov!==Sh||novv!==V){ Sh=nov; V=novv;
     // Оба слоя пересоздаются вместе: если пересоздать только один, второй
     // остаётся прежней длины и на краях отдаёт undefined.
-    pole=new Float32Array(Sh*V); shipy=new Float32Array(Sh*V); }
+    pole=new Float32Array(Sh*V); shipy=new Float32Array(Sh*V);
+    poleD=new Float32Array(Sh*V); shipyD=new Float32Array(Sh*V); }
   // Панель ручек: три колонки на широком, две на среднем, одна на узком.
   kolonok = Sh>=96 ? 3 : Sh>=66 ? 2 : 1;
 }
 addEventListener('resize',pomer);
 
-function kartina(){
-  const o=report.osc||new Float32Array(256), n=o.length;
-
-  // Осциллограф не бесконечно широкополосный: у луча своя инерция. Без неё
-  // узкие импульсы кладут точки на две голые горизонтали, и фигура
-  // вырождается в гору с лучами.
-  const sgl=new Float32Array(n);
-  let akk=0;
+// Осциллограф не бесконечно широкополосный: у луча своя инерция. Без неё
+// узкие импульсы кладут точки на две голые горизонтали, и фигура
+// вырождается в гору с лучами.
+//
+// Вторая координата — ИНТЕГРАЛ сигнала, а не он же со сдвигом. Сдвиг годится
+// для гладкой волны; у импульсной он даёт ту самую гору. Интеграл даёт
+// настоящую квадратуру, и любая периодическая волна замыкается в петлю.
+function podgotov(o){
+  const n=o.length;
+  const sgl=new Float32Array(n); let akk=0;
   for(let pr=0;pr<2;pr++) for(let i=0;i<n;i++){ akk += (o[i]-akk)*.34; sgl[i]=akk; }
-  let mxo=1e-4;
-  for(let i=0;i<n;i++){ const a=sgl[i]<0?-sgl[i]:sgl[i]; if(a>mxo) mxo=a; }
-  const ks=1/mxo;
-
-  // Вторая координата — ИНТЕГРАЛ сигнала, а не он же со сдвигом. Сдвиг
-  // годится для гладкой волны; у импульсной он даёт ту самую гору. Интеграл
-  // даёт настоящую квадратуру, и любая периодическая волна замыкается в
-  // петлю — овал, ромб, узел, смотря какая в ней гармоника главная.
-  const inte=new Float32Array(n);
-  let aki=0;
+  const inte=new Float32Array(n); let aki=0;
   for(let pr=0;pr<2;pr++) for(let i=0;i<n;i++){ aki = aki*.992 + sgl[i]*.05; inte[i]=aki; }
-  let sri=0;
-  for(let i=0;i<n;i++) sri+=inte[i];
-  sri/=n;                                        // петля должна быть вокруг центра
-  let mxi=1e-4;
-  for(let i=0;i<n;i++){ const a=Math.abs(inte[i]-sri); if(a>mxi) mxi=a; }
-  const ki=1/mxi;
+  let sri=0; for(let i=0;i<n;i++) sri+=inte[i]; sri/=n;
+  let mxo=1e-4, mxi=1e-4;
+  for(let i=0;i<n;i++){
+    const a=sgl[i]<0?-sgl[i]:sgl[i]; if(a>mxo) mxo=a;
+    const b=Math.abs(inte[i]-sri); if(b>mxi) mxi=b;
+  }
+  return {sgl,inte,sri,mxo,mxi,n};
+}
 
-  const u=clamp(report.swing??.5,0,1);
-  const g=clamp(report.drift??.5,0,1);
-  const ut=clamp(report.utechka||0,0,1.4);
-
-  // ПОСЛЕСВЕЧЕНИЕ: внизу качелей след держится дольше, наверху гаснет быстро.
-  // ДВА СЛОЯ. Тело тлеет долго — оно и держит форму существа. Щупальца
-  // гаснут почти мгновенно: они должны выстреливать и пропадать вместе с
-  // волной, а не оставаться лучами.
-  const spad=.90 + (1-u)*.06;
-  for(let i=0;i<pole.length;i++){ pole[i]*=spad; shipy[i]*=.42; }
-
-  const cx=(Sh-1)/2, cy=(V-1)/2;
-  ugol += .003 + u*.016;
-  const ko=Math.cos(ugol), si=Math.sin(ugol);
-  // Закрутка: внизу качелей внешние витки отстают от внутренних и петля
-  // сворачивается, наверху распрямляется в ровное кольцо.
-  const tvist=(1-u)*1.1 - .45 + (g-.5)*.6;
-  // Дыхание: качели растягивают фигуру по одной оси и поджимают по другой.
-  const rastx=.82+u*.34, rasty=1.12-u*.34;
-
+// Один проход по траектории. Геометрия приходит снаружи одна и та же для
+// обоих следов — иначе их разница означала бы не работу поста, а разный
+// поворот.
+function risuy(g, ks, ki, pole, shipy, geo, muty){
+  const {sgl,inte,sri,n}=g;
+  const {cx,cy,ko,si,tvist,rastx,rasty}=geo;
   const mazok=(x0,y0,x1,y1,sila)=>{
     const dx=Math.abs(x1-x0), dy=Math.abs(y1-y0);
     const shagov=Math.max(dx,dy);
@@ -519,7 +504,6 @@ function kartina(){
       if(xm>=0&&xm<Sh&&y>=0&&y<V) pole[y*Sh+xm]+=yar*.4;
     }
   };
-
   let px=null, py=null;
   for(let i=0;i<n;i++){
     const a=clamp(sgl[i]*ks,-1,1), b=clamp((inte[i]-sri)*ki,-1,1);
@@ -528,29 +512,22 @@ function kartina(){
     const t=tvist*rad*rad;
     const kt=Math.cos(t), st=Math.sin(t);
     const wx=qx*kt - qy*st, wy=qx*st + qy*kt;
-    // палец на площадке мутит саму фигуру, а не рисует поверх неё
-    const mut=ut>.01 ? (Math.random()-.5)*ut*.18 : 0;
+    const mut=muty[i];
     const x=Math.round(cx + (wx+mut)*cx*.82*rastx);
     const y=Math.round(cy - (wy+mut)*cy*.82*rasty);
-    // ТЕЛО. Один контур читается как проволочная петля. Заливка от центра к
-    // каждой точке даёт плотную середину, сквозь которую контур всё равно
-    // виден ярче — фигура становится телесной, а не нарисованной линией.
-    // ТЕЛО — сама петля. Заливки от центра нет: она превращала фигуру в
-    // ровную биомассу, в которой не читается ни форма, ни движение.
     if(px!==null){
       mazok(px,py,x,y,.8);
       // ЩУПАЛЬЦЕ выстреливает НАРУЖУ там, где волна рвётся, и сходит на
       // остриё: яркость падает вдоль луча, а сам слой гаснет за пару кадров.
-      // Поэтому они вылезают резко и так же резко пропадают.
       const dl=Math.hypot(x-px,y-py);
       if(dl>Sh*.05){
         const dx=x-cx, dy=y-cy, r=Math.hypot(dx,dy)||1;
         const dlin=Math.min(dl*1.9, Sh*.42);
         const shagov=Math.round(dlin);
         for(let q=0;q<=shagov;q++){
-          const t=q/Math.max(1,shagov);
-          const sx=Math.round(x+dx/r*dlin*t), sy=Math.round(y+dy/r*dlin*t);
-          const yar=1.5*(1-t)*(1-t);            // сходит на остриё
+          const tt=q/Math.max(1,shagov);
+          const sx=Math.round(x+dx/r*dlin*tt), sy=Math.round(y+dy/r*dlin*tt);
+          const yar=1.5*(1-tt)*(1-tt);            // сходит на остриё
           if(sx>=0&&sx<Sh&&sy>=0&&sy<V) shipy[sy*Sh+sx]+=yar;
           const sxm=Sh-1-sx;
           if(sxm>=0&&sxm<Sh&&sy>=0&&sy<V) shipy[sy*Sh+sxm]+=yar*.35;
@@ -560,23 +537,77 @@ function kartina(){
     else if(x>=0&&x<Sh&&y>=0&&y<V) pole[y*Sh+x]+=.8;
     px=x; py=y;
   }
+}
+
+// КРАСНЫМ — РАБОТА ПОСТА. Рисуются два следа одной и той же геометрией: то,
+// что отдал прибор, и то, что слышно после компрессора, мастера и
+// ограничителя. Где они совпадают — обычный фосфор; где разошлись — красное,
+// и это ровно то место, в котором пост вмешался. Мера у обоих общая, поэтому
+// видно и изменение формы, и изменение размаха: чистое усиление показывает
+// себя красным ободом вокруг прежней фигуры.
+function kartina(){
+  const A=podgotov(report.osc||new Float32Array(256));
+  const B=podgotov(report.oscDo||report.osc||new Float32Array(256));
+  const ks=1/A.mxo, ki=1/A.mxi;
+
+  const u=clamp(report.swing??.5,0,1);
+  const g=clamp(report.drift??.5,0,1);
+  const ut=clamp(report.utechka||0,0,1.4);
+
+  // ПОСЛЕСВЕЧЕНИЕ: внизу качелей след держится дольше, наверху гаснет быстро.
+  // Тело тлеет долго — оно и держит форму существа; щупальца гаснут почти
+  // мгновенно, чтобы выстреливать и пропадать вместе с волной.
+  const spad=.90 + (1-u)*.06;
+  for(let i=0;i<pole.length;i++){
+    pole[i]*=spad; shipy[i]*=.42;
+    poleD[i]*=spad; shipyD[i]*=.42;
+  }
+
+  ugol += .003 + u*.016;
+  const geo={ cx:(Sh-1)/2, cy:(V-1)/2, ko:Math.cos(ugol), si:Math.sin(ugol),
+              // Закрутка: внизу качелей внешние витки отстают и петля
+              // сворачивается, наверху распрямляется в ровное кольцо.
+              tvist:(1-u)*1.1 - .45 + (g-.5)*.6,
+              // Дыхание: качели растягивают фигуру по одной оси, поджимают
+              // по другой.
+              rastx:.82+u*.34, rasty:1.12-u*.34 };
+  // Палец на площадке мутит саму фигуру. Дрожь считается ОДИН раз на оба
+  // следа: разной она сделала бы их непохожими сама по себе.
+  const muty=new Float32Array(A.n);
+  if(ut>.01) for(let i=0;i<A.n;i++) muty[i]=(Math.random()-.5)*ut*.18;
+
+  risuy(A, ks, ki, pole,  shipy,  geo, muty);
+  risuy(B, ks, ki, poleD, shipyD, geo, muty);
 
   let mx=.001;
-  for(let i=0;i<pole.length;i++){ const v=pole[i]+shipy[i]; if(v>mx) mx=v; }
+  for(let i=0;i<pole.length;i++){
+    const v=pole[i]+shipy[i]; if(v>mx) mx=v;
+    const w=poleD[i]+shipyD[i]; if(w>mx) mx=w;
+  }
   const stroki=[];
   for(let y=0;y<V;y++){
-    let s='';
+    let s='', klass=null, kusok='';
     for(let x=0;x<Sh;x++){
-      // Слабый фон не рисуем совсем: он сливал рисунок в кашу, в которой
-      // не читалось ни тело, ни щупальца.
-      let v=(pole[y*Sh+x]+shipy[y*Sh+x])/mx;
+      const i=y*Sh+x;
+      const a=(pole[i]+shipy[i])/mx, b=(poleD[i]+shipyD[i])/mx;
+      const d=a>b?a-b:b-a;
+      // Слабый фон не рисуем совсем: он сливал рисунок в кашу.
+      let v=Math.max(a,b);
       v = v<.045 ? 0 : (v-.045)/.955;
-      s+=PHOSPHOR[clamp(Math.round(Math.pow(v,.55)*(PHOSPHOR.length-1)),0,PHOSPHOR.length-1)];
+      const ch=PHOSPHOR[clamp(Math.round(Math.pow(v,.55)*(PHOSPHOR.length-1)),0,PHOSPHOR.length-1)];
+      const kl = v<=0 ? null : d>.14 ? 'p1' : d>.05 ? 'p2' : null;
+      if(kl!==klass){
+        if(kusok) s += klass ? `<span class="${klass}">${kusok}</span>` : kusok;
+        kusok=''; klass=kl;
+      }
+      kusok+=ch;
     }
+    if(kusok) s += klass ? `<span class="${klass}">${kusok}</span>` : kusok;
     stroki.push(s);
   }
   return stroki.join('\n');
 }
+
 
 function polosa(v,sh,simv){
   const n=clamp(Math.round(v*sh),0,sh);
@@ -659,6 +690,8 @@ function ruchki(){
       const svoy=rk===poslednyaya&&vspyshka>0;
       const imya=(rk.imya+'          ').slice(0,uzko?8:9);
       const s=`${imya}${shkala(knobs[rk.k]||0,shr)} ${rk.podpis}`;
+      // Красный — признак ПОСТА, а не яркости: этих двух ручек в схеме нет.
+      if(rk.post) return `<span class="${svoy?'post':'postdim'}">${s}</span>`;
       return svoy?`<span class="hot">${s}</span>`:`<span class="fg">${s}</span>`;
     }).join('  '));
   }
@@ -670,7 +703,8 @@ function ruchki(){
     const prostoy = t.podpis[0]==='выкл' || t.podpis[0]==='нет';
     const vid = (pol>2 || !prostoy) ? (t.podpis[z]||String(z)) : (z?'▮':'·');
     const kl = IMYAKL[t.kl] || t.kl.replace('Key','').toLowerCase();
-    return `<span class="${z?'hot':'dim'}">${t.imya} ${vid}</span>`+
+    const cv = t.post ? (z?'post':'postdim') : (z?'hot':'dim');
+    return `<span class="${cv}">${t.imya} ${vid}</span>`+
            ` <span class="dim2">${kl}</span>`;
   }).join('  '));
   // Подпись сборки. Пока номиналы едут, играет ещё ПРЕЖНИЙ прибор — значит
@@ -702,13 +736,14 @@ function kadr_(){
     ? `<span class="dim2">о т з в у к · инструмент</span>`
     : `<span class="hot">о т з в у к · инструмент</span>\n\n  нажми любую клавишу`;
   if(idet){
-    $('#canvas').textContent=kartina();
+    $('#canvas').innerHTML=kartina();
     // Перерисовываем вкладки только когда они правда изменились: лишняя
     // замена разметки съедала клики.
     $('#knobs').innerHTML=ruchki();
     $('#line').innerHTML=
       `  <span class="dim2">tab пересобрать · ⌘ втрое · ⇧ вдесятеро · пробел толчок · `+
       `1–8 площадки · / петля · n запись · p пресет · o листать</span>`+
+      `   <span class="postdim">красное — пост: [ ] жать · - = мастер · \\ микшир</span>`+
       (vest && performance.now()<vestdo ? `   <span class="hot">${vest}</span>`
        : presets.length ? `   <span class="dim2">${presets.length} пресетов</span>` : '');
   }

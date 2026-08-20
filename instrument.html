@@ -6,7 +6,11 @@
   /* Один цвет, три яркости. Жёлтый и оранжевый выбивались из фосфора и
      ломали общий вид. */
   :root{ --bg:#06080a; --fg:#a8f090; --dim:#4a7a44; --dim2:#264a26;
-         --hot:#d8ffc0; --warn:#d8ffc0; --line:#13210f }
+         --hot:#d8ffc0; --warn:#d8ffc0; --line:#13210f;
+         /* Красный — и только он — означает ПОСТ: то, чего в приборе нет.
+            На панели им подписаны его ручки, на картине — ровно те места,
+            где пост изменил звук. Другого красного в интерфейсе нет. */
+         --post:#ff6a48; --postdim:#8a3524 }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--fg);
     font:400 13px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -21,9 +25,16 @@
   .fg{color:var(--fg)}
   .dim2{color:var(--dim2)}
   .hot{color:var(--hot)}
+  .post{color:var(--post);text-shadow:0 0 6px rgba(255,106,72,.35)}
+  .postdim{color:var(--postdim)}
   .warn{color:var(--warn)}
   #canvas{color:var(--fg);line-height:.92;font-size:11px;letter-spacing:0;
     text-shadow:0 0 8px rgba(150,255,110,.35),0 0 18px rgba(120,255,90,.14)}
+  /* Работа поста на картине: там, где след после обработки разошёлся с тем,
+     что отдал прибор. p1 — разошёлся сильно, p2 — слегка. */
+  #canvas .p1{color:var(--post);text-shadow:0 0 8px rgba(255,106,72,.45),
+    0 0 18px rgba(255,80,50,.18)}
+  #canvas .p2{color:var(--postdim);text-shadow:0 0 6px rgba(255,106,72,.18)}
   #line{color:var(--dim);margin-top:6px;font-size:11px;white-space:pre-wrap}
   #devices,#knobs{white-space:pre-wrap}
   b{font-weight:400;color:var(--hot)}

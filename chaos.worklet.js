@@ -1305,6 +1305,7 @@ class Chaos extends AudioWorkletProcessor {
     this.golos = new Golos();
     this.zhmi = new Zhmi();
     this.predel = new Predel();
+    this.zad = new Float32Array(this.predel.n); this.zadi = 0;
     this.mikKv = 0; this.vyhKv = 0; this.vozvrat = .55; this.proshY = 0;
     this.mikPik = 0;
     this.semya = 1;
@@ -1312,7 +1313,8 @@ class Chaos extends AudioWorkletProcessor {
     this.pl = new Float32Array(9);
     this.utechka = 0; this.navodka = 0;
     this.pik = 0; this.report = 0; this.okno = 0; this.sryvy = 0;
-    this.osc = new Float32Array(256); this.osci = 0; this.oscsh = 0;
+    this.osc = new Float32Array(256); this.oscDo = new Float32Array(256);
+    this.osci = 0; this.oscsh = 0;
     this.sled = new Float32Array(200); this.sli = 0; this.prore = 0;
 
     this.port.onmessage = e => {
@@ -1480,7 +1482,15 @@ class Chaos extends AudioWorkletProcessor {
       }
       if (!(y === y)){ y = 0; this.pr.zhivoy(); this.svod = new Decim(); this.sryvy++; }
       // ПОСТ. Прибор отдаёт сколько отдаёт; что с этим делать дальше —
-      // вопрос не к нему.
+      // вопрос не к нему. Запоминаем, ЧТО он отдал: разница между этим и
+      // тем, что выйдет наружу, и есть работа поста — её видно на картине.
+      // Ограничитель смотрит вперёд, а значит ЗАДЕРЖИВАЕТ выход на те же две
+      // миллисекунды. Чтобы сравнивать следы, прибор надо задержать ровно на
+      // столько же — иначе они разъезжаются по времени, и картина покажет
+      // красным всё подряд, даже когда пост выключен.
+      const yDo = this.zad[this.zadi];
+      this.zad[this.zadi] = y;
+      this.zadi = (this.zadi + 1) % this.zad.length;
       y = this.zhmi.step(y, this.p.zhat);
       if (++this.okno >= SR * .25){ this.okno = 0; this.pr.mera(); }
       const a = y < 0 ? -y : y;
@@ -1500,7 +1510,9 @@ class Chaos extends AudioWorkletProcessor {
       if (this.rec) this.recBuf.push(y);
       const shago = clamp(Math.round(SR / (Math.max(20, this.pr.osn.f) * 128)), 1, 64);
       if (++this.oscsh >= shago){ this.oscsh = 0;
-        this.osc[this.osci = (this.osci + 1) & 255] = y; }
+        this.osci = (this.osci + 1) & 255;
+        this.osc[this.osci] = y;
+        this.oscDo[this.osci] = yDo; }
       if (++this.prore >= SR / 100){ this.prore = 0;
         this.sled[this.sli] = this.pr.swing.u;
         this.sli = (this.sli + 1) % 200; }
@@ -1533,7 +1545,7 @@ class Chaos extends AudioWorkletProcessor {
         budet: this.vedenie ? { imya: this.vedenie.imya, semya: this.vedenie.semya } : null,
         shag: this.pr.setka.shag, udar: this.pr.setka.udar,
         risunok: this.pr.setka.risunok.slice(),
-        osc: this.osc.slice(), sled: l,
+        osc: this.osc.slice(), oscDo: this.oscDo.slice(), sled: l,
         pl: Array.from(this.pl), utechka: this.utechka
       });
       this.pik *= .6; this.mikPik *= .5;
