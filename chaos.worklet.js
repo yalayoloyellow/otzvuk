@@ -727,7 +727,7 @@ class Device {
       this.ssch = 0;
     }
     // Давление у микрофона пропорционально ускорению диффузора и его площади.
-    this.vyh = a * 6e-5;
+    this.vyh = a * 6e-6;
     return this.vyh;
   }
 
