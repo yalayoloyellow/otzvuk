@@ -1279,12 +1279,14 @@ class Zhmi {
   //
   // Отношение и добор выведены из ручки, а не подобраны: на нуле отношение
   // 1:1, добор нулевой, и цепь прозрачна тождественно, а не приблизительно.
-  constructor(){ this.sr = .01; this.og = 0; this.g = 1; }
+  constructor(){ this.sr = .01; this.og = 0; this.g = 1; this.effekt = 1; }
   step(y, sila){
     this.sr += (y * y - this.sr) * this.med;
-    if (sila < .002){ this.g += (1 - this.g) * this.otp; return y * this.g; }
+    if (sila < .002){ this.g += (1 - this.g) * this.otp; this.effekt = this.g;
+                      return y * this.g; }
     const rms = Math.max(Math.sqrt(this.sr), 1e-5);
-    y *= Math.pow(clamp(CEL / rms, .18, 14), sila);
+    const vyr = Math.pow(clamp(CEL / rms, .18, 14), sila);
+    y *= vyr;
 
     const a = y < 0 ? -y : y;
     this.og += (a - this.og) * (a > this.og ? this.atk : this.otp);
@@ -1298,7 +1300,12 @@ class Zhmi {
     else if (nad > -KOL * .5) sniz = k * (nad + KOL * .5) * (nad + KOL * .5) / (2 * KOL);
     const cel = Math.pow(10, -sniz / 20);
     this.g += (cel - this.g) * this.sgl;
-    return y * this.g * Math.pow(10, -TDB * k * .62 / 20);
+    const dobor = Math.pow(10, -TDB * k * .62 / 20);
+    // Во сколько раз цепь вмешалась на этом отсчёте, со всеми тремя частями.
+    // Нужно, чтобы посчитать, каким выходит НАРУЖУ голос: он идёт через ту же
+    // обработку, что и прибор, и на картине это надо показать честно.
+    this.effekt = vyr * this.g * dobor;
+    return y * this.g * dobor;
   }
 }
 const CEL = .10;    // куда медленная часть тянет среднюю громкость
@@ -1512,7 +1519,8 @@ class Chaos extends AudioWorkletProcessor {
     this.govor = new Govorilka();
     this.zhmi = new Zhmi();
     this.predel = new Predel();
-    this.zad = new Float32Array(this.predel.n); this.zadi = 0;
+    this.zad = new Float32Array(this.predel.n);
+    this.zadG = new Float32Array(this.predel.n); this.zadi = 0;
     this.mikKv = 0; this.vyhKv = 0; this.vozvrat = .55; this.proshY = 0;
     this.mikPik = 0;
     this.semya = 1;
@@ -1521,6 +1529,7 @@ class Chaos extends AudioWorkletProcessor {
     this.utechka = 0; this.navodka = 0;
     this.pik = 0; this.report = 0; this.okno = 0; this.sryvy = 0;
     this.osc = new Float32Array(256); this.oscDo = new Float32Array(256);
+    this.oscG = new Float32Array(256);
     this.osci = 0; this.oscsh = 0;
     this.sled = new Float32Array(200); this.sli = 0; this.prore = 0;
 
@@ -1703,15 +1712,23 @@ class Chaos extends AudioWorkletProcessor {
         y = this.svod.step(this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib, petl));
       }
       if (!(y === y)){ y = 0; this.pr.zhivoy(); this.svod = new Decim(); this.sryvy++; }
-      // ПОСТ. Прибор отдаёт сколько отдаёт; что с этим делать дальше —
-      // вопрос не к нему. Запоминаем, ЧТО он отдал: разница между этим и
-      // тем, что выйдет наружу, и есть работа поста — её видно на картине.
+      // ГОЛОС НАРУЖУ — сам источник, слышный поверх прибора. Он входит в
+      // тракт ДО поста: обработка одна на всех, и компрессору незачем знать,
+      // где тут прибор, а где микрофон с говорилкой. Прежде голос
+      // добавлялся ПОСЛЕ компрессора и проходил мимо него.
+      const golosVyh = this.p.naruzhu > .002 ? vhod * 1.4 * this.p.naruzhu : 0;
+      y += golosVyh;
+
+      // ПОСТ. Запоминаем, что пришло на его вход: разница между этим и тем,
+      // что выйдет наружу, и есть его работа — её видно на картине.
       // Ограничитель смотрит вперёд, а значит ЗАДЕРЖИВАЕТ выход на те же две
       // миллисекунды. Чтобы сравнивать следы, прибор надо задержать ровно на
       // столько же — иначе они разъезжаются по времени, и картина покажет
       // красным всё подряд, даже когда пост выключен.
       const yDo = this.zad[this.zadi];
       this.zad[this.zadi] = y;
+      const gDo = this.zadG[this.zadi];
+      this.zadG[this.zadi] = golosVyh;
       this.zadi = (this.zadi + 1) % this.zad.length;
       y = this.zhmi.step(y, this.p.zhat);
       if (++this.okno >= SR * .25){ this.okno = 0; this.pr.mera(); }
@@ -1724,8 +1741,6 @@ class Chaos extends AudioWorkletProcessor {
       // НАРУЖУ теперь настоящий уровень, а не «слышен или нет»: доля .35
       // была выбрана под приборные 0.149 по пику, и на слух этого мало.
       // Верх шкалы даёт вчетверо больше — а от потолка спасает ограничитель.
-      if (this.p.naruzhu > .002)
-        y = y + vhod * 1.4 * this.p.naruzhu;
       // МАСТЕР: середина хода — единица, дальше вдвое.
       y = koleno(this.predel.step(y * this.p.master * 2));
       this.proshY = y;
@@ -1737,7 +1752,12 @@ class Chaos extends AudioWorkletProcessor {
       if (++this.oscsh >= shago){ this.oscsh = 0;
         this.osci = (this.osci + 1) & 255;
         this.osc[this.osci] = y;
-        this.oscDo[this.osci] = yDo; }
+        this.oscDo[this.osci] = yDo;
+        // Каким голос выходит НАРУЖУ — через ту же обработку, что и прибор.
+        // Считается по мгновенным множителям цепи, а не вторым прогоном:
+        // компрессор и ограничитель на каждом отсчёте просто множители.
+        this.oscG[this.osci] = gDo * this.zhmi.effekt * this.p.master * 2
+                             * this.predel.g; }
       if (++this.prore >= SR / 100){ this.prore = 0;
         this.sled[this.sli] = this.pr.swing.u;
         this.sli = (this.sli + 1) % 200; }
@@ -1770,7 +1790,8 @@ class Chaos extends AudioWorkletProcessor {
         budet: this.vedenie ? { imya: this.vedenie.imya, semya: this.vedenie.semya } : null,
         shag: this.pr.setka.shag, udar: this.pr.setka.udar,
         risunok: this.pr.setka.risunok.slice(),
-        osc: this.osc.slice(), oscDo: this.oscDo.slice(), sled: l,
+        osc: this.osc.slice(), oscDo: this.oscDo.slice(),
+        oscG: this.oscG.slice(), sled: l,
         pl: Array.from(this.pl), utechka: this.utechka
       });
       this.pik *= .6; this.mikPik *= .5;
