@@ -41,9 +41,9 @@ const KNOBS=[
   {k:'spread',  m:['KeyD','KeyF'], imya:'РАЗВОД'},
   {k:'drift', m:['KeyZ','KeyX'], imya:'ГУЛЯНИЕ'},
   {k:'range',m:['KeyC','KeyV'], imya:'ДИАПАЗОН'},
-  // Ритм-секция: сколько шагов из шестнадцати ударные. Такт берётся от того
-  // же медленного генератора, что качает прибор, — отдельного темпа нет.
-  {k:'plotnost',m:['KeyG','KeyH'], imya:'СЕТКА'},
+  // Ритм-секция: насколько глубоко счётчик вмешивается в прибор. Такт идёт
+  // от того же медленного генератора, что качает прибор.
+  {k:'gryzn',m:['KeyG','KeyH'], imya:'ДОЛБЁЖ'},
 ];
 
 // ---- ТУМБЛЕРЫ --------------------------------------------------------------
@@ -217,8 +217,8 @@ function razvedi(){
 
 // макро — то, что на панели; p — то, что уходит в движок
 const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
-             hit:.35, spread:.15, drift:0, range:.5, plotnost:0};
-const switches={gen2:1, gen3:0, link:0, dirt:0};
+             hit:.35, spread:.15, drift:0, range:.5, gryzn:0, risunok:0};
+const switches={gen2:1, gen3:0, link:0, dirt:0, risunok:0};
 
 const p={};
 
@@ -610,8 +610,9 @@ function ruchki(){
   }
   stroki.push('');
   stroki.push('  '+SWITCHES.map(t=>{
-    const z=switches[t.k];
-    return `<span class="${z?'hot':'dim'}">${t.imya} ${z?'▮':'·'}</span>`+
+    const z=switches[t.k], pol=t.pol||2;
+    const vid = pol>2 ? String(z+1) : (z?'▮':'·');
+    return `<span class="${z?'hot':'dim'}">${t.imya} ${vid}</span>`+
            ` <span class="dim2">${t.kl.replace('Key','').toLowerCase()}</span>`;
   }).join('  '));
   stroki.push(`  <span class="dim2">СБОРКА ${sb.imya||'····'} ${seed>>>0}`+

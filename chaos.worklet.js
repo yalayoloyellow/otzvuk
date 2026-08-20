@@ -455,7 +455,12 @@ class Speaker {
     if (!(this.kx === this.kx)){ this.kx = 0; this.kv = 0; }
 
     // Наружу идёт сумма: звон мембраны и тело коробки.
-    return this.a + this.kv * 95000;
+    // Корпус отзывается на удары заметно: это его резонанс и есть тело
+    // звука. У капсюля низа нет физически, весь бас идёт отсюда.
+    // Корпус отдаёт СМЕЩЕНИЕМ стенки, а не её скоростью: скорость шире по
+    // спектру и тащит наверх то, что низом не является. Весь бас прибора —
+    // отсюда, у капсюля его нет физически.
+    return this.a + this.kx * this.ωk * 2.4e6;
   }
 }
 
@@ -474,37 +479,58 @@ class Speaker {
 // ГРУВ сдвигает нечётные доли назад по времени — то самое «не по линейке»,
 // снятое с живых барабанщиков.
 class Setka {
-  constructor(){ this.faza = 0; this.shag = 0; this.risunok = []; this.k = -1; }
-  // n — сколько шагов в такте, k — сколько из них ударные
-  static evklid(n, k){
-    k = clamp(k, 0, n);
-    const r = [];
-    let ostatok = 0;
-    for (let i = 0; i < n; i++){
-      ostatok += k;
-      if (ostatok >= n){ ostatok -= n; r.push(1); } else r.push(0);
+  constructor(){ this.faza = 0; this.shag = 0; this.risunok = []; this.kod = -1;
+                 this.udar = 0; this.sila = 0; this.ogib = 0; this.novy = 0; }
+
+  // РИСУНОК СОБИРАЕТСЯ ЛОГИКОЙ НА ОТВОДАХ ДЕЛИТЕЛЯ — так его и делали в
+  // железе. Счётчик даёт отводы ÷2, ÷4, ÷8, ÷16, а диодная матрица решает,
+  // какое их сочетание замыкает ключ. Оттуда берутся узнаваемые фигуры:
+  // ровная четверть, восьмые, синкопа на «и», рваная группа.
+  //
+  // Евклидова сетка раскладывает удары РОВНО — это рейв. Хип-хоп живёт на
+  // неровности: удары садятся на сильные доли, между ними дыры, а нечётные
+  // шаги запаздывают.
+  static sobrat(kod){
+    const N = 16, r = new Array(N).fill(0);
+    for (let i = 0; i < N; i++){
+      const b1 = (i >> 0) & 1, b2 = (i >> 1) & 1, b4 = (i >> 2) & 1, b8 = (i >> 3) & 1;
+      let v;
+      switch (kod){
+        case 0: v = !b1 && !b2; break;                            // четверти
+        case 1: v = (!b1 && !b2) || (b1 && b2 && !b4); break;      // четверть с синкопой
+        case 2: v = (!b1 && !b2 && !b4) || (b1 && b2); break;      // редко и криво
+        case 3: v = !b1; break;                                   // восьмые
+        case 4: v = (b2 ^ b4) && !b1; break;                      // качель на восьмых
+        case 5: v = (!b1 && !b2) || (b1 && !b2 && b8); break;      // четверть с добивкой
+        case 6: v = ((i * 5) % 16) < 6; break;                    // сдвинутая группа
+        case 7: v = 1; break;                                     // все шестнадцатые
+        default: v = !b1 && !b2;
+      }
+      r[i] = v ? 1 : 0;
     }
     return r;
   }
-  // temp — период такта в секундах; plotnost — доля ударных шагов;
-  // sbivka — поворот рисунка; gruv — насколько запаздывают нечётные доли
-  step(period, plotnost, sbivka, gruv){
+
+  // period — длительность такта; kod — какое сочетание отводов замкнуто;
+  // sbivka — поворот рисунка; gruv — насколько запаздывают нечётные шаги
+  step(period, kod, sbivka, gruv){
     const N = 16;
-    const k = Math.round(clamp(plotnost, 0, 1) * N);
-    if (k !== this.k){ this.risunok = Setka.evklid(N, k); this.k = k; }
+    if (kod !== this.kod){ this.risunok = Setka.sobrat(kod); this.kod = kod; }
     const shagT = Math.max(1e-4, period) / N;
     this.faza += dt / shagT;
-    // Грув: нечётный шаг начинается позже, чем велит сетка.
-    const zaderzhka = (this.shag & 1) ? gruv * .38 : 0;
+    // СВИНГ: на нечётных шагах счётчик ленивее, и доля запаздывает.
+    const zaderzhka = (this.shag & 1) ? gruv * .42 : 0;
     if (this.faza >= 1 + zaderzhka){
       this.faza = 0;
       this.shag = (this.shag + 1) % N;
       const i = (this.shag + Math.round(sbivka * (N - 1))) % N;
       this.udar = this.risunok[i] ? 1 : 0;
+      // Сила удара: у первого отвода делителя ключ замыкается плотнее, чем у
+      // последующих, поэтому сильные доли выходят жирнее сами собой.
+      this.sila = this.udar ? (((this.shag & 3) === 0) ? 1 : ((this.shag & 1) ? .55 : .78)) : 0;
       this.novy = 1;
     } else this.novy = 0;
-    // Огибающая шага: удар — резкий спад, между ударами тихо.
-    this.ogib = this.udar ? Math.pow(1 - clamp(this.faza, 0, 1), 2.2) : 0;
+    this.ogib = this.udar ? this.sila * Math.pow(1 - clamp(this.faza, 0, 1), 2.2) : 0;
     return this.ogib;
   }
 }
@@ -574,7 +600,8 @@ class Device {
     // ставят. Поэтому ритм всегда синхронен качанию — период такта равен
     // четырём качаниям.
     const ritm = this.setka.step(this.swing.period * 4,
-                                 p.plotnost, this.sb.sbivka, this.sb.gruv);
+                                 Math.round(clamp(p.risunok, 0, 1) * 7),
+                                 this.sb.sbivka, this.sb.gruv);
     // Сетка НЕ выключает прибор — это была бы драм-машина, где в паузах
     // тишина. Ключи коммутируют номиналы, от которых меняется ИСКАЖЕНИЕ:
     // звук идёт непрерывно, но на ударных шагах рвётся его тембр.
@@ -583,11 +610,17 @@ class Device {
     //   · параллельно цепи заряда подключается конденсатор — высота ныряет
     //     и возвращается;
     //   · замыкается связь между узлами — они срываются в захват.
-    let ritmSm = 0, ritmSv = 0;
-    if (p.plotnost > .002){
-      ritmSm = ritm * .17;
-      ritmSv = ritm;
-      yarkost = yarkost * (1 - ritm * .38) + svmin * ritm * .38;
+    // БАРАБАННОСТЬ. На ударе прибор ныряет глубоко вниз и там перегружается:
+    // накал падает почти до нуля (низ и треск), смещение подскакивает (игла),
+    // связь замыкается, ток растёт — шина проседает, каскад упирается в
+    // питание. Это и даёт рычащий бас вместо аккуратного щелчка.
+    let ritmSm = 0, ritmSv = 0, ritmGr = 0;
+    if (p.gryzn > .002){
+      const g = p.gryzn;
+      ritmSm = ritm * .19 * g;
+      ritmSv = ritm * g;
+      ritmGr = ritm * g;
+      yarkost = yarkost * (1 - ritm * .95 * g) + svmin * ritm * .95 * g;
     }
 
     // ИМПУЛЬС — постоянное смещение через управляющий резистор: подгоняет
@@ -760,8 +793,8 @@ class Chaos extends AudioWorkletProcessor {
     this.p = { sway:.55, tone:.5, depth:.75,
                pulse:.2, hit:.35, spread:.15, drift:0,
                gen2:1, gen3:0, link:0, dirt:0, range:.5,
-               // ритм-секция: одна ручка — сколько шагов из шестнадцати ударные
-               plotnost:0 };
+               // ритм-секция: глубина вмешательства и выбор рисунка
+               gryzn:0, risunok:0 };
     this.pr = new Device(1);
     this.svod = new Decim();
     this.kont = new Contacts();
