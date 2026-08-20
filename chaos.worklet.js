@@ -1004,8 +1004,16 @@ const KOMMUTACIYA = {link:1, dirt:1, kuda:1};
 
 // Сколько длится перевод между двумя приборами при смене пресета или сборки.
 // Это движение руки на кроссфейдере, а не техническая сглаживалка.
-const VEDU = .035;      // ход движка под пальцем
-const VEDU_MIX = 1.2;   // он же в режиме микширования: рука на фейдере
+// Ход движка. Не сглаживание, а МАССА: у движка с пальцем она есть, и
+// мгновенно изменить скорость они не могут. Прежде тут стоял однополюсный
+// фильтр — а он трогается с МАКСИМАЛЬНОЙ скорости и тормозит, то есть каждое
+// нажатие начиналось рывком. Этот рывок и слышен как ступенька, сколько
+// сглаживание ни удлиняй; на КАЧАНИИ заметнее всего, потому что период там
+// ходит на восемь октав. Здесь второй порядок в критическом демпфировании:
+// трогается с нуля, встаёт в ноль, промаха нет — ровно как ведутся номиналы
+// при Tab, который потому и едет гладко.
+const VEDU = .05;       // под пальцем
+const VEDU_MIX = 1.1;   // в режиме микширования: рука на фейдере
 
 // ---- ПОСТ ------------------------------------------------------------------
 // Всё, что здесь, — заведомо программное и к прибору отношения не имеет.
@@ -1177,7 +1185,8 @@ class Chaos extends AudioWorkletProcessor {
                mix:0, zhat:0, master:.5 };
     // Куда движок ЕДЕТ (панель) и где он СЕЙЧАС (схема) — две разные вещи.
     this.cel = {};
-    for (const k in this.p) if (!TUMBLERY[k]) this.cel[k] = this.p[k];
+    this.skor = {};      // скорость движка: у него есть масса
+    for (const k in this.p) if (!TUMBLERY[k]){ this.cel[k] = this.p[k]; this.skor[k] = 0; }
     this.pr = new Device(1);
     this.svod = new Decim();
     // Идущий переход. Второго прибора больше нет: ведём номиналы одного.
@@ -1209,7 +1218,7 @@ class Chaos extends AudioWorkletProcessor {
           // ДОКАЗАТЬ, что у детали нет инерции, а не наоборот.
           if (!(k in nab)){
             nab[k] = clamp(d.v[k], 0, 1);
-            if (!TUMBLERY[k]) this.cel[k] = nab[k];
+            if (!TUMBLERY[k]){ this.cel[k] = nab[k]; this.skor[k] = 0; }
             continue;
           }
           const v = clamp(d.v[k], 0, 1);
@@ -1313,18 +1322,24 @@ class Chaos extends AudioWorkletProcessor {
     }
 
     const plavno = this.p.mix > .5;
-    const kR = 1 - Math.exp(-1 / (SR * (plavno ? VEDU_MIX : VEDU)));
-    const kT = plavno ? kR : 1;
+    const w = 2.4 / (plavno ? VEDU_MIX : VEDU);
+    const w2dt = w * w / SR, zatdt = 2 * w / SR, dtR = 1 / SR;
+    const migom = !plavno;      // коммутация без микширования мгновенна
 
     for (let s = 0; s < n; s++){
       // Движки подстроечников доезжают до заданного места. Это единственное
       // место, где панель встречается со схемой, и здесь же кончается цифра:
       // дальше по тракту ступенчатых величин нет вовсе.
       for (const k in this.cel){
-        const c = this.cel[k], v = this.p[k];
-        if (c === v) continue;
-        const k1 = KOMMUTACIYA[k] ? kT : kR;
-        this.p[k] = (k1 >= 1 || Math.abs(c - v) < 1e-6) ? c : v + (c - v) * k1;
+        const c = this.cel[k], x = this.p[k], sk = this.skor[k] || 0;
+        if (KOMMUTACIYA[k] && migom){ this.p[k] = c; this.skor[k] = 0; continue; }
+        if (c === x && sk === 0) continue;
+        if (Math.abs(c - x) < 1e-7 && Math.abs(sk) < 1e-4){
+          this.p[k] = c; this.skor[k] = 0; continue;
+        }
+        const v = sk + (c - x) * w2dt - sk * zatdt;
+        this.skor[k] = v;
+        this.p[k] = x + v * dtR;
       }
       let y = 0;
       // Рука на приборе: хлопок контактов рвёт питание, движок шуршит в
