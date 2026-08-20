@@ -418,8 +418,9 @@ window.dbg={sostoyanie:'не запускался',oshibka:null,
   get ruchki(){return {...knobs}},
   get tumblery(){return {...switches}},
   // Нарисовать кадр по требованию: тогда цену панели видно замером, а не
-  // ощущением «будто подлагивает».
-  kadr(){ return kadr_(); }};
+  // ощущением «будто подлагивает». Не kadr — под этим именем сюда пишется
+  // текст ошибки кадра, и метод затёрло бы первой же ошибкой.
+  risuy(){ return kadr_(); }};
 async function pusk(){
   if(idet) return;
   zagruzispisok();
@@ -598,7 +599,14 @@ const MODUL=16, RAMKA_V=2*MODUL;
 // ПРОПОРЦИЯ КАРТИНЫ: вдвое шире, чем выше. Знакоместо 6.6 на 10 пикселей,
 // значит строк должно быть 6.6/(10·2) от числа знаков в строке.
 const OVAL=2, STROK_NA_ZNAK=6.6/(10*OVAL);
+// Пороги окраски: войти и выйти. Прежде порог был один на оба направления
+// (.05 и .14), и на нём состояние дребезжало.
+const VHOD2=.065, VYHOD2=.038, VHOD1=.165, VYHOD1=.115;
 let Sh=112, V=40, pole=new Float32Array(Sh*V), shipy=new Float32Array(Sh*V), kolonok=3;
+// Рабочие полосы на одну строку картины: яркость, разница, разница
+// сглаженная и чей это вклад. Заведены заранее — в кадре ничего не выделяем.
+let yark=new Float32Array(Sh), raz=new Float32Array(Sh),
+    razS=new Float32Array(Sh), chey=new Uint8Array(Sh);
 // Второй след — то, что отдал ПРИБОР, до поста. Разница между ними и есть
 // работа поста, и она рисуется красным.
 let poleD=new Float32Array(Sh*V), shipyD=new Float32Array(Sh*V);
@@ -650,7 +658,9 @@ function pomer(){
     // остаётся прежней длины и на краях отдаёт undefined.
     pole=new Float32Array(Sh*V); shipy=new Float32Array(Sh*V);
     poleD=new Float32Array(Sh*V); shipyD=new Float32Array(Sh*V);
-    poleG=new Float32Array(Sh*V); shipyG=new Float32Array(Sh*V); }
+    poleG=new Float32Array(Sh*V); shipyG=new Float32Array(Sh*V);
+    yark=new Float32Array(Sh); raz=new Float32Array(Sh);
+    razS=new Float32Array(Sh); chey=new Uint8Array(Sh); }
 }
 addEventListener('resize',pomer);
 
@@ -797,20 +807,42 @@ function kartina(){
   }
   const stroki=[];
   for(let y=0;y<V;y++){
-    let s='', klass=null, kusok='';
+    const yb=y*Sh;
+    // РАЗНИЦА СЧИТАЕТСЯ ПО ВСЕЙ СТРОКЕ ВПЕРЁД, и не зря. Работа обработки —
+    // величина непрерывная, а порог у неё резкий: там, где разница ходит
+    // около порога, соседние знакоместа красятся через одно. Глазу это
+    // читается крапом, а разметке обходится в отдельный пролёт на каждый
+    // знак: с включённым COMP их было девятьсот на кадр против сорока.
     for(let x=0;x<Sh;x++){
-      const i=y*Sh+x;
+      const i=yb+x;
       const a=(pole[i]+shipy[i])/mx, b=(poleD[i]+shipyD[i])/mx,
             g=(poleG[i]+shipyG[i])/mx;
       const dp=a>b?a-b:b-a;              // сколько внёс ПОСТ
       const dg=a>g?a-g:g-a;              // сколько внёс ГОЛОС
       // Слабый фон не рисуем совсем: он сливал рисунок в кашу.
       let v=Math.max(a,b,g);
-      v = v<.045 ? 0 : (v-.045)/.955;
-      const ch=PHOSPHOR[SVET[v<=0?0:v>=1?1023:(v*1023)|0]];
+      yark[x] = v<.045 ? 0 : (v-.045)/.955;
+      raz[x]  = dp>dg?dp:dg;
       // Где вмешались оба, показываем того, кто вмешался сильнее.
-      const d=Math.max(dp,dg), kto=dg>dp?'g':'p';
-      const kl = v<=0 ? null : d>.14 ? kto+'1' : d>.05 ? kto+'2' : null;
+      chey[x] = dg>dp?1:0;
+    }
+    // Одиночная точка — это дрожь самой разницы, а не работа обработки.
+    // Сглаживаем по трём соседям: остаются связные пятна, и они и есть то,
+    // что происходит на самом деле.
+    for(let x=0;x<Sh;x++)
+      razS[x]=(raz[x>0?x-1:0]+raz[x]+raz[x<Sh-1?x+1:Sh-1])/3;
+
+    let s='', klass=null, kusok='', sost=0, kto='p';
+    for(let x=0;x<Sh;x++){
+      const ch=PHOSPHOR[SVET[yark[x]<=0?0:yark[x]>=1?1023:(yark[x]*1023)|0]];
+      // ГИСТЕРЕЗИС: войти в цвет труднее, чем в нём остаться. Иначе на самом
+      // пороге состояние дребезжит от знака к знаку — та же болезнь, от
+      // которой в электронике ставят триггер Шмитта, и лечится она тем же.
+      const d=razS[x];
+      if(sost===0){ if(d>VHOD2){ sost = d>VHOD1?2:1; kto = chey[x]?'g':'p'; } }
+      else if(sost===1){ if(d>VHOD1) sost=2; else if(d<VYHOD2) sost=0; }
+      else { if(d<VYHOD1) sost = d>VYHOD2?1:0; }
+      const kl = yark[x]<=0 || !sost ? null : kto+(sost===2?'1':'2');
       if(kl!==klass){
         if(kusok) s += klass ? `<span class="${klass}">${kusok}</span>` : kusok;
         kusok=''; klass=kl;
