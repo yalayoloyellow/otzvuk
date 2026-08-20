@@ -36,9 +36,27 @@
     letter-spacing:0;padding:32px 48px;-webkit-font-smoothing:antialiased;
     text-shadow:0 0 6px rgba(160,255,120,.22)}
   pre{white-space:pre;font:inherit}
-  /* Экран тянется по окну, а не по фиксированной сетке: раньше легенда
-     уезжала вправо на всём, что уже 104 символов. */
-  #screen{width:100%;margin:0 auto}
+  /* ДВЕ КОМПОНОВКИ, и это не подгонка под экран, а два вида прибора.
+
+     СТОЯ (окно выше, чем шире) — картина сверху, панель под ней, легенда
+     внизу. Прибор на столе: экран на уровне глаз, органы под руками.
+
+     ЛЁЖА (окно шире, чем выше) — панель слева одной колонкой, картина
+     справа во всю оставшуюся ширину и высоту, легенда внизу через оба
+     столбца. Так стоит любой прибор с дисплеем сбоку от ручек.
+
+     Промежуток между блоками модуль, а между столбцами два: по горизонтали
+     расстояния всегда шире, иначе столбцы читаются как один. */
+  #screen{width:100%;display:grid;gap:16px 32px;
+    grid-template-columns:1fr;
+    grid-template-areas:"ris" "panel" "line"}
+  @media (min-aspect-ratio:1/1){
+    #screen{grid-template-columns:auto 1fr;
+            grid-template-areas:"panel ris" "line line"}
+  }
+  #ris{grid-area:ris;min-width:0;overflow:hidden}
+  #panel{grid-area:panel}
+  #line{grid-area:line}
   #canvas{white-space:pre}
   /* Заголовка нет. До запуска здесь стоит приглашение, после — пусто, и
      пустая строка не должна занимать модуль. */
@@ -59,7 +77,6 @@
      вертикали и фигура выходит узкой. Это второй ритм, и он намеренный:
      картина и текст остаются двумя блоками через один модуль. */
   #canvas{color:var(--fg);line-height:10px;
-    margin-bottom:16px;
     text-shadow:0 0 8px rgba(150,255,110,.35),0 0 18px rgba(120,255,90,.14)}
   /* Работа поста на картине: там, где след после обработки разошёлся с тем,
      что отдал прибор. p1 — разошёлся сильно, p2 — слегка. */
@@ -72,7 +89,7 @@
     0 0 18px rgba(80,150,255,.18)}
   #canvas .g2{color:var(--golos);opacity:.42;
     text-shadow:0 0 6px rgba(111,179,255,.18)}
-  #line{color:var(--fg);margin-top:16px;white-space:pre-wrap}
+  #line{color:var(--fg);white-space:pre-wrap}
   #devices,#knobs{white-space:pre-wrap}
   b{font-weight:400;color:var(--hot)}
   #tabs{margin:2px 0 4px}
@@ -80,10 +97,10 @@
   .tab{cursor:pointer;padding:1px 6px;border:1px solid var(--line);border-radius:3px}
   .tab:hover{color:var(--hot);border-color:var(--fg)}
 </style>
-<div id="screen">
 <pre id="head"></pre>
-<pre id="canvas"></pre>
-<pre id="knobs"></pre>
+<div id="screen">
+<div id="ris"><pre id="canvas"></pre></div>
+<div id="panel"><pre id="knobs"></pre></div>
 <pre id="line"></pre>
 </div>
 <script type="module" src="instrument.js"></script>

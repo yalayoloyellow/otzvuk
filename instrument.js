@@ -44,40 +44,59 @@ let report={pik:0,rms:0,lyap:0,vraschenie:0,shina:1,osc:new Float32Array(256),
 // и в середине, голос — на правом краю (пунктуация, стрелки, девятка с
 // нулём), пост — на скобках и минусе, в самом дальнем углу. Рука не путает
 // зоны, потому что они не перемешаны.
+// ИМЕНА АНГЛИЙСКИЕ, и это не мода. У каждой из этих величин есть настоящее
+// имя, которое стоит на панелях полувека приборов: RATE, DEPTH, DETUNE, SAG.
+// Русский перевод пришлось бы придумывать, а придуманное имя ничего не
+// напоминает и учится с нуля. Настоящее — узнаётся.
+//
+// Прозаические подписи и состояния («микрофон не включён») остаются русскими:
+// это не термины, а речь. На приборе так и бывает — шелкография английская,
+// а объяснение на своём языке.
 const KNOBS=[
   // ---- СХЕМА: верхний ряд ----
-  {k:'sway',   m:['KeyQ','KeyW'], imya:'КАЧАНИЕ'},
-  {k:'tone',   m:['KeyE','KeyR'], imya:'ХАРАКТЕР'},
-  {k:'depth',  m:['KeyT','KeyY'], imya:'РАЗМАХ'},
-  {k:'pulse',  m:['KeyU','KeyI'], imya:'ИМПУЛЬС'},
-  {k:'range',  m:['KeyO','KeyP'], imya:'ДИАПАЗОН'},
+  {k:'sway',   m:['KeyQ','KeyW'], imya:'RATE'},      // период медленного генератора
+  {k:'tone',   m:['KeyE','KeyR'], imya:'TONE'},      // рабочая точка фоторезистора
+  {k:'depth',  m:['KeyT','KeyY'], imya:'DEPTH'},     // глубина модуляции
+  {k:'pulse',  m:['KeyU','KeyI'], imya:'WIDTH'},     // ширина импульса
+  {k:'range',  m:['KeyO','KeyP'], imya:'TUNE'},      // общий строй прибора
   // ---- СХЕМА: домашний ряд ----
-  {k:'hit',    m:['KeyA','KeyS'], imya:'УДАР'},
-  {k:'spread', m:['KeyD','KeyF'], imya:'РАЗВОД'},
-  {k:'drift',  m:['KeyG','KeyH'], imya:'ГУЛЯНИЕ'},
-  {k:'gryzn',  m:['KeyJ','KeyK'], imya:'ГЕЙТ'},
+  // BIAS — смещение в цепи медленного узла. Оно и есть ток смещения, снятый
+  // с отвода подстроечника, так что имя тут не приблизительное, а точное.
+  {k:'hit',    m:['KeyA','KeyS'], imya:'BIAS'},
+  {k:'spread', m:['KeyD','KeyF'], imya:'DETUNE'},    // расстройка трёх генераторов
+  // SLOP — разболтанность периода. Слово с панелей MPC и Elektron, и значит
+  // там ровно это же.
+  {k:'drift',  m:['KeyG','KeyH'], imya:'SLOP'},
+  {k:'gryzn',  m:['KeyJ','KeyK'], imya:'SEQ'},       // глубина вмешательства счётчика
 
   // ---- ГОЛОС: правый край ----
-  // ГОЛОС — насколько источник влияет на СХЕМУ. Это не громкость.
-  {k:'golos',  m:['KeyN','KeyM'],           imya:'ГОЛОС',    zona:'golos'},
-  // ИСТОЧНИК — не переключатель, а потенциометр между микрофоном и
+  // XMOD — перекрёстная модуляция: сигнал из гнезда ведёт параметры схемы.
+  // Это НЕ громкость: громкость источника наружу — DRY.
+  {k:'golos',  m:['KeyN','KeyM'],           imya:'XMOD',   zona:'golos'},
+  // SOURCE — не переключатель, а потенциометр между микрофоном и
   // говорилкой: на середине слышны оба.
-  {k:'ist',    m:['Comma','Period'],        imya:'ИСТОЧНИК', zona:'golos'},
-  {k:'ton',    m:['Semicolon','Quote'],     imya:'ТОН',      zona:'golos'},
-  {k:'naruzhu',m:['ArrowLeft','ArrowRight'],imya:'НАРУЖУ',   zona:'golos'},
-  // ПАУЗА — размер тишины МЕЖДУ произнесениями, в тактах прибора. Не скорость
+  {k:'ist',    m:['Comma','Period'],        imya:'SOURCE', zona:'golos'},
+  {k:'ton',    m:['Semicolon','Quote'],     imya:'PITCH',  zona:'golos'},
+  {k:'naruzhu',m:['ArrowLeft','ArrowRight'],imya:'DRY',    zona:'golos'},
+  // GAP — размер тишины МЕЖДУ произнесениями, в тактах прибора. Не скорость
   // речи: та привязана к качелям намертво и ручкой не задаётся. Пять жёстких
   // ступеней, промежуточных положений нет — каждое нажатие это шаг.
-  {k:'temp',   m:['Digit9','Digit0'],       imya:'ПАУЗА',    zona:'golos',
+  {k:'temp',   m:['Digit9','Digit0'],       imya:'GAP',    zona:'golos',
    stupeni:['×0.25','×0.5','×1','×2','×3']},
   // Второй слой: пар не хватило ровно на две величины, а страницы у прибора
   // нет и быть не должно. Shift на ЭТИХ двух парах выбирает вторую величину,
   // ускорения вращения на них нет — для него остаётся cmd.
-  {k:'trakt',  m:['Semicolon','Quote'],     imya:'ТРАКТ',    zona:'golos', shift:1},
-  {k:'kuda',   m:['ArrowLeft','ArrowRight'],imya:'КУДА',     zona:'golos', shift:1},
+  // GENDER — длина тракта. Слово из вокодеров и формантных сдвигателей,
+  // понятное без объяснения.
+  {k:'trakt',  m:['Semicolon','Quote'],     imya:'GENDER', zona:'golos', shift:1},
+  // ROUTE — куда входит сигнал. Не выбор одного из двух, а положение
+  // переключателя между ними, поэтому концы подписаны словами: на лампу
+  // накала или прямо в шину питания.
+  {k:'kuda',   m:['ArrowLeft','ArrowRight'],imya:'ROUTE',  zona:'golos', shift:1,
+   konci:['lamp','rail']},
 
   // ---- ПОСТ: дальний угол ----
-  {k:'zhat',   m:['BracketLeft','BracketRight'], imya:'ЖАТЬ',   zona:'post'},
+  {k:'zhat',   m:['BracketLeft','BracketRight'], imya:'COMP',   zona:'post'},
   // DRIVE — усиление на входе ограничителя: сначала громче, потом плотнее,
   // потом стена. Потолок при этом стоит намертво, и пик не вылезет ни при
   // каком положении.
@@ -93,17 +112,21 @@ const KNOBS=[
 // ЦЕПЬ: провод либо припаян, либо нет. Промежуточного положения у него не
 // бывает физически, поэтому эти вещи и стоят отдельно от ручек.
 const SWITCHES=[
-  {k:'gen1', kl:'KeyZ', imya:'ГЕН 1', podpis:['выкл','вкл']},
-  {k:'gen2', kl:'KeyX', imya:'ГЕН 2', podpis:['выкл','вкл']},
-  {k:'gen3', kl:'KeyC', imya:'ГЕН 3', podpis:['выкл','вкл']},
-  {k:'link', kl:'KeyV', imya:'СВЯЗЬ', podpis:['нет','замкнута']},
-  {k:'dirt', kl:'KeyB', imya:'ГРЯЗЬ', podpis:['развязка','снята']},
+  {k:'gen1', kl:'KeyZ', imya:'OSC 1'},
+  {k:'gen2', kl:'KeyX', imya:'OSC 2'},
+  {k:'gen3', kl:'KeyC', imya:'OSC 3'},
+  // SYNC — захват генераторов друг другом через настоящий резистор.
+  {k:'link', kl:'KeyV', imya:'SYNC'},
+  // SAG — снятие развязки питания: шина проседает, и логика слышит сама себя.
+  {k:'dirt', kl:'KeyB', imya:'SAG'},
   // Микрофон слышит динамик, круг замыкает комната. Три положения: без
-  // петли, лёгкая окраска помещением, самовозбуждение.
-  {k:'petlya', kl:'Slash', imya:'ПЕТЛЯ', podpis:['нет','комната','вой'],
+  // петли, лёгкая окраска помещением, самовозбуждение. Двухпозиционные
+  // показывают лампочку, а у трёхпозиционного лампочкой не обойтись — там
+  // положения подписаны словами.
+  {k:'petlya', kl:'Slash', imya:'FEEDBACK', podpis:['off','room','howl'],
    pol:3, mikro:1, zona:'golos'},
-  {k:'povtor', kl:'KeyL', imya:'ПОВТОР', podpis:['раз','по кругу'], zona:'golos'},
-  {k:'mix', kl:'Backslash', imya:'МИКШИР', podpis:['резко','плавно'], zona:'post'},
+  {k:'povtor', kl:'KeyL', imya:'LOOP', zona:'golos'},
+  {k:'mix', kl:'Backslash', imya:'MORPH', zona:'post'},
 ];
 
 // Второй страницы нет и быть не должно. Всё, чего нет на панели, — это
@@ -222,8 +245,8 @@ function skazhiTekst(){
   // Сказанное некуда деть, если гнездо не переключено на говорилку и её
   // никуда не подмешивают. Молчать в такой момент было бы издевательством.
   const podskazka=[];
-  if(knobs.ist < .02){ knobs.ist = 1; podskazka.push('источник → говорилка'); }
-  if(knobs.golos < .02 && knobs.naruzhu < .02) podskazka.push('подними ГОЛОС или НАРУЖУ');
+  if(knobs.ist < .02){ knobs.ist = 1; podskazka.push('SOURCE → говорилка'); }
+  if(knobs.golos < .02 && knobs.naruzhu < .02) podskazka.push('подними XMOD или DRY');
   send();
   skazhi(`${f.filter(x=>x.f!=='pauza').length} фонем`+
          (podskazka.length ? ' · ' + podskazka.join(' · ') : ''));
@@ -429,7 +452,7 @@ addEventListener('keydown',async e=>{
     return;
   }
   if(c==='Enter'){ e.preventDefault(); stroka.aktivna=true; return; }
-  // Буквы n, o и p ушли под ручки ГОЛОС и ДИАПАЗОН, а эти три обработчика
+  // Буквы n, o и p ушли под ручки XMOD и TUNE, а эти три обработчика
   // стояли ВЫШЕ разбора ручек и перехватывали нажатие — обе ручки молчали.
   // Команды переехали на то, что осталось свободным.
   for(const km of KOMANDY){
@@ -483,7 +506,7 @@ addEventListener('keydown',async e=>{
       // Голосу нужен источник: без микрофона ручка глубины крутится
       // впустую, и это ровно то, на что легко не заметить.
       if(r.k==='golos' && knobs.golos>0) vklyuchiMikrofon();
-      // Микрофон нужен, пока ИСТОЧНИК не уведён целиком в говорилку.
+      // Микрофон нужен, пока SOURCE не уведён целиком в говорилку.
       if(r.k==='ist' && knobs.ist<.98) vklyuchiMikrofon();
       poslednyaya=r; vspyshka=6; send();
     }
@@ -580,32 +603,33 @@ function pomer(){
   ris.appendChild(proba);
   const shs=proba.getBoundingClientRect().width/100 || 6.6;
   proba.remove();
-  // Картина занимает всё, что осталось после рамки, и пересчитывает
+
+  // СТОЯ или ЛЁЖА — по форме окна. Раскладку задаёт разметка, здесь только
+  // считаются знакоместа, и считать их надо по-разному: лёжа у картины
+  // отобран левый столбец под панель, стоя — нижняя полоса.
+  const lezha=(innerWidth||800)>=(innerHeight||800);
+  // Картина занимает всё, что осталось после рамки и панели, и пересчитывает
   // знакоместа под окно. Потолок в 220 знаков был случайным: на широком
   // экране он оставлял пустые поля по бокам поверх настоящих отступов.
-  const nov=clamp(Math.floor((ris.clientWidth||innerWidth-96)/shs)-1,40,420);
-  // ВЫСОТА. У картины есть СВОЯ пропорция — широкая полоса вдвое шире, чем
-  // выше: знакоместо 6.6 на 10, строк треть от знаков, отсюда без малого
-  // два к одному на экране. Это форма фигуры, и она не должна плавать за
-  // окном — иначе одна и та же сборка выглядит по-разному на разных
-  // машинах.
-  //
-  // Но и уезжать под сгиб она не должна: инструмент, который надо листать,
-  // это не инструмент. Поэтому пропорция — ПОТОЛОК, а не правило: сколько
-  // осталось от окна после рамки, панели и двух промежутков, столько и
-  // берём, но не больше своей формы.
+  const nov=clamp(Math.floor((ris.clientWidth||innerWidth-96)/shs)-1,30,420);
+  // Лёжа панель встаёт ОДНОЙ колонкой: она узкая и читается сверху вниз, как
+  // ряд органов на боковой стенке. Стоя колонок столько, сколько влезает.
+  kolonok = lezha ? 1 : nov>=96 ? 3 : nov>=66 ? 2 : 1;
+
+  // ВЫСОТА. Своей пропорции у картины нет — она принимает форму окна. Здесь
+  // стоял потолок «полоса два к одному», и он был ошибкой: в высоком окне
+  // картина упиралась в него и оставляла под собой пустую треть экрана.
+  // Фигура и так растягивается под поле, ей эта форма и достаётся.
   const str=parseFloat(getComputedStyle(ris).lineHeight)||10;
-  const panel=($('#knobs').offsetHeight||24*MODUL)+($('#line').offsetHeight||MODUL);
-  const svobodno=(innerHeight||800)-2*RAMKA_V-panel-2*MODUL;
-  const novv=clamp(Math.min(Math.round(nov*.34), Math.floor(svobodno/str)),14,80);
+  const zanyato=($('#line').offsetHeight||MODUL)+MODUL
+    + (lezha ? 0 : ($('#knobs').offsetHeight||24*MODUL)+MODUL);
+  const novv=clamp(Math.floor(((innerHeight||800)-2*RAMKA_V-zanyato)/str),10,140);
   if(nov!==Sh||novv!==V){ Sh=nov; V=novv;
     // Оба слоя пересоздаются вместе: если пересоздать только один, второй
     // остаётся прежней длины и на краях отдаёт undefined.
     pole=new Float32Array(Sh*V); shipy=new Float32Array(Sh*V);
     poleD=new Float32Array(Sh*V); shipyD=new Float32Array(Sh*V);
     poleG=new Float32Array(Sh*V); shipyG=new Float32Array(Sh*V); }
-  // Панель ручек: три колонки на широком, две на среднем, одна на узком.
-  kolonok = Sh>=96 ? 3 : Sh>=66 ? 2 : 1;
 }
 addEventListener('resize',pomer);
 
@@ -663,7 +687,7 @@ function risuy(g, ks, ki, pole, shipy, geo, muty){
     const y=Math.round(cy - (wy+mut)*cy*.82*rasty);
     if(px!==null){
       mazok(px,py,x,y,.8);
-      // ЩУПАЛЬЦЕ выстреливает НАРУЖУ там, где волна рвётся, и сходит на
+      // ЩУПАЛЬЦЕ выстреливает наружу там, где волна рвётся, и сходит на
       // остриё: яркость падает вдоль луча, а сам слой гаснет за пару кадров.
       const dl=Math.hypot(x-px,y-py);
       if(dl>Sh*.05){
@@ -695,7 +719,7 @@ function risuy(g, ks, ki, pole, shipy, geo, muty){
 // краснела вся фигура при выключенной обработке. А громкость — не изменение
 // звука. С раздельной мерой красным идёт только то, что меняет ФОРМУ волны:
 // сжатие, ограничение, срез. Мастер не красит ничего, и это правильно —
-// уровень показывает шкала УРОВЕНЬ, а не картина.
+// уровень видно по работе ограничителя, а не по картине.
 function kartina(){
   const oA=report.osc||new Float32Array(256);
   const oG=report.oscG||new Float32Array(oA.length);
@@ -822,48 +846,48 @@ function ruchki(){
   const shk = uzko ? 8 : 12;
   const stroki=[];
 
-  // Показания прибора: период качелей, высота, ширина импульса, уровень.
+  // ПОКАЗАНИЙ ПЯТЬ, и каждое влечёт действие. Было девять, и четыре из них
+  // не влекли ничего: PERIOD дублировал BPM тем же числом наизнанку, FREQ
+  // при работающих качелях размазана в кашу и стоит неподвижно только на
+  // мёртвых настройках, DUTY красив и ни к чему не ведёт, RAIL тоже, а
+  // LEVEL в нынешнем виде почти ничто — потолок и так держит ограничитель.
+  // Показание, на которое нельзя ответить рукой, — это украшение.
   const per=report.period>0&&report.period<30 ? report.period : 0;
-  const pit=report.pitch||0, duty=report.duty||0;
-  const l=clamp(report.pik||0,0,1), sh=clamp(report.shina||1,0,1);
   const r=report.razbros||0;
+  // РЕЖИМ остаётся: это единственное, что говорит, где прибор находится по
+  // хаосу — идёт ровно, дышит, гуляет или уже разваливается.
   const rezhim = r<.02?'ровно' : r<.10?'дышит' : r<.28?'гуляет' : r<.55?'край':'распад';
-  // ТЕМП. Качель = такт, шестнадцать шагов сетки укладываются в неё. Весь
-  // музыкальный темп 70–160 лежит на тринадцати процентах хода ручки
-  // КАЧАНИЕ, и без подписи в него не попасть — отсюда «получается только
-  // рейв». Ход ручки не тронут нарочно: он переопределил бы все пресеты.
+  // BPM. Качель = такт, шестнадцать шагов сетки укладываются в неё. Весь
+  // музыкальный темп 70–160 лежит на тринадцати процентах хода ручки RATE,
+  // и без подписи в него не попасть — отсюда «получается только рейв».
+  // Ход ручки не тронут нарочно: он переопределил бы все пресеты.
   const bpm = per>0 ? 240/per : 0;
   const vtemp = bpm>=40 && bpm<=200;
   stroki.push(
-    `ПЕРИОД  ${shkala(per?clamp(Math.log2(per/.02)/9,0,1):0,shk)} ${per?per.toFixed(2)+'с':'—'}`+
-    (bpm ? `   <span class="${vtemp?'hot':'dim2'}">${Math.round(bpm)} уд/мин</span>` : ''));
-  stroki.push(
-    `ВЫСОТА  ${shkala(pit?clamp(Math.log2(pit/20)/8,0,1):0,shk)} ${pit?Math.round(pit)+'Гц':'—'}`);
-  stroki.push(
-    `ИМПУЛЬС ${shkala(duty,shk)} ${Math.round(duty*100)}%   ${rezhim}`);
-  stroki.push(
-    `УРОВЕНЬ ${shkala(l,shk)}   ШИНА ${shkala(sh,Math.max(4,shk-4))}`);
-  // СРЫВЫ. Строка появляется только если звук правда рвался — иначе её нет.
+    `BPM    ${shkala(bpm?clamp(Math.log2(bpm/8)/8,0,1):0,shk)} `+
+    (bpm ? `<span class="${vtemp?'hot':'dim2'}">${Math.round(bpm)}</span>` : '—')+
+    `   ${rezhim}`);
+  // DROPOUT. Строка появляется только если звук правда рвался — иначе её нет.
   const pot = zapas();
   if (pot > 20) stroki.push(
-    `<span class="post">СРЫВЫ   потеряно ${Math.round(pot)} мс звука — `+
+    `<span class="post">DROPOUT потеряно ${Math.round(pot)} мс звука — `+
     `воркл не укладывается в срок</span>`);
-  // ВХОД. Без этой строки проверить микрофон нельзя вовсе: не слышно, дошёл
-  // ли сигнал до ядра, или разрешение не дали, или он просто молчит.
-  // ВОЗВРАТ — сколько из вышедшего в динамик комната вернула в микрофон;
-  // от него ядро само считает усиление петли.
+  // INPUT. Без этой строки проверить микрофон нельзя вовсе: не слышно,
+  // дошёл ли сигнал до ядра, или разрешение не дали, или он просто молчит.
   const mk=clamp(report.mik||0,0,1), vz=report.vozvrat||0;
   stroki.push(
-    `<span class="golos">ВХОД    ${shkala(mk,shk)} ` +
+    `<span class="golos">INPUT  ${shkala(mk,shk)} ` +
     (mk>.002 ? 'идёт' : mikrofon ? 'тихо'
       : knobs.ist>.5 ? 'говорилка молчит' : 'микрофон не включён') +
-    (switches.petlya ? `   ВОЗВРАТ ${vz.toFixed(2)}` : '') + `</span>`);
+    // ROOM — сколько из вышедшего комната вернула в микрофон. По нему ядро
+    // само считает усиление петли, поэтому без петли его и не показываем.
+    (switches.petlya ? `   ROOM ${vz.toFixed(2)}` : '') + `</span>`);
   // Сетка ритма: где удары и где сейчас счётчик.
   const ris=report.risunok||[];
   if(ris.length){
     const shag=report.shag|0;
     const s=ris.map((v,i)=> i===shag ? (v?'█':'▒') : (v?'▮':'·')).join('');
-    stroki.push(`СЕТКА   ${s}`);
+    stroki.push(`SEQ    ${s}`);
   }
   stroki.push('');
 
@@ -876,29 +900,64 @@ function ruchki(){
   ];
   // Ручки: имя, шкала, клавиши. Ширина колонки и число колонок — от экрана.
   const shr = uzko ? 10 : 14;
+  // ЯЧЕЙКИ СНАЧАЛА СЧИТАЮТСЯ, ПОТОМ СТАВЯТСЯ. Ширина столбца берётся по
+  // самой длинной ячейке в нём — и по ВСЕМ зонам разом, а не внутри каждой:
+  // столбцы, выровненные по своей зоне, разъезжаются между зонами, и панель
+  // перестаёт читаться сверху вниз. Прежде ширины не было вовсе, и ступень
+  // у GAP («×0.25») сдвигала соседний столбец вправо на пять знаков.
+  const yach=(r)=>{
+    const imya=(r.imya+'        ').slice(0,7);
+    const v = knobs[r.k]||0;
+    // У ступенчатой ручки шкала врёт: показываем, в какое положение она
+    // встала на самом деле.
+    const st = r.stupeni
+      ? ' '+r.stupeni[clamp(Math.round(v*(r.stupeni.length-1)),
+                            0,r.stupeni.length-1)]
+      // Концы подписаны словами, а середина — обоими: там сигнал правда
+      // входит в обе точки разом, и показать одну было бы враньём.
+      : r.konci
+      ? ' '+(v<.15?r.konci[0] : v>.85?r.konci[1] : r.konci.join('+'))
+      : '';
+    // ЯЧЕЙКА ДЕРЖИТ ПОСТОЯННУЮ ШИРИНУ, и добивается она С КОНЦА. Иначе
+    // столбец дышал бы под пальцем: «×1» короче «×0.25» на три знака, и вся
+    // панель дёргалась бы вправо-влево от одной ручки. Добивать в середине,
+    // между подписью и клавишей, тоже нельзя — там появилась бы дыра.
+    const predel = r.stupeni ? r.stupeni.reduce((a,b)=>a.length>b.length?a:b).length
+                 : r.konci   ? r.konci.join('+').length : 0;
+    const hvost = predel ? ' '.repeat(predel - (st.length - 1)) : '';
+    return {t:`${imya}${shkala(v,shr)}${st} ${r.podpis}${hvost}`,
+            svoy:r===poslednyaya&&vspyshka>0};
+  };
+  const ryady=[];
   for(const zn of ZONY){
     const rk = KNOBS.filter(r=>(r.zona||'shema')===zn.z);
-    for(let i=0;i<rk.length;i+=kolonok){
-      stroki.push(rk.slice(i,i+kolonok).map(r=>{
-        const svoy=r===poslednyaya&&vspyshka>0;
-        const imya=(r.imya+'          ').slice(0,uzko?8:9);
-        // У ступенчатой ручки шкала врёт: показываем, в какое положение
-        // она встала на самом деле.
-        const st = r.stupeni
-          ? ' '+r.stupeni[clamp(Math.round((knobs[r.k]||0)*(r.stupeni.length-1)),
-                                0,r.stupeni.length-1)]
-          : '';
-        const t=`${imya}${shkala(knobs[r.k]||0,shr)}${st} ${r.podpis}`;
-        return `<span class="${svoy?zn.yark:zn.obych}">${t}</span>`;
+    for(let i=0;i<rk.length;i+=kolonok)
+      ryady.push({zn, yach:rk.slice(i,i+kolonok).map(yach)});
+  }
+  // Ширину столбца задают только те ячейки, за которыми в ряду что-то ещё
+  // стоит. Последняя никого не двигает — и раздувать под неё весь столбец
+  // незачем: ROUTE со своими «lamp+rail» стоит в ряду один.
+  const shirina=[];
+  for(const r of ryady) r.yach.forEach((c,i)=>{
+    if(i<r.yach.length-1 && !(shirina[i]>=c.t.length)) shirina[i]=c.t.length; });
+
+  for(const zn of ZONY){
+    for(const r of ryady){
+      if(r.zn!==zn) continue;
+      stroki.push(r.yach.map((c,i)=>{
+        // Последнюю в ряду не добиваем: хвост пробелов ничего не держит.
+        const t = i===r.yach.length-1 ? c.t : (c.t+'              ').slice(0,shirina[i]);
+        return `<span class="${c.svoy?zn.yark:zn.obych}">${t}</span>`;
       }).join('  '));
     }
     const tm = SWITCHES.filter(t=>(t.zona||'shema')===zn.z);
     if(tm.length) stroki.push(tm.map(t=>{
       const z=switches[t.k], pol=t.pol||2;
-      // Подпись показываем везде, где она осмысленна: «накал» и «питание»
-      // читаются, а галочка на их месте — нет.
-      const prostoy = t.podpis[0]==='выкл' || t.podpis[0]==='нет';
-      const vid = (pol>2 || !prostoy) ? (t.podpis[z]||String(z)) : (z?'▮':'·');
+      // У двухпозиционного тумблера подписи нет: лампочка и имя говорят всё.
+      // Подпись положения нужна там, где положений больше двух и словом их
+      // не заменишь. Прежде выбор делался по тексту самой подписи — стоило
+      // переименовать положение, и вид строки менялся сам собой.
+      const vid = pol>2 ? (t.podpis[z]||String(z)) : (z?'▮':'·');
       const kl = IMYAKL[t.kl] || t.kl.replace('Key','').toLowerCase();
       return `<span class="${z?zn.yark:zn.obych}">${t.imya} ${vid}</span>`+
              ` <span class="dim2">${kl}</span>`;
@@ -916,11 +975,11 @@ function ruchki(){
     : '';
   // Строка текста показывается всегда: без неё непонятно, что скажется.
   stroki.push(stroka.aktivna
-    ? `<span class="goloshot">ТЕКСТ   ${stroka.tekst}▏</span>`+
+    ? `<span class="goloshot">TEXT   ${stroka.tekst}▏</span>`+
       `  <span class="dim2">enter сказать · esc отменить</span>`
-    : `<span class="golos">ТЕКСТ   ${stroka.tekst||'—'}</span>`+
+    : `<span class="golos">TEXT   ${stroka.tekst||'—'}</span>`+
       `  <span class="dim2">enter — ввести</span>`);
-  stroki.push(`<span class="dim2">СБОРКА ${sb.imya||'····'} ${(sb.semya!==undefined?sb.semya:seed)>>>0}`+
+  stroki.push(`<span class="dim2">BUILD  ${sb.imya||'····'} ${(sb.semya!==undefined?sb.semya:seed)>>>0}`+
               (sb.dinamik?` · ${Math.round(sb.dinamik)}Гц · ${(sb.emkost*1e9).toFixed(1)}нФ`:'')+
               `</span>`+put);
   return stroki.join('\n');
@@ -961,7 +1020,7 @@ function kadr(){
 // вкладки свой звуковой поток, а вот главный и ядра — общие, и отсюда
 // «подтормаживает на двух-трёх».
 let bylOtchet = -1, byliRuchki = '', bylaStroka = '', bylaShapka = null;
-let merenoPoPaneli = 0;
+let bylaKorobka = '';
 function kadr_(){
   if(vspyshka>0) vspyshka--;
   if(!idet){
@@ -980,10 +1039,13 @@ function kadr_(){
   if(n!==bylOtchet){ bylOtchet=n; $('#canvas').innerHTML=kartina(); }
 
   const r = ruchki();
-  if(r!==byliRuchki){ byliRuchki=r; $('#knobs').innerHTML=r;
-    // Первый замер шёл, когда панели ещё не было и её высоту брать было
-    // неоткуда. Как только она нарисована — меряем по-настоящему, один раз.
-    if(!merenoPoPaneli){ merenoPoPaneli=1; pomer(); } }
+  if(r!==byliRuchki){ byliRuchki=r; $('#knobs').innerHTML=r; }
+  // Панель сама задаёт, сколько места осталось картине: стоя — своей
+  // высотой, лёжа — своей шириной. Пока панель не нарисована, брать эти
+  // числа неоткуда, а меняться они могут и потом — от числа колонок, от
+  // длинной подписи. Меряем заново, когда её коробка правда стала другой.
+  const p=$('#panel'), ko=p.offsetWidth+'×'+p.offsetHeight;
+  if(ko!==bylaKorobka){ bylaKorobka=ko; pomer(); }
   const l = legenda()+
     (vest && performance.now()<vestdo ? `\n<span class="hot">${vest}</span>`
      : presets.length ? `\n<span class="dim2">${presets.length} пресетов</span>` : '');
