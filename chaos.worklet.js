@@ -466,6 +466,17 @@ class Speaker {
     this.ωk = 2 * Math.PI * sb.fKorp;
     this.zatk = 1 / sb.Qkorp;
   }
+  // Пружина, демпфер и корпус выведены из номиналов, а не хранятся отдельно.
+  // Когда номиналы едут, их надо пересчитать — иначе динамик остался бы от
+  // прежнего прибора.
+  perechitay(){
+    const sb = this.sb;
+    this.k = sb.mms * Math.pow(2 * Math.PI * sb.f0, 2);
+    this.c0 = sb.mms * 2 * Math.PI * sb.f0 / sb.Qms;
+    this.ωk = 2 * Math.PI * sb.fKorp;
+    this.zatk = 1 / sb.Qkorp;
+  }
+
   // U — напряжение каскада; демпф — палец на корпусе.
   //
   // Демпфирует диффузор не столько подвес, сколько САМА КАТУШКА: двигаясь в
@@ -993,10 +1004,6 @@ const KOMMUTACIYA = {link:1, dirt:1, kuda:1};
 
 // Сколько длится перевод между двумя приборами при смене пресета или сборки.
 // Это движение руки на кроссфейдере, а не техническая сглаживалка.
-// Полторы секунды оказалось мало: шов слышен. Перевод между двумя коробками
-// нельзя сделать быстрым и незаметным одновременно — это разные приборы, и
-// ухо ловит подмену тем вернее, чем короче она длится.
-const PEREHOD = 3.5;
 const VEDU = .035;      // ход движка под пальцем
 const VEDU_MIX = 1.2;   // он же в режиме микширования: рука на фейдере
 
@@ -1052,6 +1059,105 @@ function koleno(y){
   return (y < 0 ? -1 : 1) * (.8 + .2 * Math.tanh((b - .8) / .2));
 }
 
+// ---- ВЕДЕНИЕ НОМИНАЛОВ -----------------------------------------------------
+// Как перейти от одного прибора к другому незаметно.
+//
+// Кроссфейдом — нельзя, и это не вопрос длины. Слух разбирает звук на потоки
+// (анализ слуховой сцены), и главные признаки тут — общее начало и
+// непрерывность тонкой структуры. У двух экземпляров прибора структура
+// независимая: свои периоды, своё дрожание, свой хаос. Для слуха это заведомо
+// ДВА источника, и он честно слышит, как один затихает, а другой появляется.
+// Чем длиннее фейд, тем отчётливее: слуху дают больше времени на разбор.
+//
+// Поэтому смешивать не надо вовсе. Играет ОДИН прибор, а едут его НОМИНАЛЫ —
+// из набора A в набор B. Разделять слуху нечего: поток один, тонкая структура
+// нигде не рвётся, и заметить он может только «оно меняется».
+//
+// Почему это безопасно: каждый номинал берётся из своего диапазона, и любая
+// точка между двумя выпавшими значениями лежит внутри того же диапазона.
+// Значит все промежуточные состояния — законные приборы, а не мусор. Путь
+// между двумя коробками целиком проходит по коробкам.
+//
+// Три решения по максимальной плавности:
+//   · положительные величины ведутся по ЛОГАРИФМУ. Между 47 кОм и 4.1 МОм
+//     середина это 440 кОм, а не 2 МОм: так устроены сопротивления, ёмкости
+//     и частоты, и линейный ход по ним слышен как рывок в начале;
+//   · каждая величина едет ВРАЗНОБОЙ — свой момент старта внутри общего
+//     срока и свой темп, — поэтому ни в одну секунду не происходит события,
+//     только дрейф, какой прибор и так даёт от нагрева;
+//   · каждая величина трогается и останавливается с нулевой скоростью
+//     (сглаженный ход), так что углов нет ни в начале, ни в конце.
+const SROK = 12;
+
+function snimok(sb){
+  const o = {};
+  for (const k in sb){
+    const v = sb[k];
+    if (typeof v === 'number') o[k] = v;
+    else if (Array.isArray(v)) o[k] = v.map(x =>
+      typeof x === 'number' ? x : {vverh:x.vverh, vniz:x.vniz});
+  }
+  return o;
+}
+// Устойчивый разброс стартов: от имени величины, а не от случайности —
+// иначе один и тот же переход каждый раз шёл бы иначе.
+function razbros(imya){
+  let h = 2166136261;
+  for (let i = 0; i < imya.length; i++){ h ^= imya.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 1000) / 1000;
+}
+
+class Vedenie {
+  constructor(sb, cel){
+    this.sb = sb;                 // живой набор прибора — его и правим
+    this.a = snimok(sb);          // откуда
+    this.b = snimok(cel);         // куда
+    this.risunok = cel.risunok; this.imya = cel.imya;
+    this.t = 0; this.shag = 1 / (SR * SROK);
+    this.sdvig = {};
+    for (const k in this.b){
+      // Окно этой величины внутри общего срока: трогается когда придётся, а
+      // ВСТАЮТ все ровно к концу. Прежде конец считался от начала, и у
+      // поздних величин уезжал за единицу — они не доезжали вовсе.
+      const r = razbros(k);
+      this.sdvig[k] = [r * .35, .65 + r * .35];
+    }
+  }
+  hod(k){
+    const [n, kon] = this.sdvig[k];
+    const u = clamp((this.t - n) / (kon - n), 0, 1);
+    return u * u * (3 - 2 * u);                   // трогается и встаёт плавно
+  }
+  static tochka(a, b, e){
+    return (a > 0 && b > 0) ? a * Math.pow(b / a, e) : a + (b - a) * e;
+  }
+  step(n){
+    this.t += this.shag * n;
+    const sb = this.sb;
+    for (const k in this.b){
+      const e = this.hod(k);
+      if (e <= 0) continue;
+      const a = this.a[k], b = this.b[k];
+      if (typeof b === 'number') sb[k] = Vedenie.tochka(a, b, e);
+      else for (let i = 0; i < b.length; i++){
+        if (typeof b[i] === 'number') sb[k][i] = Vedenie.tochka(a[i], b[i], e);
+        else {
+          sb[k][i].vverh = Vedenie.tochka(a[i].vverh, b[i].vverh, e);
+          sb[k][i].vniz  = Vedenie.tochka(a[i].vniz,  b[i].vniz,  e);
+        }
+      }
+    }
+    if (this.t >= 1){
+      // Рисунок сетки — перемычки в диодной матрице, целое число от нуля до
+      // семи. Промежуточного рисунка не бывает, поэтому он переключается в
+      // самом конце, когда всё остальное уже приехало и менять больше нечего.
+      sb.risunok = this.risunok; sb.imya = this.imya;
+      return true;
+    }
+    return false;
+  }
+}
+
 class Chaos extends AudioWorkletProcessor {
   constructor(){
     super();
@@ -1074,11 +1180,8 @@ class Chaos extends AudioWorkletProcessor {
     for (const k in this.p) if (!TUMBLERY[k]) this.cel[k] = this.p[k];
     this.pr = new Device(1);
     this.svod = new Decim();
-    // Уходящая сторона перевода: свой прибор, свой фильтр сведения и свои
-    // ЗАСТЫВШИЕ ручки. Она не должна ехать за новыми настройками — она
-    // доигрывает то, что играла.
-    this.prSt = null; this.svodSt = null; this.pSt = null;
-    this.mixT = 1; this.mixSh = 1 / (SR * PEREHOD);
+    // Идущий переход. Второго прибора больше нет: ведём номиналы одного.
+    this.vedenie = null;
     this.kont = new Contacts();
     // ОДИН ПРИБОР. Две коробки в цепи пробовали — красивого звука это не
     // давало ни при какой связи: внутри прибора осциллятор и так идёт в
@@ -1142,7 +1245,6 @@ class Chaos extends AudioWorkletProcessor {
       }
       else if (d.t === 'kick'){
         for (const g of this.pr.cells) g.V += (Math.random() - .5) * 2;
-        if (this.prSt) for (const g of this.prSt.cells) g.V += (Math.random() - .5) * 2;
       }
     };
   }
@@ -1151,29 +1253,34 @@ class Chaos extends AudioWorkletProcessor {
   // другой: другие номиналы, другие ручки. Физически такого перехода не
   // бывает — детали местами не меняются, — поэтому он и живёт в ПОСТЕ:
   // две коробки играют разом, и рука ведёт кроссфейдер от одной к другой.
+  vedi(novye){
+    if (!novye) return;
+    for (const k in novye){
+      const v = clamp(novye[k], 0, 1);
+      if (!(k in this.p)){ this.p[k] = v; if (!TUMBLERY[k]) this.cel[k] = v; continue; }
+      if (TUMBLERY[k]) this.p[k] = v; else this.cel[k] = v;
+    }
+  }
+
   smena(semya, novye){
     const plavno = this.p.mix > .5;
     // ТА ЖЕ СБОРКА — значит менять нечего: это тот же прибор, у которого
     // иначе стоят ручки. Подменять его копией самого себя и переводить
     // между ними — шов на ровном месте; движки доедут сами, и шва не будет
     // вовсе. Второй прибор нужен только когда прибор ДРУГОЙ.
-    if (plavno && semya >>> 0 === this.semya >>> 0){
-      if (novye) for (const k in novye){
-        const v = clamp(novye[k], 0, 1);
-        if (!(k in this.p)){ this.p[k] = v; if (!TUMBLERY[k]) this.cel[k] = v; continue; }
-        if (TUMBLERY[k]) this.p[k] = v; else this.cel[k] = v;
-      }
+    if (plavno && semya >>> 0 === this.semya >>> 0){ this.vedi(novye); return; }
+    this.semya = semya >>> 0;
+    if (plavno){
+      // Прибор остаётся тот же самый и не смолкает ни на отсчёт — у него
+      // просто начинают ехать детали. Если переход уже шёл, он продолжится
+      // с того места, где застал: снимок берётся с ЖИВЫХ номиналов.
+      this.vedenie = new Vedenie(this.pr.sb, new Build(semya));
+      this.vedi(novye);
       return;
     }
-    if (plavno){
-      this.prSt = this.pr; this.svodSt = this.svod; this.pSt = {...this.p};
-      this.mixT = 0;
-    } else { this.prSt = null; this.svodSt = null; this.mixT = 1; }
-    this.semya = semya >>> 0;
+    this.vedenie = null;
     this.pr = new Device(semya);
     this.svod = new Decim();
-    // Новая сторона приходит уже на своих настройках: движку ехать некуда,
-    // это другой прибор, а не подкрутка прежнего.
     if (novye) for (const k in novye){
       const v = clamp(novye[k], 0, 1);
       this.p[k] = v;
@@ -1197,6 +1304,14 @@ class Chaos extends AudioWorkletProcessor {
     // Под микшированием движки идут медленнее, а коммутация перестаёт быть
     // мгновенной вовсе. Без него всё как в железе: ручка едет под пальцем,
     // контакт замыкается сразу.
+    // Номиналы едут блоками: за отсчёт они не успевают сдвинуться настолько,
+    // чтобы это было слышно, а пересчёт производных величин динамика стоит
+    // дороже самого хода.
+    if (this.vedenie){
+      if (this.vedenie.step(n)) this.vedenie = null;
+      this.pr.din.perechitay();
+    }
+
     const plavno = this.p.mix > .5;
     const kR = 1 - Math.exp(-1 / (SR * (plavno ? VEDU_MIX : VEDU)));
     const kT = plavno ? kR : 1;
@@ -1211,7 +1326,7 @@ class Chaos extends AudioWorkletProcessor {
         const k1 = KOMMUTACIYA[k] ? kT : kR;
         this.p[k] = (k1 >= 1 || Math.abs(c - v) < 1e-6) ? c : v + (c - v) * k1;
       }
-      let y = 0, yst = 0;
+      let y = 0;
       // Рука на приборе: хлопок контактов рвёт питание, движок шуршит в
       // частотозадающей цепи.
       const kont = this.kont.step();
@@ -1225,23 +1340,8 @@ class Chaos extends AudioWorkletProcessor {
       for (let k = 0; k < OVER; k++){
         const gls = this.golos.step(vh ? (vh[s] || 0) : 0, this.p.golos);
         y = this.svod.step(this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib, petl));
-        if (this.prSt)
-          yst = this.svodSt.step(
-            this.prSt.step(this.pSt, ut, nav, kont, gls, this.golos.ogib, petl));
       }
       if (!(y === y)){ y = 0; this.pr.zhivoy(); this.svod = new Decim(); this.sryvy++; }
-      if (this.prSt){
-        if (!(yst === yst)){ yst = 0; this.prSt.zhivoy(); this.svodSt = new Decim(); }
-        this.mixT += this.mixSh;
-        if (this.mixT >= 1){ this.mixT = 1; this.prSt = null; this.svodSt = null; }
-        else {
-          // Равномощный перевод: стороны независимы, и складывать их линейно
-          // нельзя — на середине провалилась бы громкость. Сумма квадратов
-          // держится постоянной, как на любом приличном кроссфейдере.
-          const u = this.mixT * Math.PI / 2;
-          y = yst * Math.cos(u) + y * Math.sin(u);
-        }
-      }
       // ПОСТ. Прибор отдаёт сколько отдаёт; что с этим делать дальше —
       // вопрос не к нему.
       y = this.zhmi.step(y, this.p.zhat);
@@ -1279,7 +1379,8 @@ class Chaos extends AudioWorkletProcessor {
       for (let i = 0; i < 200; i++) l[i] = this.sled[(this.sli + i) % 200];
       const pr = this.pr, sb = pr.sb;
       this.port.postMessage({
-        pik: this.pik, sryvy: this.sryvy, perehod: this.mixT,
+        pik: this.pik, sryvy: this.sryvy,
+        perehod: this.vedenie ? this.vedenie.t : 1,
         razbros: pr.razbr, period: pr.swing.period,
         pitch: pr.osn.f || 0, duty: pr.osn.skv,
         shina: pr.bat.Vl / sb.EMF,
