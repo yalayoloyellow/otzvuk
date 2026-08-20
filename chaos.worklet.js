@@ -574,9 +574,13 @@ class Device {
     this.razbr = 0; this.gc = 0;
   }
 
-  step(p, utechka, navodka, kontakt){
+  step(p, utechka, navodka, kontakt, gls, ogib){
     const sb = this.sb;
     let Vdd = this.bat.Vl * (kontakt === undefined ? 1 : kontakt);
+    // Точка ввода внешнего сигнала. Номер положения переключателя.
+    const tochka = p.kuda > .5 ? 1 : 0;
+    const gl = p.golos || 0;
+    if (gl > .002 && tochka === 1) Vdd *= 1 + clamp(gls || 0, -.9, .9) * .85 * gl;
 
     const u = this.swing.step(p.sway, p.drift, p.hit, Vdd, this.temp);
 
@@ -606,6 +610,9 @@ class Device {
     // нулевой depth даёт ровный тон, а не гул на самом низу.
     const svmin = .05, svmaks = .34 + har * .62;
     let yarkost = svmin + (svmaks - svmin) * clamp(.5 + (u - .5) * rzm, 0, 1);
+    // НАКАЛ: огибающая источника ведёт лампочку — прибор говорит его ритмом.
+    if (gl > .002 && tochka === 0)
+      yarkost = clamp(yarkost * (1 - gl * .95) + clamp((ogib || 0) * 1.8, 0, 1) * gl * .95, 0, 1);
 
     // СЕТКА. Ключи по фронтам счётчика коммутируют те же номиналы, что и
     // ручки: на ударном шаге лампочка гаснет, фоторезистор уходит в темноту
@@ -701,8 +708,9 @@ class Device {
       // в конденсаторы: генератор бросает свой ход и захватывается — начинает
       // делить частоту входа на 2, 3, 5. Крутишь первый прибор — второй
       // перескакивает по делениям. Это и есть «один синт вошёл в другой».
-      const Rvh = 0;
-      const Vvh = 0;
+      // ТОК: сигнал втекает в конденсатор через свой резистор — отсюда
+      // захват и деление частоты.
+      const Rvh = 0, Vvh = 0;
       summa += uzel.step(R, Vdd * (1 + utechka * .1), R * Math.max(ki, kmin),
                         dVs, sosed.V, Rsv, Vdd, this.temp, Vvh, Rvh) * v;
       vesov += v;
@@ -809,6 +817,39 @@ class Contacts {
 }
 
 // ---- ПРОЦЕССОР -------------------------------------------------------------
+// ---- ГОЛОС -----------------------------------------------------------------
+// Внешний сигнал — микрофон, петля, потом говорилка — входит в схему не
+// микшером, а в конкретную ТОЧКУ ЦЕПИ. От выбора точки зависит всё:
+//
+//   0 НАКАЛ    выпрямленная огибающая ведёт лампочку оптопары. Прибор
+//              говорит ритмом источника: слышны слоги, ударения, дыхание —
+//              и ни одного слова. Связь высоты с речью 0.42.
+//   1 ПИТАНИЕ  шина ходит вместе с сигналом: тон плывёт, громкость приседает
+//              на громких местах. Связь высоты 0.78, громкости −0.75 — самая
+//              сильная из всех.
+//
+// Пробовались ещё две точки, обе оказались мертвы при нынешних номиналах и
+// потому убраны, а не оставлены для вида:
+//   · ТОК в конденсатор — для захвата нужен резистор ПОРЯДКА цепи заряда, а
+//     при таком он уже не втекает, а задаёт частоту сам, подменяя прибор.
+//   · СМЕЩЕНИЕ — своё смещение уже стоит у предела запирания, и добавка
+//     голоса либо не меняет ничего, либо глушит генератор совсем.
+class Golos {
+  constructor(){ this.dc = 0; this.ogib = 0; }
+  step(vh, glub){
+    if (!glub) { this.ogib = 0; return 0; }
+    // Постоянку и рокот стола в схему не пускаем.
+    this.dc += (vh - this.dc) * (22 * 2 * Math.PI / FS);
+    this.syro = (vh - this.dc) * glub * 6;
+    // Огибающая — выпрямитель и конденсатор, как в железе: быстрый заряд,
+    // медленный разряд.
+    const a = Math.abs(this.syro);
+    if (a > this.ogib) this.ogib += (a - this.ogib) * (1 - Math.exp(-1 / (FS * .003)));
+    else this.ogib += (0 - this.ogib) * (1 - Math.exp(-1 / (FS * .045)));
+    return this.syro;
+  }
+}
+
 // ---- ПЕТЛЯ -----------------------------------------------------------------
 // Микрофон слышит динамик — круг замыкает сама комната. Усиление в петле
 // решает всё: до единицы это окраска (помещение подкрашивает звук), за
@@ -846,7 +887,9 @@ class Chaos extends AudioWorkletProcessor {
                // ритм-секция: одна ручка — насколько глубоко ключ вмешивается
                gryzn:0,
                // микрофонная петля: усиление в круге
-               petlya:0 };
+               petlya:0,
+               // голос: глубина, точка ввода, слышен ли он сам по себе
+               golos:0, kuda:0, naruzhu:0 };
     this.pr = new Device(1);
     this.svod = new Decim();
     this.kont = new Contacts();
@@ -854,6 +897,7 @@ class Chaos extends AudioWorkletProcessor {
     // давало ни при какой связи: внутри прибора осциллятор и так идёт в
     // модулятор, а второй такой же поверх превращает всё в кашу.
     this.petlya = new Petlya();
+    this.golos = new Golos();
     this.rec = false; this.recBuf = [];
     this.pl = new Float32Array(9);
     this.utechka = 0; this.navodka = 0;
@@ -923,13 +967,16 @@ class Chaos extends AudioWorkletProcessor {
       const shoroh = this.kont.trenie();
       const ut = this.utechka + shoroh * .7, nav = this.navodka + shoroh * .04;
       for (let k = 0; k < OVER; k++){
-        y = this.svod.step(this.pr.step(this.p, ut, nav, kont));
+        const gls = this.golos.step(vh ? (vh[s] || 0) : 0, this.p.golos);
+        y = this.svod.step(this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib));
       }
       if (!(y === y)){ y = 0; this.pr.zhivoy(); this.svod = new Decim(); this.sryvy++; }
       y = clamp(y, -1, 1);
       if (++this.okno >= SR * .25){ this.okno = 0; this.pr.mera(); }
       const a = y < 0 ? -y : y;
       if (a > this.pik) this.pik = a;
+      // ГОЛОС НАРУЖУ: источник слышен сам по себе, поверх прибора.
+      if (this.p.naruzhu > .5 && vh) y = clamp(y + (vh[s] || 0) * .8, -1, 1);
       // Петля подмешивается к выходу: дальше её несёт воздух до микрофона.
       if (this.p.petlya > .002 && vh){
         y = clamp(y + this.petlya.step(vh[s] || 0, this.p.petlya, this.pr.bat.Vl), -1, 1);

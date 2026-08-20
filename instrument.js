@@ -44,6 +44,8 @@ const KNOBS=[
   // Ритм-секция: насколько глубоко счётчик вмешивается в прибор. Такт идёт
   // от того же медленного генератора, что качает прибор.
   {k:'gryzn',m:['KeyG','KeyH'], imya:'ГЕЙТ'},
+  // Насколько глубоко внешний сигнал входит в схему.
+  {k:'golos',m:['Comma','Period'], imya:'ГОЛОС'},
 ];
 
 // ---- ТУМБЛЕРЫ --------------------------------------------------------------
@@ -63,6 +65,9 @@ const SWITCHES=[
   // букв заняты, поэтому клавиша своя — крайняя справа, ни с чем не делится.
   {k:'petlya',  kl:'Slash', imya:'ПЕТЛЯ',   podpis:['нет','комната','вой'],
    pol:3, mikro:1},
+  // Куда воткнут внешний сигнал и слышен ли он сам по себе.
+  {k:'kuda',    kl:'Semicolon', imya:'КУДА', podpis:['накал','питание'], mikro:1},
+  {k:'naruzhu', kl:'Quote', imya:'НАРУЖУ',  podpis:['нет','слышен'], mikro:1},
 ];
 
 
@@ -74,7 +79,9 @@ const SWITCHES=[
 // случайность здесь — это ровно то, к чему у него НЕТ ДОСТУПА, но что звучит.
 // Поэтому случайность живёт не в сигнале, а в ЭКЗЕМПЛЯРЕ прибора: собрал —
 // получил свой набор номиналов, и он твой, пока не пересоберёшь.
-for(const r of KNOBS) r.podpis=r.m.map(c=>c.replace('Key','').toLowerCase()).join('');
+const IMYAKL={Comma:',', Period:'.', Slash:'/', Semicolon:';', Quote:"'"};
+for(const r of KNOBS)
+  r.podpis=r.m.map(c=>IMYAKL[c] || c.replace('Key','').toLowerCase()).join('');
 
 // ---- ЭКЗЕМПЛЯР ПРИБОРА -----------------------------------------------------
 // Номиналы живут в ядре, в классе Сборка: там из семени выводятся допуски
@@ -240,8 +247,8 @@ function razvedi(){
 
 // макро — то, что на панели; p — то, что уходит в движок
 const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
-             hit:.35, spread:.15, drift:0, range:.5, gryzn:0};
-const switches={gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0};
+             hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0};
+const switches={gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0, kuda:0, naruzhu:0};
 
 const p={};
 
@@ -646,10 +653,12 @@ function ruchki(){
   stroki.push('');
   stroki.push('  '+SWITCHES.map(t=>{
     const z=switches[t.k], pol=t.pol||2;
-    // У многопозиционного показываем подпись положения: голая цифра читалась
-    // как «включено».
-    const vid = pol>2 ? (t.podpis[z]||String(z)) : (z?'▮':'·');
-    const kl = t.kl==='Slash' ? '/' : t.kl.replace('Key','').toLowerCase();
+    // Подпись показываем везде, где она осмысленна: «накал» и «питание»
+    // читаются, а галочка на их месте — нет.
+    const prostoy = t.podpis[0]==='выкл' || t.podpis[0]==='нет';
+    const vid = (pol>2 || !prostoy) ? (t.podpis[z]||String(z)) : (z?'▮':'·');
+    const kl = {Slash:'/', Semicolon:';', Quote:'\'', Comma:',', Period:'.'}[t.kl]
+             || t.kl.replace('Key','').toLowerCase();
     return `<span class="${z?'hot':'dim'}">${t.imya} ${vid}</span>`+
            ` <span class="dim2">${kl}</span>`;
   }).join('  '));
