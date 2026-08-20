@@ -16,7 +16,7 @@ const BAZA = {sway:.55, tone:.5, depth:.75, pulse:.2, hit:.35, spread:.15, drift
               range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, link:0, dirt:0,
               petlya:0, kuda:0, naruzhu:0, mix:0};
 // комната: задержка 12 мс и затухание — путь от динамика до микрофона
-function progon(petlya, sek = 6){
+function progon(petlya, komnata, sek = 8){
   const c = new K();
   c.port.onmessage({data:{t:'seed', v:1626943591, p:{...BAZA, petlya}}});
   const L = new Float32Array(N), R = new Float32Array(N);
@@ -27,7 +27,7 @@ function progon(petlya, sek = 6){
   for (let b = 0; b < Math.round(SR*sek/N); b++){
     c.process([[mik]], [[L, R]]);
     for (let i = 0; i < N; i++){
-      mik[i] = zad[zi] * .55;             // комната вернула
+      mik[i] = zad[zi] * komnata;             // комната вернула
       zad[zi] = L[i]; zi = (zi + 1) % zad.length;
       if (b > Math.round(SR*sek/N)*.35){
         kv += L[i]*L[i]; cnt++;
@@ -43,9 +43,15 @@ function progon(petlya, sek = 6){
   const f = per > 2 ? per * SR / hvost.length : 0;
   return {rms: Math.sqrt(kv/cnt), pik, f};
 }
-console.log('петля    скз      пик    частота воя');
-for (const u of [0, .5, 1]){
-  const r = progon(u);
-  console.log(u.toFixed(1).padStart(5), r.rms.toFixed(4).padStart(9),
-              r.pik.toFixed(3).padStart(8), (Math.round(r.f)+' Гц').padStart(12));
+// Три РАЗНЫЕ комнаты: микрофон далеко, обычно, вплотную. Раскладка по
+// положениям ручки обязана быть одинаковой во всех трёх — в этом весь смысл.
+console.log('комната  петля    скз      пик    частота воя');
+for (const km of [.12, .55, 1.6]){
+  for (const u of [0, .5, 1]){
+    const r = progon(u, km);
+    console.log(km.toFixed(2).padStart(7), u.toFixed(1).padStart(6),
+      r.rms.toFixed(4).padStart(9), r.pik.toFixed(3).padStart(8),
+      (Math.round(r.f)+' Гц').padStart(12));
+  }
+  console.log();
 }

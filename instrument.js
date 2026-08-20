@@ -635,6 +635,14 @@ function ruchki(){
     `  ИМПУЛЬС ${shkala(duty,shk)} ${Math.round(duty*100)}%   ${rezhim}`);
   stroki.push(
     `  УРОВЕНЬ ${shkala(l,shk)}   ШИНА ${shkala(sh,Math.max(4,shk-4))}`);
+  // ВХОД. Без этой строки проверить микрофон нельзя вовсе: не слышно, дошёл
+  // ли сигнал до ядра, или разрешение не дали, или он просто молчит.
+  // ВОЗВРАТ — сколько из вышедшего в динамик комната вернула в микрофон;
+  // от него ядро само считает усиление петли.
+  const mk=clamp(report.mik||0,0,1), vz=report.vozvrat||0;
+  stroki.push(
+    `  ВХОД    ${shkala(mk,shk)} ${mikrofon ? (mk>.002?'идёт':'тихо') : 'не включён'}`+
+    (switches.petlya ? `   ВОЗВРАТ ${vz.toFixed(2)}` : ''));
   // Сетка ритма: где удары и где сейчас счётчик.
   const ris=report.risunok||[];
   if(ris.length){

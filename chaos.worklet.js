@@ -549,6 +549,7 @@ class Speaker {
 // снятое с живых барабанщиков.
 class Setka {
   constructor(){ this.faza = 0; this.shag = 0; this.risunok = []; this.kod = -1;
+                 this.zhdet = undefined;
                  this.udar = 0; this.sila = 0; this.ogib = 0; this.novy = 0; }
 
   // РИСУНОК СОБИРАЕТСЯ ЛОГИКОЙ НА ОТВОДАХ ДЕЛИТЕЛЯ — так его и делали в
@@ -584,7 +585,14 @@ class Setka {
   // sbivka — поворот рисунка; gruv — насколько запаздывают нечётные шаги
   step(period, kod, sbivka, gruv){
     const N = 16;
-    if (kod !== this.kod){ this.risunok = Setka.sobrat(kod); this.kod = kod; }
+    // ПЕРЕМЫЧКИ В МАТРИЦЕ не меняют посреди такта. Новый код запоминается, а
+    // подхватывается на НАЧАЛЕ такта, где смена фигуры и без того ожидаема
+    // ухом. Иначе рисунок переключался в произвольной точке — и это было
+    // единственное настоящее событие во всём переходе между приборами.
+    if (kod !== this.kod){
+      if (this.kod === -1){ this.risunok = Setka.sobrat(kod); this.kod = kod; }
+      else this.zhdet = kod;
+    }
     const shagT = Math.max(1e-4, period) / N;
     this.faza += dt / shagT;
     // СВИНГ: на нечётных шагах счётчик ленивее, и доля запаздывает.
@@ -592,6 +600,10 @@ class Setka {
     if (this.faza >= 1 + zaderzhka){
       this.faza = 0;
       this.shag = (this.shag + 1) % N;
+      if (this.shag === 0 && this.zhdet !== undefined && this.zhdet !== this.kod){
+        this.risunok = Setka.sobrat(this.zhdet); this.kod = this.zhdet;
+        this.zhdet = undefined;
+      }
       const i = (this.shag + Math.round(sbivka * (N - 1))) % N;
       this.udar = this.risunok[i] ? 1 : 0;
       // Сила удара: у первого отвода делителя ключ замыкается плотнее, чем у
@@ -973,22 +985,18 @@ class Petlya {
   // она складывалась с выходом уже ПОСЛЕ прибора — то есть имела свой
   // усилитель и свой динамик параллельно приборному, и потому глушила его
   // втрое по пику и в восемь раз по средней громкости.
-  step(vh, vkl){
-    if (!vkl) return 0;
+  // usil приходит снаружи и считается от ИЗМЕРЕННОГО возврата комнаты.
+  // Числом его задать нельзя: замер передачи «вольт на входе → выход» дал
+  // 0.038 на резонансе корпуса и 0.036 на резонансе капсюля, то есть для
+  // единичной петли нужно около двадцати шести, — но это до комнаты. А
+  // комната возвращает то ли сотую долю, то ли полторы, смотря где стоит
+  // микрофон и как выкручена громкость, и любое число годилось бы ровно для
+  // одной из них.
+  step(vh, usil){
+    if (!usil) return 0;
     // микрофон отдаёт и постоянку, и рокот стола — их в петлю пускать нельзя
     this.dc += (vh - this.dc) * (18 * 2 * Math.PI / FS);
-    // Коэффициент — это усиление МИКРОФОННОГО входа, и он большой не от
-    // произвола: микрофон отдаёт милливольты, а на вход каскада нужны вольты.
-    // Замер передачи «вольт на входе → выход» дал 0.038 на резонансе корпуса
-    // (107 Гц) и 0.036 на резонансе капсюля (1002 Гц), то есть для единичной
-    // петли нужно около двадцати шести. При комнате, возвращающей половину,
-    // положение «комната» даёт 0.73 — окраска у самого порога, а «вой» 1.46 —
-    // устойчивое самовозбуждение. Куда оно сядет по частоте, схема решает
-    // сама: выше всего она усиливает на своих двух резонансах.
-    // Усиление микрофонного предусилителя. Ручка ПЕТЛЯ им не заведует —
-    // она сидит дальше, резистором ветви в суммирующем узле; здесь только
-    // то, что микрофон отдаёт милливольты, а узлу нужны вольты.
-    return (vh - this.dc) * 400;
+    return (vh - this.dc) * usil;
   }
 }
 
@@ -1024,6 +1032,13 @@ const KOMMUTACIYA = {link:1, dirt:1, kuda:1};
 // на восемь октав, то есть оно предъявляет к плавности самые жёсткие
 // требования из всего, что есть на панели. Что гладко на нём — гладко везде,
 // и отдельных постоянных на каждую ручку заводить не надо.
+// Усиление петли, приведённое к возврату комнаты. Выведено из замера: при
+// возврате 0.55 порог самовозбуждения приходился на предусиление 400 в
+// верхнем положении ручки. Делённое на измеренный возврат, оно даёт ту же
+// раскладку в любом помещении.
+const BAZA_PETLI = 400 * .55;
+const ROOMK = 1 - Math.exp(-1 / (SR * 1.5));
+
 const VEDU = .15;       // под пальцем
 const VEDU_MIX = 3.3;   // в режиме микширования: рука на фейдере
 
@@ -1036,39 +1051,87 @@ const VEDU_MIX = 3.3;   // в режиме микширования: рука н
 // Осталось мягкое колено — оно не выравнивает, а только не даёт цифре
 // сломаться на самом верху.
 class Zhmi {
-  // Компрессор. Не физика, а инструмент сведения. Две части, и обе нужны:
+  // Компрессор. Не физика, а инструмент сведения. Две части, и порядок их
+  // важен:
   //
-  //   МЕДЛЕННАЯ тянет среднюю громкость к общей отметке за полсекунды. Это
-  //   то самое «подтягивает всё»: разные сборки и разные положения ручек
-  //   приходят к сопоставимому уровню. Порог тут нельзя ставить числом —
-  //   материал гуляет на восемнадцать децибел, и любое число оказалось бы
-  //   то выше него, то ниже.
+  //   МЕДЛЕННАЯ идёт ПЕРВОЙ и тянет среднюю громкость к общей отметке за
+  //   полсекунды. Только благодаря ей у второй части может быть ПОРОГ,
+  //   заданный числом: материал сам по себе гуляет на восемнадцать децибел,
+  //   и любой фиксированный порог оказался бы то выше него, то ниже.
   //
-  //   БЫСТРАЯ держит пики того, что уже подтянуто, иначе подтянутое просто
-  //   упрётся в потолок.
+  //   БЫСТРАЯ — обычный компрессор с мягким коленом, считанный в децибелах,
+  //   как их и считают. Порог −18 дБ при средней −20 дБ и пиках около −7.5:
+  //   он берёт верхушки, а не давит всё подряд.
   //
-  // Ручка ведёт обе разом как ПОКАЗАТЕЛЬ СТЕПЕНИ, а не как множитель: на
-  // нуле обе части дают ровно единицу и цепь прозрачна, дальше сжатие
-  // нарастает непрерывно. Поэтому у ручки нет точки, где что-то включается.
+  // Отношение и добор выведены из ручки, а не подобраны: на нуле отношение
+  // 1:1, добор нулевой, и цепь прозрачна тождественно, а не приблизительно.
   constructor(){ this.sr = .01; this.og = 0; this.g = 1; }
   step(y, sila){
-    if (sila < .002){ this.sr += (y*y - this.sr) * this.med; return y; }
-    this.sr += (y*y - this.sr) * this.med;
+    this.sr += (y * y - this.sr) * this.med;
+    if (sila < .002){ this.g += (1 - this.g) * this.otp; return y * this.g; }
     const rms = Math.max(Math.sqrt(this.sr), 1e-5);
     y *= Math.pow(clamp(CEL / rms, .18, 14), sila);
+
     const a = y < 0 ? -y : y;
-    this.og += (a - this.og) * (a > this.og ? this.atk : this.rel);
-    const cel = this.og > POR ? Math.pow(POR / this.og, sila * .75) : 1;
+    this.og += (a - this.og) * (a > this.og ? this.atk : this.otp);
+    // Мягкое колено: ниже колена не трогаем, выше — сжимаем с полным
+    // отношением, внутри колена отношение нарастает по квадрату. Без колена
+    // на пороге слышен щелчок вступления.
+    const k = 1 - 1 / (1 + sila * 4);            // 0 → 1:1, 1 → 1:5
+    const nad = 20 * Math.log10(this.og + 1e-9) - TDB;
+    let sniz = 0;
+    if (nad > KOL * .5) sniz = nad * k;
+    else if (nad > -KOL * .5) sniz = k * (nad + KOL * .5) * (nad + KOL * .5) / (2 * KOL);
+    const cel = Math.pow(10, -sniz / 20);
     this.g += (cel - this.g) * this.sgl;
-    return y * this.g;
+    return y * this.g * Math.pow(10, -TDB * k * .62 / 20);
   }
 }
 const CEL = .10;    // куда медленная часть тянет среднюю громкость
-const POR = .34;    // с какого пика вступает быстрая
+const TDB = -24;    // порог быстрой части, дБ относительно полной шкалы
+const KOL = 12;     // ширина колена, дБ
 Zhmi.prototype.med = 1 - Math.exp(-1 / (SR * .5));
 Zhmi.prototype.atk = 1 - Math.exp(-1 / (SR * .004));
-Zhmi.prototype.rel = 1 - Math.exp(-1 / (SR * .18));
+Zhmi.prototype.otp = 1 - Math.exp(-1 / (SR * .18));
 Zhmi.prototype.sgl = 1 - Math.exp(-1 / (SR * .002));
+
+// ---- ОГРАНИЧИТЕЛЬ (ПОСТ) ---------------------------------------------------
+// Последняя черта, и единственный способ сделать её по-настоящему.
+//
+// Компрессор пики прибора не берёт, и это не вопрос настройки: у него атака
+// четыре миллисекунды, а пики здесь — щелчки в несколько отсчётов. Замер
+// показал ровно это: крест-фактор держится около 3.5 при любом пороге и любом
+// отношении. Догонять его укорочением атаки нельзя — это съело бы треск, то
+// есть весь характер прибора.
+//
+// Ограничитель работает иначе: он смотрит на две миллисекунды ВПЕРЁД (для
+// чего сигнал на столько же задержан) и, увидев там пик выше потолка,
+// успевает свести усиление ЗАРАНЕЕ и плавно. Обрубание режет уже пришедшее и
+// потому слышно треском; этот — не слышен, пока не работает, а работает
+// только на том, что иначе сломало бы цифру.
+class Predel {
+  constructor(){
+    this.n = Math.max(8, Math.round(SR * .002));
+    this.z = new Float32Array(this.n); this.i = 0;
+    this.g = 1; this.cel = 1;
+    this.shag = 1 - Math.exp(-6 / this.n);
+    this.otp = 1 - Math.exp(-1 / (SR * .05));
+    this.rabota = 0;
+  }
+  step(y){
+    const star = this.z[this.i];
+    this.z[this.i] = y;
+    this.i = (this.i + 1) % this.n;
+    const a = y < 0 ? -y : y;
+    const nado = a > POTOLOK ? POTOLOK / a : 1;
+    if (nado < this.cel) this.cel = nado;              // хватаем сразу
+    else this.cel += (nado - this.cel) * this.otp;     // отпускаем медленно
+    this.g += (this.cel - this.g) * this.shag;
+    if (this.g < this.rabota) this.rabota = this.g;
+    return star * this.g;
+  }
+}
+const POTOLOK = .85;   // с запасом: мягкое колено за ним не должно вступать
 
 // Мягкое колено. До 0.8 не трогает вовсе — наклон там ровно единичный, — а
 // выше сводит к единице плавно. Это последняя черта, за которой цифра просто
@@ -1109,9 +1172,17 @@ function koleno(y){
 //     (сглаженный ход), так что углов нет ни в начале, ни в конце.
 const SROK = 12;
 
+// РИСУНОК сюда не попадает нарочно, хотя он и число: это ЦЕЛОЕ, номер
+// сочетания перемычек в диодной матрице, и промежуточного значения у него нет.
+// Попав в интерполяцию, он давал дробный код, а тот не совпадал ни с одной
+// ветвью разбора — рисунок молча становился рисунком по умолчанию, причём
+// на второй секунде пути, а не в конце.
+const NE_VESTI = {risunok:1};
+
 function snimok(sb){
   const o = {};
   for (const k in sb){
+    if (NE_VESTI[k]) continue;
     const v = sb[k];
     if (typeof v === 'number') o[k] = v;
     else if (Array.isArray(v)) o[k] = v.map(x =>
@@ -1219,6 +1290,9 @@ class Chaos extends AudioWorkletProcessor {
     this.petlya = new Petlya();
     this.golos = new Golos();
     this.zhmi = new Zhmi();
+    this.predel = new Predel();
+    this.mikKv = 0; this.vyhKv = 0; this.vozvrat = .55; this.proshY = 0;
+    this.mikPik = 0;
     this.semya = 1;
     this.rec = false; this.recBuf = [];
     this.pl = new Float32Array(9);
@@ -1369,10 +1443,23 @@ class Chaos extends AudioWorkletProcessor {
       const shoroh = this.kont.trenie();
       const ut = this.utechka + shoroh * .7, nav = this.navodka + shoroh * .04;
       // Микрофон слышит комнату, а комната слышит динамик — круг замыкается
-      // не здесь, а в воздухе. Сигнал петли идёт в обе стороны разом: гнездо
-      // на столе одно.
-      const petl = (this.p.petlya > .002 && vh)
-        ? this.petlya.step(vh[s] || 0, this.p.petlya) : 0;
+      // не здесь, а в воздухе.
+      //
+      // ВОЗВРАТ КОМНАТЫ. Сколько из вышедшего в динамик вернулось в микрофон
+      // — это и есть комната. Мерится отношением средних квадратов: длина
+      // пути тут не важна, важна доля. Теперь ручка ПЕТЛЯ означает усиление
+      // В КРУГЕ, а не в предусилителе: «комната» это всегда чуть ниже порога,
+      // «вой» — всегда выше, и в наушниках, и в зале.
+      const mik = vh ? (vh[s] || 0) : 0;
+      this.mikKv += (mik * mik - this.mikKv) * ROOMK;
+      this.vyhKv += (this.proshY * this.proshY - this.vyhKv) * ROOMK;
+      let usil = 0;
+      if (this.p.petlya > .002){
+        this.vozvrat = this.vyhKv > 1e-9
+          ? clamp(Math.sqrt(this.mikKv / this.vyhKv), .004, 3) : .55;
+        usil = clamp(BAZA_PETLI * this.p.petlya / this.vozvrat, 40, 6000);
+      }
+      const petl = this.petlya.step(mik, usil);
       for (let k = 0; k < OVER; k++){
         const gls = this.golos.step(vh ? (vh[s] || 0) : 0, this.p.golos);
         y = this.svod.step(this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib, petl));
@@ -1391,7 +1478,10 @@ class Chaos extends AudioWorkletProcessor {
       if (this.p.naruzhu > .002 && vh)
         y = y + (vh[s] || 0) * .35 * this.p.naruzhu;
       // МАСТЕР: середина хода — единица, дальше вдвое.
-      y = koleno(y * this.p.master * 2);
+      y = koleno(this.predel.step(y * this.p.master * 2));
+      this.proshY = y;
+      const ma = mik < 0 ? -mik : mik;
+      if (ma > this.mikPik) this.mikPik = ma;
       oL[s] = y; oR[s] = y;
       if (this.rec) this.recBuf.push(y);
       const shago = clamp(Math.round(SR / (Math.max(20, this.pr.osn.f) * 128)), 1, 64);
@@ -1417,6 +1507,7 @@ class Chaos extends AudioWorkletProcessor {
       this.port.postMessage({
         pik: this.pik, sryvy: this.sryvy,
         perehod: this.vedenie ? this.vedenie.t : 1,
+        mik: this.mikPik, vozvrat: this.vozvrat,
         razbros: pr.razbr, period: pr.swing.period,
         pitch: pr.osn.f || 0, duty: pr.osn.skv,
         shina: pr.bat.Vl / sb.EMF,
@@ -1427,7 +1518,7 @@ class Chaos extends AudioWorkletProcessor {
         osc: this.osc.slice(), sled: l,
         pl: Array.from(this.pl), utechka: this.utechka
       });
-      this.pik *= .6;
+      this.pik *= .6; this.mikPik *= .5;
     }
     return true;
   }
