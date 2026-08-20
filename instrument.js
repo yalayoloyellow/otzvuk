@@ -53,10 +53,16 @@ const KNOBS=[
 // Промежуточного положения у него не бывает физически, поэтому эти вещи и
 // стоят отдельно от ручек.
 const SWITCHES=[
+  {k:'gen1',     kl:'KeyJ', imya:'ГЕН 1',    podpis:['выкл','вкл']},
   {k:'gen2',     kl:'KeyK', imya:'ГЕН 2',    podpis:['выкл','вкл']},
   {k:'gen3',     kl:'KeyL', imya:'ГЕН 3',    podpis:['выкл','вкл']},
   {k:'link',    kl:'KeyB', imya:'СВЯЗЬ',    podpis:['нет','замкнута']},
   {k:'dirt',    kl:'KeyM', imya:'ГРЯЗЬ',    podpis:['развязка','снята']},
+  // Микрофон слышит динамик, круг замыкает комната. Три положения: без
+  // петли, лёгкая окраска помещением, самовозбуждение. Клавиша общая с
+  // ручкой ИМПУЛЬС, поэтому тумблер живёт на shift.
+  {k:'petlya',  kl:'KeyU', imya:'ПЕТЛЯ',    podpis:['нет','комната','вой'],
+   pol:3, mikro:1, shift:1},
 ];
 
 
@@ -141,6 +147,23 @@ function primenit(p){
   send();
   skazhi('пресет: '+(p.name||p.имя||p.file));
 }
+// ---- МИКРОФОН --------------------------------------------------------------
+// Петля замыкается через воздух, поэтому микрофон должен отдавать сырой
+// сигнал: эхоподавление, шумодав и авторегулировка усиления в браузере
+// душат фидбек как «дефект» — их надо снимать явно, иначе вместо петли
+// приходит вычищенная тишина.
+let mikrofon=null;
+async function vklyuchiMikrofon(){
+  if(mikrofon || !ctx) return;
+  try{
+    const potok=await navigator.mediaDevices.getUserMedia({audio:{
+      echoCancellation:false, noiseSuppression:false, autoGainControl:false}});
+    mikrofon=ctx.createMediaStreamSource(potok);
+    mikrofon.connect(node);
+    skazhi('микрофон подключён');
+  }catch(e){ skazhi('микрофон не дали: '+e.name); }
+}
+
 // ---- ЗАПИСЬ ----------------------------------------------------------------
 // Пишется ровно то, что слышно: копия выхода приходит из ядра порциями,
 // здесь копится и на остановке уходит файлом в ~/Documents/otzvuk/записи.
@@ -218,7 +241,7 @@ function razvedi(){
 // макро — то, что на панели; p — то, что уходит в движок
 const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0};
-const switches={gen2:1, gen3:0, link:0, dirt:0};
+const switches={gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0};
 
 const p={};
 
@@ -296,7 +319,7 @@ async function pusk(){
   try{
   ctx=new AudioContext({latencyHint:'interactive'});
   await ctx.audioWorklet.addModule('chaos.worklet.js?v='+Date.now());
-  node=new AudioWorkletNode(ctx,'chaos',{numberOfInputs:0,numberOfOutputs:1,
+  node=new AudioWorkletNode(ctx,'chaos',{numberOfInputs:1,numberOfOutputs:1,
     outputChannelCount:[2]});
   node.connect(ctx.destination);
   node.port.onmessage=e=>{
@@ -335,10 +358,13 @@ addEventListener('keydown',async e=>{
   // которую надо вести.
   for(const t of SWITCHES){
     if(c!==t.kl) continue;
+    // Тумблеры, делящие клавишу с ручкой, живут на shift.
+    if(!!t.shift !== !!e.shiftKey) continue;
     e.preventDefault();
     if(e.repeat) return;
     const pol=t.pol||2;
     switches[t.k]=(switches[t.k]+1)%pol;
+    if(t.mikro && switches[t.k]) vklyuchiMikrofon();
     vspyshkat=t; vspyshka=8; send();
     return;
   }
@@ -620,7 +646,9 @@ function ruchki(){
   stroki.push('');
   stroki.push('  '+SWITCHES.map(t=>{
     const z=switches[t.k], pol=t.pol||2;
-    const vid = pol>2 ? String(z+1) : (z?'▮':'·');
+    // У многопозиционного показываем подпись положения: голая цифра читалась
+    // как «включено».
+    const vid = pol>2 ? (t.podpis[z]||String(z)) : (z?'▮':'·');
     return `<span class="${z?'hot':'dim'}">${t.imya} ${vid}</span>`+
            ` <span class="dim2">${t.kl.replace('Key','').toLowerCase()}</span>`;
   }).join('  '));
