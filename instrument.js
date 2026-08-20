@@ -65,11 +65,10 @@ const KNOBS=[
   {k:'ist',    m:['Comma','Period'],        imya:'ИСТОЧНИК', zona:'golos'},
   {k:'ton',    m:['Semicolon','Quote'],     imya:'ТОН',      zona:'golos'},
   {k:'naruzhu',m:['ArrowLeft','ArrowRight'],imya:'НАРУЖУ',   zona:'golos'},
-  // ПАУЗА тоже ступенчатая: цикл повтора считается в целых тактах прибора.
-  {k:'pauza',  m:['ArrowDown','ArrowUp'],   imya:'ПАУЗА',    zona:'golos',
-   stupeni:['нет','¼','½','1','2','4']},
-  // ТЕМП — не скорость, а МНОЖИТЕЛЬ к скорости, которую задают качели.
-  {k:'temp',   m:['Digit9','Digit0'],       imya:'ТЕМП',     zona:'golos',
+  // ПАУЗА — размер тишины МЕЖДУ произнесениями, в тактах прибора. Не скорость
+  // речи: та привязана к качелям намертво и ручкой не задаётся. Пять жёстких
+  // ступеней, промежуточных положений нет — каждое нажатие это шаг.
+  {k:'temp',   m:['Digit9','Digit0'],       imya:'ПАУЗА',    zona:'golos',
    stupeni:['×0.25','×0.5','×1','×2','×3']},
   // Второй слой: пар не хватило ровно на две величины, а страницы у прибора
   // нет и быть не должно. Shift на ЭТИХ двух парах выбирает вторую величину,
@@ -109,6 +108,17 @@ const SWITCHES=[
 // случайность здесь — это ровно то, к чему у него НЕТ ДОСТУПА, но что звучит.
 // Поэтому случайность живёт не в сигнале, а в ЭКЗЕМПЛЯРЕ прибора: собрал —
 // получил свой набор номиналов, и он твой, пока не пересоберёшь.
+// КОМАНДЫ — то, что не крутится и не щёлкает, а происходит один раз. Держим
+// таблицей по той же причине, что ручки и тумблеры: легенда внизу собирается
+// из этих же таблиц и потому не может разойтись с тем, что делают клавиши.
+const KOMANDY=[
+  {kl:'Tab',       imya:'пересобрать', deystvie:()=>peresoberi()},
+  {kl:'Space',     imya:'толчок',      deystvie:()=>node&&node.port.postMessage({t:'kick'})},
+  {kl:'Backquote', imya:'запись',      deystvie:()=>zapis()},
+  {kl:'ArrowUp',   imya:'пресет',      deystvie:()=>sohrani()},
+  {kl:'ArrowDown', imya:'листать',     deystvie:e=>listay((e.metaKey||e.ctrlKey)?-1:1)},
+];
+
 // Пары, на которых висит по две величины: Shift выбирает вторую.
 const DVUSLOYNYE = new Set(KNOBS.filter(r=>r.shift).flatMap(r=>r.m));
 const IMYAKL={Comma:',', Period:'.', Slash:'/', Semicolon:';', Quote:"'",
@@ -293,7 +303,7 @@ function peresoberi(novoe){
 const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
              zhat:0, master:.5, ist:0, ton:.35, temp:.5,
-             pauza:.6, trakt:.3, naruzhu:0, kuda:0};
+             trakt:.3, naruzhu:0, kuda:0};
 const switches={gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0,
                 mix:0, povtor:0};
 
@@ -413,13 +423,15 @@ addEventListener('keydown',async e=>{
     return;
   }
   if(c==='Enter'){ e.preventDefault(); stroka.aktivna=true; return; }
-  // Пересборка прибора: новый экземпляр с другими номиналами. Ручки на
-  // панели остаются где стояли — меняется сам прибор, а не настройка.
-  if(c==='Tab'){ e.preventDefault(); peresoberi(); return; }
-
-  if(c==='KeyN'){ e.preventDefault(); if(!e.repeat) zapis(); return; }
-  if(c==='KeyP'){ e.preventDefault(); if(!e.repeat) sohrani(); return; }
-  if(c==='KeyO'){ e.preventDefault(); if(!e.repeat) listay(e.shiftKey?-1:1); return; }
+  // Буквы n, o и p ушли под ручки ГОЛОС и ДИАПАЗОН, а эти три обработчика
+  // стояли ВЫШЕ разбора ручек и перехватывали нажатие — обе ручки молчали.
+  // Команды переехали на то, что осталось свободным.
+  for(const km of KOMANDY){
+    if(c!==km.kl) continue;
+    if(!!km.shift !== !!e.shiftKey) continue;
+    e.preventDefault(); if(!e.repeat) km.deystvie(e);
+    return;
+  }
 
   // Тумблер щёлкает от одного нажатия и держится сам — это не ручка,
   // которую надо вести.
@@ -448,6 +460,16 @@ addEventListener('keydown',async e=>{
       const t=performance.now();
       // Модификаторы ускоряют вращение: cmd/ctrl втрое, shift вдесятеро.
       // Пальцы на приборе крутят ручку с разной скоростью, и это ровно то же.
+      // У СТУПЕНЧАТОЙ ручки промежуточных положений не бывает: нажатие
+      // переставляет её на соседнюю ступень, и удержание ничего не разгоняет.
+      // Это переключатель с фиксацией, а не подстроечник.
+      if(r.stupeni){
+        const n=r.stupeni.length-1;
+        const bylo=clamp(Math.round((knobs[r.k]||0)*n),0,n);
+        knobs[r.k]=clamp(bylo+znak,0,n)/n;
+        poslednyaya=r; vspyshka=6; send();
+        return;
+      }
       const skor = DVUSLOYNYE.has(c) ? ((e.metaKey||e.ctrlKey) ? 3 : 1)
                  : e.shiftKey ? 10 : (e.metaKey||e.ctrlKey) ? 3 : 1;
       derzhim.set(c,{klyuch:r.k,znak,ruchka:r,nachalo:t,zhivo:t,skor});
@@ -461,7 +483,6 @@ addEventListener('keydown',async e=>{
     }
     return;
   }
-  if(c==='Space'){ node&&node.port.postMessage({t:'kick'}); e.preventDefault(); return; }
   // ---- ПЛОЩАДКИ -----------------------------------------------------------
   // Не пресеты. У Срапы были контактные площадки: палец замыкал участок цепи
   // через сопротивление своего тела, и звук менялся ровно пока ты держишь.
@@ -840,6 +861,33 @@ function ruchki(){
   return stroki.join('\n');
 }
 
+// ЛЕГЕНДА СОБИРАЕТСЯ ИЗ ТАБЛИЦ, а не пишется руками. Написанная руками она
+// расходится с прибором на первой же перекладке клавиш — и разошлась: в ней
+// висели буквы, давно отданные под ручки. Теперь расходиться ей не с чем.
+function klavisha(kod){
+  return IMYAKL[kod] || {Tab:'tab', Space:'пробел', Enter:'⏎', Escape:'esc'}[kod]
+      || kod.replace('Key','').toLowerCase();
+}
+function legenda(){
+  const ZN = [{z:'shema', kl:'dim2', imya:'схема'},
+              {z:'golos', kl:'golos', imya:'голос'},
+              {z:'post',  kl:'post',  imya:'пост'}];
+  const stroki = [];
+  for(const zn of ZN){
+    const ch = [];
+    for(const r of KNOBS) if((r.zona||'shema')===zn.z)
+      ch.push(`${r.podpis} ${r.imya.toLowerCase()}`);
+    for(const t of SWITCHES) if((t.zona||'shema')===zn.z)
+      ch.push(`${klavisha(t.kl)} ${t.imya.toLowerCase()}`);
+    for(const k of KOMANDY) if((k.zona||'shema')===zn.z)
+      ch.push(`${k.shift?'⇧':''}${klavisha(k.kl)} ${k.imya}`);
+    if(zn.z==='golos') ch.push('⏎ текст');
+    if(zn.z==='shema') ch.push('1–8 площадки', '⌘ втрое', '⇧ вдесятеро');
+    stroki.push(`  <span class="${zn.kl}">${zn.imya}: ${ch.join(' · ')}</span>`);
+  }
+  return stroki.join('\n');
+}
+
 function kadr(){
   // Ошибку в кадре нельзя глушить молча: панель просто исчезала, а причина
   // оставалась только в отладочном поле.
@@ -858,14 +906,9 @@ function kadr_(){
     // Перерисовываем вкладки только когда они правда изменились: лишняя
     // замена разметки съедала клики.
     $('#knobs').innerHTML=ruchki();
-    $('#line').innerHTML=
-      `  <span class="dim2">tab пересобрать · ⌘ втрое · ⇧ вдесятеро · пробел толчок · `+
-      `1–8 площадки · / петля · n запись · p пресет · o листать</span>`+
-      `\n  <span class="golos">синее — голос: n m влияние · ,. источник · ;' тон · ⇧;' тракт · `+
-      `←→ наружу · ⇧←→ куда · ↓↑ пауза · 90 темп · l повтор · / петля · ⏎ текст</span>`+
-      `\n  <span class="post">красное — пост: [ ] жать · -= мастер · \\ микшир</span>`+
-      (vest && performance.now()<vestdo ? `   <span class="hot">${vest}</span>`
-       : presets.length ? `   <span class="dim2">${presets.length} пресетов</span>` : '');
+    $('#line').innerHTML=legenda()+
+      (vest && performance.now()<vestdo ? `\n  <span class="hot">${vest}</span>`
+       : presets.length ? `\n  <span class="dim2">${presets.length} пресетов</span>` : '');
   }
 }
 pomer();
