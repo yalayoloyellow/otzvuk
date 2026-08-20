@@ -724,6 +724,16 @@ function pomer(){
   // Первый раз собираем в любом случае: размер может совпасть с исходным,
   // а полей и слоёв ещё нет вовсе.
   if(nov!==Sh||novv!==V||!SLOI.length){ Sh=nov; V=novv; peresoberiSloi(); }
+  // ПАНЕЛЬ СТОИТ ПО ОДНОЙ ГОРИЗОНТАЛИ С КАРТИНОЙ. Она ниже картины и висела
+  // прижатой к верху — два блока рядом читались как случайно положенные.
+  // Сдвиг округляется до целого модуля: иначе строки панели сойдут с сетки.
+  const pan=$('#panel');
+  if(pan){
+    const vys=novv*str, ph=($('#knobs').offsetHeight||0);
+    const sdvig = lezha && ph && vys>ph
+      ? Math.round((vys-ph)/2/MODUL)*MODUL : 0;
+    if(pan.style.marginTop!==sdvig+'px') pan.style.marginTop=sdvig+'px';
+  }
   // Размер коробки задаётся ЧИСЛОМ, а не содержимым: все слои сняты с потока,
   // и держать её было бы нечем.
   ris.style.width=(Sh*shs)+'px';

@@ -59,8 +59,14 @@
        поровну — тогда это поле, а не пустота под композицией. `safe`
        снимает центрирование, когда содержимое не влезает: иначе верх
        уехал бы за край и стал недоступен. */
+    /* ЛЕГЕНДА ЖИВЁТ ВНИЗУ ЭКРАНА, а не под композицией. Она была последней
+       строкой блока, а блок стоял по центру — и легенда висела где-то в
+       середине. Место у неё одно: низ, с той же рамкой, что и всё
+       остальное. Первая строка сетки забирает остаток и центрирует в себе
+       композицию, вторая держит легенду. */
     min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr);
-    align-content:safe center}
+    grid-template-rows:1fr auto;row-gap:16px}
+  #screen{align-self:safe center}
   pre{white-space:pre;font:inherit}
   /* ДВЕ КОМПОНОВКИ, и это не подгонка под экран, а два вида прибора.
 
@@ -77,14 +83,14 @@
      знакоместа, и картина стояла между сеткой. */
   #screen{width:100%;display:grid;gap:16px 6ch;
     grid-template-columns:1fr;
-    grid-template-areas:"ris" "panel" "line"}
+    grid-template-areas:"ris" "panel"}
   /* Лёжа встаём не при любом перевесе ширины, а при заметном. У картины
      своя постоянная пропорция — вдвое шире, чем выше, — и в почти
      квадратном окне она стоя выходит КРУПНЕЕ: там ей достаётся вся ширина,
      а не то, что осталось от панели. */
   @media (min-aspect-ratio:5/4){
     #screen{grid-template-columns:52ch 1fr;
-            grid-template-areas:"panel ris" "line line"}
+            grid-template-areas:"panel ris"}
   }
   /* Картина стоит в своей клетке по центру: пропорция у неё постоянная, и
      если клетка шире или выше — остаётся поле, а не растяжка. */
@@ -94,7 +100,6 @@
   #ris{grid-area:ris;min-width:0;overflow:hidden;
        display:flex;align-items:flex-start;justify-content:flex-start}
   #panel{grid-area:panel}
-  #line{grid-area:line}
   #canvas{white-space:pre}
   /* Заголовка нет. До запуска здесь стоит приглашение, после — пусто, и
      пустая строка не должна занимать модуль. */
@@ -219,6 +224,6 @@
 <div id="screen">
 <div id="ris"><div id="canvas"></div></div>
 <div id="panel"><pre id="knobs"></pre></div>
-<pre id="line"></pre>
 </div>
+<pre id="line"></pre>
 <script type="module" src="instrument.js"></script>
