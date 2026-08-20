@@ -613,6 +613,13 @@ function zapas(){
 const PHOSPHOR=' ·◦∙✳※';
 const KOD=[...PHOSPHOR].map(c=>c.charCodeAt(0));
 const CVETOV=3, STUPENEY=5, SLOEV=CVETOV*STUPENEY;
+// КАКАЯ СТУПЕНЬ КАКОМУ СЛОЮ. Зелёный берёт все пять — он фон, и глубину
+// держит он. Акценты берут только верхние: затемнённый красный на мелком
+// знаке читается бурым, а не тихим красным, и рядом с панелью это выглядело
+// абсурдом. Тише или громче акцент — видно по знаку, не по цвету.
+const KLASS=[['z0','z1','z2','z3','z4'],
+             ['k3','k3','k3','k3','k4'],
+             ['s3','s3','s3','s3','s4']];
 // СОСТАВ КАРТИНЫ ЗАДАН ДОЛЯМИ, А НЕ ЯРКОСТЬЮ. Сколько знакомест попадает в
 // каждую ступень — решено заранее: снизу вверх пятнадцать, двадцать пять,
 // тридцать, двадцать два и восемь процентов от всех горящих. Порог под эти
@@ -775,7 +782,7 @@ function peresoberiSloi(){
   for(let c=0;c<CVETOV;c++) for(let t=0;t<STUPENEY;t++){
     SLOI.push(new Uint16Array(dlina));
     const e=document.createElement('pre');
-    e.className='sl c'+c+' t'+t;
+    e.className='sl '+KLASS[c][t];
     ris.appendChild(e); PRE.push(e);
   }
 }
@@ -1153,11 +1160,15 @@ function shkala(v, sh){
   const n=clamp(Math.round(v*sh),0,sh);
   return '▮'.repeat(n)+'·'.repeat(sh-n);
 }
-// Та же шкала, но двумя кусками: горящее отдельно от погасшего.
+// Та же шкала, но двумя кусками: горящее отдельно от погасшего. Погасшее
+// НЕЙТРАЛЬНО и одинаково у всех зон: незажжённый сегмент на приборе не
+// красный и не синий, он просто тёмный. Затемнённый красный вдобавок читается
+// бурым — тем самым, из-за чего пришлось выкинуть тёмные ступени у акцентов.
+const KL_GORIT=['z3','k3','s3'];
 function shkalaHTML(v, sh, zona){
   const n=clamp(Math.round(v*sh),0,sh);
-  return `<span class="gor${zona}">${'▮'.repeat(n)}</span>`+
-         `<span class="tuh${zona}">${'·'.repeat(sh-n)}</span>`;
+  return `<span class="${KL_GORIT[zona]}">${'▮'.repeat(n)}</span>`+
+         `<span class="z0">${'·'.repeat(sh-n)}</span>`;
 }
 function ruchki(){
   const sb=report.build||{};
@@ -1183,21 +1194,21 @@ function ruchki(){
   const bpm = per>0 ? 240/per : 0;
   const vtemp = bpm>=40 && bpm<=200;
   stroki.push(
-    `<span class="dim">BPM    </span>`+
+    `<span class="z2">BPM    </span>`+
     shkalaHTML(bpm?clamp(Math.log2(bpm/8)/8,0,1):0,shk,0)+` `+
     (bpm ? `<span class="${vtemp?'hot':'dim2'}">${Math.round(bpm)}</span>` : '—')+
-    `   <span class="dim">${rezhim}</span>`);
+    `   <span class="z2">${rezhim}</span>`);
   // DROPOUT. Строка появляется только если звук правда рвался — иначе её нет.
   const pot = zapas();
   // Строка была вшестеро длиннее всех прочих и одна задавала ширину панели.
   if (pot > 20) stroki.push(
-    `<span class="postdim">DROPOUT</span> <span class="post">`+
+    `<span class="k2">DROPOUT</span> <span class="k3">`+
     `${Math.round(pot)} мс — воркл не успевает</span>`);
   // INPUT. Без этой строки проверить микрофон нельзя вовсе: не слышно,
   // дошёл ли сигнал до ядра, или разрешение не дали, или он просто молчит.
   const mk=clamp(report.mik||0,0,1), vz=report.vozvrat||0;
   stroki.push(
-    `<span class="golosdim">INPUT  </span>`+shkalaHTML(mk,shk,2)+`<span class="golos"> ` +
+    `<span class="s2">INPUT  </span>`+shkalaHTML(mk,shk,2)+`<span class="s3"> ` +
     (mk>.002 ? 'идёт' : mikrofon ? 'тихо'
       : knobs.ist>.5 ? 'говорилка молчит' : 'микрофон не включён') +
     // ROOM — сколько из вышедшего комната вернула в микрофон. По нему ядро
@@ -1208,7 +1219,7 @@ function ruchki(){
   if(ris.length){
     const shag=report.shag|0;
     const s=ris.map((v,i)=> i===shag ? (v?'█':'▒') : (v?'▮':'·')).join('');
-    stroki.push(`<span class="dim">SEQ    </span><span class="fg">${s}</span>`);
+    stroki.push(`<span class="z2">SEQ    </span><span class="z3">${s}</span>`);
   }
   stroki.push('');
 
@@ -1218,9 +1229,9 @@ function ruchki(){
   // Прежде вся ячейка красилась одним цветом, и панель читалась ровным
   // пятном — а глазу нужно, чтобы шкала выступала из подписи.
   const ZONY = [
-    {z:'shema', imya:'dim',      obych:'fg',    yark:'hot',      n:0},
-    {z:'golos', imya:'golosdim', obych:'golos', yark:'goloshot', n:2},
-    {z:'post',  imya:'postdim',  obych:'post',  yark:'posthot',  n:1},
+    {z:'shema', imya:'z2', obych:'z3', yark:'z4', n:0},
+    {z:'golos', imya:'s2', obych:'s3', yark:'s4', n:2},
+    {z:'post',  imya:'k2', obych:'k3', yark:'k4', n:1},
   ];
   // Ручки: имя, шкала, клавиши. Ширина колонки и число колонок — от экрана.
   const shr = uzko ? 10 : 14;
@@ -1280,7 +1291,7 @@ function ruchki(){
         if(c.svoy) return `<span class="${zn.yark}">${c.imya}${c.znachT} ${c.klav}</span>${c.hvost}${dob}`;
         return `<span class="${zn.imya}">${c.imya}</span>`+
                c.znach+
-               ` <span class="dim2">${c.klav}</span>${c.hvost}${dob}`;
+               ` <span class="z1">${c.klav}</span>${c.hvost}${dob}`;
       }).join('  '));
     }
     const tm = SWITCHES.filter(t=>(t.zona||'shema')===zn.z);
@@ -1295,7 +1306,7 @@ function ruchki(){
       // Замкнутый тумблер стоит на ступени значения, разомкнутый — на
       // ступени имени: разница видна раньше, чем прочтёшь подпись.
       return `<span class="${z?zn.obych:zn.imya}">${t.imya} ${vid}</span>`+
-             ` <span class="dim2">${kl}</span>`;
+             ` <span class="z1">${kl}</span>`;
     }).join('  '));
     stroki.push('');
   }
@@ -1305,16 +1316,16 @@ function ruchki(){
   // всём переходе буквы не менялись, а число уже было новым.
   const bd=report.budet;
   const put=bd
-    ? ` <span class="fg">→ ${bd.imya} ${bd.semya>>>0}</span>`+
-      ` <span class="dim">${Math.round((report.perehod||0)*100)}%</span>`
+    ? ` <span class="z3">→ ${bd.imya} ${bd.semya>>>0}</span>`+
+      ` <span class="z2">${Math.round((report.perehod||0)*100)}%</span>`
     : '';
   // Строка текста показывается всегда: без неё непонятно, что скажется.
   stroki.push(stroka.aktivna
-    ? `<span class="golosdim">TEXT   </span><span class="goloshot">${stroka.tekst}▏</span>`+
-      `  <span class="dim2">enter сказать · esc отменить</span>`
-    : `<span class="golosdim">TEXT   </span><span class="golos">${stroka.tekst||'—'}</span>`+
-      `  <span class="dim2">enter — ввести</span>`);
-  stroki.push(`<span class="dim3">BUILD  ${sb.imya||'····'} ${(sb.semya!==undefined?sb.semya:seed)>>>0}`+
+    ? `<span class="s2">TEXT   </span><span class="s4">${stroka.tekst}▏</span>`+
+      `  <span class="z1">enter сказать · esc отменить</span>`
+    : `<span class="s2">TEXT   </span><span class="s3">${stroka.tekst||'—'}</span>`+
+      `  <span class="z1">enter — ввести</span>`);
+  stroki.push(`<span class="z0">BUILD  ${sb.imya||'····'} ${(sb.semya!==undefined?sb.semya:seed)>>>0}`+
               (sb.dinamik?` · ${Math.round(sb.dinamik)}Гц · ${(sb.emkost*1e9).toFixed(1)}нФ`:'')+
               `</span>`+put);
   return stroki.join('\n');
@@ -1338,7 +1349,7 @@ function legenda(){
   // стояла тут потому, что зон не было; теперь зелёные, синие и красные
   // ручки лежат отдельными блоками, и подпись под картиной повторяет то,
   // что и так видно сверху.
-  return `<span class="dim3">${kom.join(' \u00b7 ')}</span>`;
+  return `<span class="z0">${kom.join(' \u00b7 ')}</span>`;
 }
 
 function kadr(){
@@ -1361,7 +1372,7 @@ function kadr_(){
   if(!idet){
     // Заголовка нет. До запуска здесь стоит одно приглашение, после — пусто.
     if(bylaShapka!==0){ bylaShapka=0;
-      $('#head').innerHTML = `<span class="hot">нажми любую клавишу</span>`; }
+      $('#head').innerHTML = `<span class="z4">нажми любую клавишу</span>`; }
     return;
   }
   if(bylaShapka!==1){ bylaShapka=1; $('#head').innerHTML=''; }
@@ -1383,8 +1394,8 @@ function kadr_(){
   const p=$('#panel'), ko=p.offsetWidth+'×'+p.offsetHeight;
   if(ko!==bylaKorobka){ bylaKorobka=ko; pomer(); }
   const l = legenda()+
-    (vest && performance.now()<vestdo ? `\n<span class="hot">${vest}</span>`
-     : presets.length ? `\n<span class="dim2">${presets.length} пресетов</span>` : '');
+    (vest && performance.now()<vestdo ? `\n<span class="z4">${vest}</span>`
+     : presets.length ? `\n<span class="z0">${presets.length} пресетов</span>` : '');
   if(l!==bylaStroka){ bylaStroka=l; $('#line').innerHTML=l; }
 }
 pomer();
