@@ -11,7 +11,7 @@
 //  «зная, что крутишь, попадаешь в нужную область».
 // ============================================================================
 import {vFonemy, vTseli} from './govor.js';
-import {Ekran, grani, CVETOV, STUPENEY, SLOEV} from './ekran.js';
+import {Ekran, grani, CVETOV, STUPENEY, SLOEV, ZNAKI} from './ekran.js';
 
 const $ = s => document.querySelector(s);
 const clamp = (v,a,b) => v<a?a:v>b?b:v;
@@ -599,7 +599,9 @@ function zapas(){
 // погасшее искрой, основание колечком, тело лучистым пятном, остриё полным
 // кружком. Смысл не теряется — где горит и докуда, видно даже лучше, потому
 // что толщина работает вместе с цветом.
-const ZN_PANEL=['·','◦','✷','●'];   // погасшее · основание · тело · остриё
+// Одиночные метки панели — тумблеры и шаг сетки — берут знаки из того же
+// ряда, что фигура: искра там, где не горит, лучистое пятно там, где горит.
+const ZN_NET=ZNAKI[0][1], ZN_EST=ZNAKI[0][4];
 
 // СЕТКА. Те же числа, что и в разметке: модуль — строка, рамка — два
 // модуля сверху и снизу, три слева и справа. Держать их в одном месте
@@ -1075,47 +1077,49 @@ function ritmzamer(){
 // Всё рисуется одним шрифтом и одним цветом, тремя яркостями. Значения — не
 // цифры в строчку, а шкалы: глазу нужна форма, а не чтение. Цифра остаётся
 // там, где она правда нужна.
+// Плоская шкала — только для СЧЁТА ШИРИНЫ ячейки. На экран она не идёт:
+// рисует шкалу поле. Знаки тут любые, важна длина.
 function shkala(v, sh){
   const n=clamp(Math.round(v*sh),0,sh);
-  return ZN_PANEL[3].repeat(n)+ZN_PANEL[0].repeat(sh-n);
+  return ZN_EST.repeat(n)+ZN_NET.repeat(sh-n);
 }
-// ШКАЛА С ГРАДИЕНТОМ — ТО ЖЕ УСТРОЙСТВО, ЧТО У КАРТИНЫ.
+// ШКАЛА РИСУЕТСЯ ПОЛЕМ, А НЕ ТЕКСТОМ.
 //
-// Вот чего не хватало панели. В картине яркость меняется ВНУТРИ одного
-// объекта: сердцевина горит, окраина гаснет, все пять ступеней стоят рядом.
-// В панели ступень была назначена элементу целиком, и шкала выходила плоской
-// плитой одного цвета — сколько ореолов на неё ни вешай.
+// В текстовом слое под неё оставляется пустое место, а свет кладёт тот же
+// движок, что рисует фигуру: те же знаки, те же ступени, те же классы и те
+// же пороги. Шкала и фигура — не «похожие», а буквально одно вещество.
 //
-// Теперь остриё шкалы раскалено, за ним спад: ступень падает с удалением от
-// текущего значения. Это ещё и по смыслу верно — значение находится на
-// острие, туда и смотрят.
+// Здесь стояла своя лестница классов, свой ряд знаков и свой градиент по
+// расстоянию до острия. Это была вторая система рядом с первой, и она
+// неизбежно с ней расходилась: ревизия нашла семь случайных различий из
+// восьми.
 //
-// Погасшее НЕЙТРАЛЬНО и одинаково у всех зон: незажжённый сегмент на приборе
-// не красный и не синий, он просто тёмный. Затемнённый красный вдобавок
-// читается бурым — из-за этого выкинуты тёмные ступени у акцентов.
-const KL_ZONY=[['pz2','pz3','pz4'],['pk2','pk3','pk4'],['ps2','ps3','ps4']];
-function shkalaHTML(v, sh, zona){
-  const n=clamp(Math.round(v*sh),0,sh);
-  const kl=KL_ZONY[zona];
-  // Погасшее видно, а не проваливается в чёрное: иначе шкала выглядит
-  // короче, чем она есть, и панель темнеет.
-  const hvost=`<span class="pz1">${ZN_PANEL[0].repeat(sh-n)}</span>`;
-  if(!n) return `<span class="pz1">${ZN_PANEL[0].repeat(sh)}</span>`;
-  // Спад от острия. Короткая шкала целиком на рабочей ступени, и только
-  // длинная успевает уйти в глубину у основания — так шкала приобретает
-  // форму, но не темнеет.
-  const st=(d)=> d===0 ? 2 : d<=4 ? 1 : 0;
-  let out='', bylo=-1, kus=0;
-  for(let i=n-1;i>=0;i--){
-    const t=st(n-1-i);
-    if(t!==bylo){ if(kus) out=`<span class="${kl[bylo]}">${ZN_PANEL[bylo+1].repeat(kus)}</span>`+out;
-                  kus=0; bylo=t; }
-    kus++;
+// Место помечается служебным знаком, а координаты снимаются ПОТОМ, обходом
+// готовой разметки. Считать их по ходу сборки строк значило бы вести вторую
+// бухгалтерию рядом с первой и однажды с ней разойтись; с разметки же
+// снимаются ровно те, что есть на экране.
+const MET='\u0001';
+let SHKALY=[];
+function shkalaMesto(v, sh, zona){
+  SHKALY.push({v, sh, zona, n:clamp(Math.round(v*sh),0,sh)});
+  return MET.repeat(sh);
+}
+function najdiShkaly(html){
+  const stroki=html.replace(/<[^>]*>/g,'').split('\n');
+  let k=0;
+  for(let y=0;y<stroki.length && k<SHKALY.length;y++){
+    const r=stroki[y];
+    for(let x=0;x<r.length;){
+      if(r[x]!==MET){ x++; continue; }
+      let n=0; while(x+n<r.length && r[x+n]===MET) n++;
+      SHKALY[k].x=x; SHKALY[k].y=y; k++;
+      x+=n;
+    }
   }
-  if(kus) out=`<span class="${kl[bylo]}">${ZN_PANEL[bylo+1].repeat(kus)}</span>`+out;
-  return out+hvost;
+  return {shirina:Math.max(1,...stroki.map(r=>r.length)), vysota:stroki.length};
 }
 function ruchki(){
+  SHKALY=[];
   const sb=report.build||{};
   const uzko = Sh<80;
   const shk = uzko ? 8 : 12;
@@ -1139,21 +1143,21 @@ function ruchki(){
   const bpm = per>0 ? 240/per : 0;
   const vtemp = bpm>=40 && bpm<=200;
   stroki.push(
-    `<span class="pz2">BPM    </span>`+
-    shkalaHTML(bpm?clamp(Math.log2(bpm/8)/8,0,1):0,shk,0)+` `+
-    (bpm ? `<span class="${vtemp?'pz4':'pz1'}">${Math.round(bpm)}</span>` : '—')+
-    `   <span class="pz2">${rezhim}</span>`);
+    `<span class="z2">BPM    </span>`+
+    shkalaMesto(bpm?clamp(Math.log2(bpm/8)/8,0,1):0,shk,0)+` `+
+    (bpm ? `<span class="${vtemp?'z4':'z1'}">${Math.round(bpm)}</span>` : '—')+
+    `   <span class="z2">${rezhim}</span>`);
   // DROPOUT. Строка появляется только если звук правда рвался — иначе её нет.
   const pot = zapas();
   // Строка была вшестеро длиннее всех прочих и одна задавала ширину панели.
   if (pot > 20) stroki.push(
-    `<span class="pk2">DROPOUT</span> <span class="pk3">`+
+    `<span class="k3">DROPOUT</span> <span class="k3">`+
     `${Math.round(pot)} мс — воркл не успевает</span>`);
   // INPUT. Без этой строки проверить микрофон нельзя вовсе: не слышно,
   // дошёл ли сигнал до ядра, или разрешение не дали, или он просто молчит.
   const mk=clamp(report.mik||0,0,1), vz=report.vozvrat||0;
   stroki.push(
-    `<span class="ps2">INPUT  </span>`+shkalaHTML(mk,shk,2)+`<span class="ps3"> ` +
+    `<span class="s3">INPUT  </span>`+shkalaMesto(mk,shk,2)+`<span class="s3"> ` +
     (mk>.002 ? 'идёт' : mikrofon ? 'тихо'
       : knobs.ist>.5 ? 'говорилка молчит' : 'микрофон не включён') +
     // ROOM — сколько из вышедшего комната вернула в микрофон. По нему ядро
@@ -1167,9 +1171,9 @@ function ruchki(){
     // или нет», ступень — «здесь мы сейчас». Две разные вещи, два разных
     // средства.
     const s=ris.map((v,i)=>{
-      const zn=v?ZN_PANEL[2]:ZN_PANEL[0];
-      return `<span class="${i===shag?'pz4':v?'pz3':'pz1'}">${zn}</span>`;}).join('');
-    stroki.push(`<span class="pz2">SEQ    </span>${s}`);
+      const zn=v?ZN_EST:ZN_NET;
+      return `<span class="${i===shag?'z4':v?'z3':'z1'}">${zn}</span>`;}).join('');
+    stroki.push(`<span class="z2">SEQ    </span>${s}`);
   }
   stroki.push('');
 
@@ -1179,9 +1183,9 @@ function ruchki(){
   // Прежде вся ячейка красилась одним цветом, и панель читалась ровным
   // пятном — а глазу нужно, чтобы шкала выступала из подписи.
   const ZONY = [
-    {z:'shema', imya:'pz2', obych:'pz3', yark:'pz4', n:0},
-    {z:'golos', imya:'ps2', obych:'ps3', yark:'ps4', n:2},
-    {z:'post',  imya:'pk2', obych:'pk3', yark:'pk4', n:1},
+    {z:'shema', imya:'z2', obych:'z3', yark:'z4', n:0},
+    {z:'golos', imya:'s3', obych:'s3', yark:'s4', n:2},
+    {z:'post',  imya:'k3', obych:'k3', yark:'k4', n:1},
   ];
   // Ручки: имя, шкала, клавиши. Ширина колонки и число колонок — от экрана.
   const shr = uzko ? 10 : 14;
@@ -1210,7 +1214,7 @@ function ruchki(){
     const predel = r.stupeni ? r.stupeni.reduce((a,b)=>a.length>b.length?a:b).length
                  : r.konci   ? r.konci.join('+').length : 0;
     const hvost = predel ? ' '.repeat(predel - (st.length - 1)) : '';
-    return {imya, znach:shkalaHTML(v,shr,zn.n)+st, znachT:shkala(v,shr)+st,
+    return {imya, znach:shkalaMesto(v,shr,zn.n)+st, znachT:shkala(v,shr)+st,
             klav:r.podpis, hvost,
             t:`${imya}${shkala(v,shr)}${st} ${r.podpis}${hvost}`,
             svoy:r===poslednyaya&&vspyshka>0};
@@ -1241,7 +1245,7 @@ function ruchki(){
         if(c.svoy) return `<span class="${zn.yark}">${c.imya}${c.znachT} ${c.klav}</span>${c.hvost}${dob}`;
         return `<span class="${zn.imya}">${c.imya}</span>`+
                c.znach+
-               ` <span class="pz1">${c.klav}</span>${c.hvost}${dob}`;
+               ` <span class="z1">${c.klav}</span>${c.hvost}${dob}`;
       }).join('  '));
     }
     const tm = SWITCHES.filter(t=>(t.zona||'shema')===zn.z);
@@ -1251,12 +1255,12 @@ function ruchki(){
       // Подпись положения нужна там, где положений больше двух и словом их
       // не заменишь. Прежде выбор делался по тексту самой подписи — стоило
       // переименовать положение, и вид строки менялся сам собой.
-      const vid = pol>2 ? (t.podpis[z]||String(z)) : (z?ZN_PANEL[3]:ZN_PANEL[0]);
+      const vid = pol>2 ? (t.podpis[z]||String(z)) : (z?ZN_EST:ZN_NET);
       const kl = IMYAKL[t.kl] || t.kl.replace('Key','').toLowerCase();
       // Замкнутый тумблер стоит на ступени значения, разомкнутый — на
       // ступени имени: разница видна раньше, чем прочтёшь подпись.
       return `<span class="${z?zn.obych:zn.imya}">${t.imya} ${vid}</span>`+
-             ` <span class="pz1">${kl}</span>`;
+             ` <span class="z1">${kl}</span>`;
     }).join('  '));
     stroki.push('');
   }
@@ -1266,19 +1270,69 @@ function ruchki(){
   // всём переходе буквы не менялись, а число уже было новым.
   const bd=report.budet;
   const put=bd
-    ? ` <span class="pz3">→ ${bd.imya} ${bd.semya>>>0}</span>`+
-      ` <span class="pz2">${Math.round((report.perehod||0)*100)}%</span>`
+    ? ` <span class="z3">→ ${bd.imya} ${bd.semya>>>0}</span>`+
+      ` <span class="z2">${Math.round((report.perehod||0)*100)}%</span>`
     : '';
   // Строка текста показывается всегда: без неё непонятно, что скажется.
   stroki.push(stroka.aktivna
-    ? `<span class="ps2">TEXT   </span><span class="ps4">${stroka.tekst}▏</span>`+
-      `  <span class="pz1">enter сказать · esc отменить</span>`
-    : `<span class="ps2">TEXT   </span><span class="ps3">${stroka.tekst||'—'}</span>`+
-      `  <span class="pz1">enter — ввести</span>`);
-  stroki.push(`<span class="pz1">BUILD  ${sb.imya||'····'} ${(sb.semya!==undefined?sb.semya:seed)>>>0}`+
+    ? `<span class="s3">TEXT   </span><span class="s4">${stroka.tekst}▏</span>`+
+      `  <span class="z1">enter сказать · esc отменить</span>`
+    : `<span class="s3">TEXT   </span><span class="s3">${stroka.tekst||'—'}</span>`+
+      `  <span class="z1">enter — ввести</span>`);
+  stroki.push(`<span class="z1">BUILD  ${sb.imya||'····'} ${(sb.semya!==undefined?sb.semya:seed)>>>0}`+
               (sb.dinamik?` · ${Math.round(sb.dinamik)}Гц · ${(sb.emkost*1e9).toFixed(1)}нФ`:'')+
               `</span>`+put);
   return stroki.join('\n');
+}
+
+// ---- ПОЛЕ ПАНЕЛИ -----------------------------------------------------------
+// Тот же движок, что у фигуры, и та же мера света. Отличается ровно первая
+// стадия — чем поле возбуждается: у фигуры траекторией звука, у шкалы
+// значением ручки.
+let PPOLE=[], PEKRAN=null, PSH=0, PV=0;
+function pperesoberi(sh, v){
+  const el=$('#ppole'); if(!el) return;
+  PSH=sh; PV=v; PPOLE=[];
+  for(let c=0;c<CVETOV;c++) PPOLE.push(new Float32Array(sh*v));
+  PEKRAN = PEKRAN ? (PEKRAN.peresoberi(sh,v), PEKRAN) : new Ekran(el, sh, v);
+}
+
+// ПОДАЧА ЗАДАЁТСЯ В ЕДИНИЦАХ ПОРОГОВ, А НЕ В АБСОЛЮТНЫХ.
+//
+// Пороги ступеней плавают вместе с фигурой — они и есть доли от её горящих
+// знакомест. Абсолютный свет шкалы то слепил бы, то пропадал вслед за ней. А
+// подача в долях порога попадает на нужную ступень при любом их положении:
+// шкала видна всегда, и связывает её с фигурой не яркость, а общая мера.
+// Заодно отпадает надобность в упоре снизу, которым я собирался это лечить.
+//
+// Живые данные прибора колеблют подачу, и колебание видно СМЕНОЙ ЗНАКА — так
+// же, как в фигуре: сегмент растёт и опадает. Длина горящей части при этом не
+// дрожит никогда, иначе шкала начнёт врать про значение.
+function ppole(){
+  if(!PEKRAN || !GRANI[0]) return;
+  const g4=GRANI[0], g3=GRANI[1], gdor=(GRANI[3]+GRANI[4])*.5;
+  const u=clamp(report.swing??.5,0,1);
+  const shina=clamp(report.shina??1,0,1);
+  const dyh=(.7+.3*u)*(1+(1-shina)*1.6);      // качели и просадка шины
+  for(let c=0;c<CVETOV;c++){ const p=PPOLE[c]; p.fill(0); }
+  for(const s of SHKALY){
+    if(s.x===undefined || s.y>=PV) continue;
+    const p=PPOLE[s.zona], zel=PPOLE[0], baz=s.y*PSH+s.x;
+    for(let i=0;i<s.sh;i++){
+      const j=baz+i;
+      if(j<0||j>=zel.length) continue;
+      if(i<s.n){
+        // Остриё раскалено; тело на рабочей ступени, и ниже неё акцент
+        // опуститься не может — иначе позеленел бы.
+        const drozh=.5+.5*Math.sin(i*1.9+s.y*2.7+ugol*9);
+        p[j] = i===s.n-1 ? g4*1.4 : g3*1.03 + (g4-g3)*.85*drozh*dyh;
+      } else {
+        // Погасшая часть — дорожка прибора, а не акцента: она зелёная.
+        zel[j] = gdor;
+      }
+    }
+  }
+  PEKRAN.risuy(PPOLE, GRANI);
 }
 
 // ЛЕГЕНДА СОБИРАЕТСЯ ИЗ ТАБЛИЦ, а не пишется руками. Написанная руками она
@@ -1299,7 +1353,7 @@ function legenda(){
   // стояла тут потому, что зон не было; теперь зелёные, синие и красные
   // ручки лежат отдельными блоками, и подпись под картиной повторяет то,
   // что и так видно сверху.
-  return `<span class="pz1">${kom.join(' \u00b7 ')}</span>`;
+  return `<span class="z1">${kom.join(' \u00b7 ')}</span>`;
 }
 
 function kadr(){
@@ -1322,7 +1376,7 @@ function kadr_(){
   if(!idet){
     // Заголовка нет. До запуска здесь стоит одно приглашение, после — пусто.
     if(bylaShapka!==0){ bylaShapka=0;
-      $('#head').innerHTML = `<span class="pz4">нажми любую клавишу</span>`; }
+      $('#head').innerHTML = `<span class="z4">нажми любую клавишу</span>`; }
     return;
   }
   if(bylaShapka!==1){ bylaShapka=1; $('#head').innerHTML=''; }
@@ -1336,7 +1390,14 @@ function kadr_(){
   if(n!==bylOtchet){ bylOtchet=n; kartina(); }
 
   const r = ruchki();
-  if(r!==byliRuchki){ byliRuchki=r; $('#knobs').innerHTML=r; }
+  // Координаты шкал снимаются с готовой разметки; поле под них
+  // пересобирается, только если изменился его размер.
+  const raz = najdiShkaly(r);
+  if(raz.shirina!==PSH || raz.vysota!==PV) pperesoberi(raz.shirina, raz.vysota);
+  // Служебный знак в текстовом слое становится пробелом: место занято, а
+  // рисует шкалу поле снизу.
+  if(r!==byliRuchki){ byliRuchki=r; $('#knobs').innerHTML=r.split(MET).join(' '); }
+  ppole();
   // Панель сама задаёт, сколько места осталось картине: стоя — своей
   // высотой, лёжа — своей шириной. Пока панель не нарисована, брать эти
   // числа неоткуда, а меняться они могут и потом — от числа колонок, от
@@ -1344,8 +1405,8 @@ function kadr_(){
   const p=$('#panel'), ko=p.offsetWidth+'×'+p.offsetHeight;
   if(ko!==bylaKorobka){ bylaKorobka=ko; pomer(); }
   const l = legenda()+
-    (vest && performance.now()<vestdo ? `\n<span class="pz4">${vest}</span>`
-     : presets.length ? `\n<span class="pz1">${presets.length} пресетов</span>` : '');
+    (vest && performance.now()<vestdo ? `\n<span class="z4">${vest}</span>`
+     : presets.length ? `\n<span class="z1">${presets.length} пресетов</span>` : '');
   if(l!==bylaStroka){ bylaStroka=l; $('#line').innerHTML=l; }
 }
 pomer();
