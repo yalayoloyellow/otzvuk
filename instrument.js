@@ -871,7 +871,9 @@ function klavisha(kod){
 function legenda(){
   const ZN = [{z:'shema', kl:'dim2', imya:'схема'},
               {z:'golos', kl:'golos', imya:'голос'},
-              {z:'post',  kl:'post',  imya:'пост'}];
+              {z:'post',  kl:'post',  imya:'пост'},
+              // Команды не принадлежат ни одной зоне: они про прибор целиком.
+              {z:'obschee', kl:'dim2', imya:'общее'}];
   const stroki = [];
   for(const zn of ZN){
     const ch = [];
@@ -879,11 +881,11 @@ function legenda(){
       ch.push(`${r.podpis} ${r.imya.toLowerCase()}`);
     for(const t of SWITCHES) if((t.zona||'shema')===zn.z)
       ch.push(`${klavisha(t.kl)} ${t.imya.toLowerCase()}`);
-    for(const k of KOMANDY) if((k.zona||'shema')===zn.z)
+    for(const k of KOMANDY) if((k.zona||'obschee')===zn.z)
       ch.push(`${k.shift?'⇧':''}${klavisha(k.kl)} ${k.imya}`);
     if(zn.z==='golos') ch.push('⏎ текст');
-    if(zn.z==='shema') ch.push('1–8 площадки', '⌘ втрое', '⇧ вдесятеро');
-    stroki.push(`  <span class="${zn.kl}">${zn.imya}: ${ch.join(' · ')}</span>`);
+    if(zn.z==='obschee') ch.push('1–8 площадки', '⌘ втрое', '⇧ вдесятеро');
+    if(ch.length) stroki.push(`  <span class="${zn.kl}">${zn.imya}: ${ch.join(' · ')}</span>`);
   }
   return stroki.join('\n');
 }
