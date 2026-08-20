@@ -1004,6 +1004,9 @@ class Rez {
 }
 
 const RECH_DT = 1 / SR;
+// Через сколько тактов повторять фразу. Дроби нужны для коротких выкриков,
+// целые — для фраз: так повтор ложится и в долю, и в такт.
+const KRATNOST = [0, .25, .5, 1, 2, 4];
 // Полюс спада турбулентности: девятьсот герц даёт −6 дБ/окт выше него, то
 // есть ровно то, что прибавляет излучение с губ. Множитель возвращает
 // потерянный на фильтре размах.
@@ -1023,25 +1026,71 @@ class Govorilka {
     this.faza = 0; this.jit = 0; this.shim = 1;
     this.amp = 0; this.gol = 0; this.shum = 0; this.drozh = 0;
     this.yp = 0; this.tik = 0; this.shp = 0;
+    this.zhdu = 0; this.zapas = null; this.dlit = 0;
   }
-  govori(celi){ this.q = celi || []; this.i = 0; this.t = 0; this.hvost = 0; }
-  molchi(){ this.q = []; this.i = 0; this.hvost = .08; }
+  govori(celi){
+    this.q = celi || []; this.i = 0; this.t = 0; this.hvost = 0; this.zhdu = 0;
+    this.zapas = this.q.length ? this.q : null;
+    // Полная длительность фразы в «своём» времени — из неё считается, через
+    // сколько тактов её повторять.
+    this.dlit = this.q.reduce((a, b) => a + b.dl, 0);
+  }
+  molchi(){ this.q = []; this.i = 0; this.hvost = .08; this.zhdu = 0; this.zapas = null; }
 
-  step(ton, temp, povtor){
-    if (!this.q.length && this.hvost <= 0 && this.amp < 1e-5) return 0;
+  // trakt — ДЛИНА ГОЛОСОВОГО ТРАКТА, и ничто другое не отличает мужской голос
+  //   от женского так надёжно. Форманты обратно пропорциональны длине: тракт
+  //   короче — все три уезжают вверх разом. Высота связок при этом отдельный
+  //   орган и живёт на своей ручке, поэтому низкий женский и высокий мужской
+  //   голос тут возможны, как и в жизни.
+  // pauza — через сколько ТАКТОВ прибора повторять фразу. Такт берётся от
+  //   качелей, поэтому повтор садится в ритм сам, а не плывёт рядом с ним.
+  step(ton, temp, povtor, trakt, pauza, period){
+    // ПОВТОР, включённый после того, как фраза договорила, обязан её поднять:
+    // очередь к тому моменту пуста, и без этого тумблер молчал бы до
+    // следующего Enter. Фраза лежит в запасе с момента, как её сказали.
+    if (povtor && !this.q.length && this.zhdu <= 0 && this.hvost <= 0 && this.zapas){
+      this.q = this.zapas; this.i = 0; this.t = 0;
+    }
+    if (!this.q.length && this.hvost <= 0 && this.amp < 1e-5 && this.zhdu <= 0) return 0;
     const skor = .45 + clamp(temp, 0, 1) * 2.2;
-    if (this.q.length){
+    if (this.zhdu > 0){
+      this.zhdu -= RECH_DT;
+      if (this.zhdu <= 0 && this.zapas){ this.q = this.zapas; this.i = 0; this.t = 0; }
+    }
+    else if (this.q.length){
       this.t += RECH_DT * skor;
       while (this.q.length && this.t >= this.q[this.i].dl){
         this.t -= this.q[this.i].dl;
         this.i++;
         if (this.i >= this.q.length){
-          if (povtor) this.i = 0;
-          else { this.q = []; this.i = 0; this.hvost = .10; break; }
+          if (povtor){
+            // Цикл — целое число тактов, и не меньше, чем нужно самой фразе.
+            // Оттого повтор всегда попадает на долю, какой бы длины ни была
+            // фраза и как бы ни крутили ТЕМП.
+            const takt = Math.max(.05, period || .5);
+            const svoya = this.dlit / skor;
+            const kratno = KRATNOST[clamp(Math.round(pauza * (KRATNOST.length - 1)),
+                                          0, KRATNOST.length - 1)];
+            // Пауза ДОБАВЛЯЕТСЯ к фразе, а не заменяет её длину. Иначе для
+            // фразы длиннее выбранного числа тактов ручка не делала бы
+            // ничего: «не меньше половины такта» при фразе в два такта это
+            // те же два такта. Сама фраза при этом округляется вверх до
+            // целого такта — от этого повтор и садится на долю.
+            const cikl = (Math.ceil(svoya / takt) + kratno) * takt;
+            const tishina = cikl - svoya;
+            if (tishina > .01){
+              this.zapas = this.q; this.q = []; this.i = 0;
+              this.zhdu = tishina; this.hvost = .10;
+            } else this.i = 0;
+          }
+          else { this.q = []; this.i = 0; this.hvost = .10; }
+          break;
         }
       }
     } else this.hvost -= RECH_DT;
     const c = this.q.length ? this.q[this.i] : TIHO;
+    // Множитель тракта: короче тракт — выше все форманты и шире их полосы.
+    const dl = .86 * Math.pow(1.45, clamp(trakt, 0, 1));
 
     // Внутри фонемы. Взрывной согласный устроен так: тракт ПЕРЕКРЫТ (тишина,
     // у звонких за смычкой гудят связки), потом давление срывает преграду —
@@ -1069,8 +1118,8 @@ class Govorilka {
     const tau = (c.tip === 'vz' || c.tip === 'af') ? .012 : .028;
     const kf = 1 - Math.exp(-RECH_DT / tau);
     for (let j = 0; j < 3; j++){
-      this.F[j] += (c.F[j] - this.F[j]) * kf;
-      this.B[j] += (c.B[j] - this.B[j]) * kf;
+      this.F[j] += (c.F[j] * dl - this.F[j]) * kf;
+      this.B[j] += (c.B[j] * dl - this.B[j]) * kf;
     }
     // Связки открываются быстрее, чем закрываются, и тракт после них звенит.
     const ka = 1 - Math.exp(-RECH_DT / (cel > this.amp ? .004 : .012));
@@ -1443,7 +1492,7 @@ class Chaos extends AudioWorkletProcessor {
                // голос: глубина, точка ввода, слышен ли он сам по себе
                golos:0, kuda:0, naruzhu:0,
                // говорилка: чем воткнуто в гнездо, высота, скорость, повтор
-               ist:0, ton:.35, temp:.5, povtor:0,
+               ist:0, ton:.35, temp:.5, povtor:0, trakt:.3, pauza:.6,
                // ПОСТ: не детали прибора, а слой поверх него.
                mix:0, zhat:0, master:.5 };
     // Куда движок ЕДЕТ (панель) и где он СЕЙЧАС (схема) — две разные вещи.
@@ -1645,7 +1694,8 @@ class Chaos extends AudioWorkletProcessor {
       // входе, и ИСТОЧНИК это не переключатель, а потенциометр между ними:
       // на середине слышны оба. Петля при этом остаётся на микрофоне —
       // круг замыкает воздух, и говорилке в нём делать нечего.
-      const rech = this.govor.step(this.p.ton, this.p.temp, this.p.povtor > .5);
+      const rech = this.govor.step(this.p.ton, this.p.temp, this.p.povtor > .5,
+                                   this.p.trakt, this.p.pauza, this.pr.swing.period);
       const dg = clamp(this.p.ist, 0, 1);
       const vhod = mik * (1 - dg) + rech * dg;
       for (let k = 0; k < OVER; k++){
@@ -1671,8 +1721,11 @@ class Chaos extends AudioWorkletProcessor {
       // Источник слышен сам по себе, поверх прибора. Коэффициент .8 при
       // приборных 0.149 по пику делал его впятеро громче всего остального —
       // это не «слышен», это «вместо».
+      // НАРУЖУ теперь настоящий уровень, а не «слышен или нет»: доля .35
+      // была выбрана под приборные 0.149 по пику, и на слух этого мало.
+      // Верх шкалы даёт вчетверо больше — а от потолка спасает ограничитель.
       if (this.p.naruzhu > .002)
-        y = y + vhod * .35 * this.p.naruzhu;
+        y = y + vhod * 1.4 * this.p.naruzhu;
       // МАСТЕР: середина хода — единица, дальше вдвое.
       y = koleno(this.predel.step(y * this.p.master * 2));
       this.proshY = y;

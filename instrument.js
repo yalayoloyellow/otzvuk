@@ -57,6 +57,16 @@ const KNOBS=[
   {k:'ist',  m:['ArrowLeft','ArrowRight'], imya:'ИСТОЧНИК'},
   {k:'ton',  m:['ArrowDown','ArrowUp'],    imya:'ТОН'},
   {k:'temp', m:['Digit9','Digit0'],        imya:'ТЕМП'},
+  // ВТОРОЙ СЛОЙ на тех же парах. Все двадцать шесть букв и вся пунктуация
+  // заняты, а вешать это на страницу нельзя — страницы у прибора нет. Shift
+  // на ЭТИХ парах выбирает вторую величину; ускорения вращения на них нет,
+  // для него остаётся cmd.
+  {k:'pauza', m:['ArrowLeft','ArrowRight'], imya:'ПАУЗА', shift:1},
+  {k:'trakt', m:['ArrowDown','ArrowUp'],    imya:'ТРАКТ', shift:1},
+  // ТРАКТ — длина голосового тракта, слева мужской, справа женский.
+  // КУДА — куда воткнут внешний сигнал; НАРУЖУ — насколько он слышен сам.
+  {k:'naruzhu', m:['Semicolon','Quote'], imya:'НАРУЖУ', post:1},
+  {k:'kuda',    m:['Semicolon','Quote'], imya:'КУДА', shift:1},
 
   {k:'zhat', m:['BracketLeft','BracketRight'], imya:'ЖАТЬ', post:1},
   {k:'master', m:['Minus','Equal'], imya:'МАСТЕР', post:1},
@@ -79,9 +89,7 @@ const SWITCHES=[
   // букв заняты, поэтому клавиша своя — крайняя справа, ни с чем не делится.
   {k:'petlya',  kl:'Slash', imya:'ПЕТЛЯ',   podpis:['нет','комната','вой'],
    pol:3, mikro:1},
-  // Куда воткнут внешний сигнал и слышен ли он сам по себе.
-  {k:'kuda',    kl:'Semicolon', imya:'КУДА', podpis:['накал','питание'], mikro:1},
-  {k:'naruzhu', kl:'Quote', imya:'НАРУЖУ',  podpis:['нет','слышен'], mikro:1},
+
   // МИКШИРОВАНИЕ — единственное на панели, чего в приборе нет и быть не
   // может. Это слой ПОСТА поверх схемы: включён — плавно едет всё, включая
   // смену пресета и пересборку, а переход между двумя приборами делается
@@ -99,13 +107,15 @@ const SWITCHES=[
 // случайность здесь — это ровно то, к чему у него НЕТ ДОСТУПА, но что звучит.
 // Поэтому случайность живёт не в сигнале, а в ЭКЗЕМПЛЯРЕ прибора: собрал —
 // получил свой набор номиналов, и он твой, пока не пересоберёшь.
+// Пары, на которых висит по две величины: Shift выбирает вторую.
+const DVUSLOYNYE = new Set(KNOBS.filter(r=>r.shift).flatMap(r=>r.m));
 const IMYAKL={Comma:',', Period:'.', Slash:'/', Semicolon:';', Quote:"'",
              Backslash:'\\', Backquote:'`', Minus:'-', Equal:'=',
              BracketLeft:'[', BracketRight:']',
              ArrowLeft:'←', ArrowRight:'→', ArrowUp:'↑', ArrowDown:'↓',
              Digit9:'9', Digit0:'0', Enter:'⏎'};
 for(const r of KNOBS)
-  r.podpis=r.m.map(c=>IMYAKL[c] || c.replace('Key','').toLowerCase()).join('');
+  r.podpis=(r.shift?'⇧':'')+r.m.map(c=>IMYAKL[c] || c.replace('Key','').toLowerCase()).join('');
 
 // ---- ЭКЗЕМПЛЯР ПРИБОРА -----------------------------------------------------
 // Номиналы живут в ядре, в классе Сборка: там из семени выводятся допуски
@@ -195,7 +205,7 @@ function skazhiTekst(){
   // никуда не подмешивают. Молчать в такой момент было бы издевательством.
   const podskazka=[];
   if(knobs.ist < .02){ knobs.ist = 1; podskazka.push('источник → говорилка'); }
-  if(knobs.golos < .02 && !switches.naruzhu) podskazka.push('подними ГОЛОС или НАРУЖУ');
+  if(knobs.golos < .02 && knobs.naruzhu < .02) podskazka.push('подними ГОЛОС или НАРУЖУ');
   send();
   skazhi(`${f.filter(x=>x.f!=='pauza').length} фонем`+
          (podskazka.length ? ' · ' + podskazka.join(' · ') : ''));
@@ -280,9 +290,10 @@ function peresoberi(novoe){
 // макро — то, что на панели; p — то, что уходит в движок
 const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
-             zhat:0, master:.5, ist:0, ton:.35, temp:.5};
-const switches={gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0, kuda:0,
-                naruzhu:0, mix:0, povtor:0};
+             zhat:0, master:.5, ist:0, ton:.35, temp:.5,
+             pauza:.6, trakt:.3, naruzhu:0, kuda:0};
+const switches={gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0,
+                mix:0, povtor:0};
 
 const p={};
 
@@ -426,6 +437,8 @@ addEventListener('keydown',async e=>{
   for(const r of KNOBS){
     const znak = c===r.m[0] ? -1 : c===r.m[1] ? 1 : 0;
     if(!znak) continue;
+    // На парах со вторым слоем Shift ВЫБИРАЕТ величину, а не ускоряет ход.
+    if(DVUSLOYNYE.has(c) && !!r.shift !== e.shiftKey) continue;
     e.preventDefault();
     const bylo=derzhim.get(c);
     if(bylo){ bylo.zhivo=performance.now(); return; }     // автоповтор — подтверждение
@@ -433,7 +446,8 @@ addEventListener('keydown',async e=>{
       const t=performance.now();
       // Модификаторы ускоряют вращение: cmd/ctrl втрое, shift вдесятеро.
       // Пальцы на приборе крутят ручку с разной скоростью, и это ровно то же.
-      const skor = e.shiftKey ? 10 : (e.metaKey||e.ctrlKey) ? 3 : 1;
+      const skor = DVUSLOYNYE.has(c) ? ((e.metaKey||e.ctrlKey) ? 3 : 1)
+                 : e.shiftKey ? 10 : (e.metaKey||e.ctrlKey) ? 3 : 1;
       derzhim.set(c,{klyuch:r.k,znak,ruchka:r,nachalo:t,zhivo:t,skor});
       knobs[r.k]=clamp((knobs[r.k]||0)+znak*.02*skor,0,1);
       // Голосу нужен источник: без микрофона ручка глубины крутится
@@ -812,7 +826,7 @@ function kadr_(){
     $('#line').innerHTML=
       `  <span class="dim2">tab пересобрать · ⌘ втрое · ⇧ вдесятеро · пробел толчок · `+
       `1–8 площадки · / петля · n запись · p пресет · o листать</span>`+
-      `   <span class="postdim">красное — пост: [ ] жать · - = мастер · \\ микшир</span>`+
+      `   <span class="postdim">красное — пост: [ ] жать · - = мастер · ; ' наружу · \\ микшир</span>`+`   <span class="dim2">⇧ на стрелках и ;' — второй слой</span>`+
       (vest && performance.now()<vestdo ? `   <span class="hot">${vest}</span>`
        : presets.length ? `   <span class="dim2">${presets.length} пресетов</span>` : '');
   }
