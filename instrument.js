@@ -251,7 +251,16 @@ setInterval(()=>{
 },1000/60);
 
 function send(){
-  node&&node.port.postMessage({t:'p', v:{...knobs, ...switches}});
+  if(!node) return;
+  // Многопозиционный переключатель хранится целым номером положения, а в
+  // ядро уходит долей — иначе восьмое положение приезжало как восьмёрка,
+  // ядро зажимало её в единицу, и рисунок не менялся вовсе.
+  const v={...knobs};
+  for(const t of SWITCHES){
+    const pol=t.pol||2;
+    v[t.k] = pol>2 ? switches[t.k]/(pol-1) : switches[t.k];
+  }
+  node.port.postMessage({t:'p', v});
 }
 
 // Сцены переживают перезагрузку: найденную точку обидно терять.
