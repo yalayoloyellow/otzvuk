@@ -65,8 +65,12 @@ const KNOBS=[
   {k:'ist',    m:['Comma','Period'],        imya:'ИСТОЧНИК', zona:'golos'},
   {k:'ton',    m:['Semicolon','Quote'],     imya:'ТОН',      zona:'golos'},
   {k:'naruzhu',m:['ArrowLeft','ArrowRight'],imya:'НАРУЖУ',   zona:'golos'},
-  {k:'pauza',  m:['ArrowDown','ArrowUp'],   imya:'ПАУЗА',    zona:'golos'},
-  {k:'temp',   m:['Digit9','Digit0'],       imya:'ТЕМП',     zona:'golos'},
+  // ПАУЗА тоже ступенчатая: цикл повтора считается в целых тактах прибора.
+  {k:'pauza',  m:['ArrowDown','ArrowUp'],   imya:'ПАУЗА',    zona:'golos',
+   stupeni:['нет','¼','½','1','2','4']},
+  // ТЕМП — не скорость, а МНОЖИТЕЛЬ к скорости, которую задают качели.
+  {k:'temp',   m:['Digit9','Digit0'],       imya:'ТЕМП',     zona:'golos',
+   stupeni:['×0.25','×0.5','×1','×2','×3']},
   // Второй слой: пар не хватило ровно на две величины, а страницы у прибора
   // нет и быть не должно. Shift на ЭТИХ двух парах выбирает вторую величину,
   // ускорения вращения на них нет — для него остаётся cmd.
@@ -792,7 +796,13 @@ function ruchki(){
       stroki.push('  '+rk.slice(i,i+kolonok).map(r=>{
         const svoy=r===poslednyaya&&vspyshka>0;
         const imya=(r.imya+'          ').slice(0,uzko?8:9);
-        const t=`${imya}${shkala(knobs[r.k]||0,shr)} ${r.podpis}`;
+        // У ступенчатой ручки шкала врёт: показываем, в какое положение
+        // она встала на самом деле.
+        const st = r.stupeni
+          ? ' '+r.stupeni[clamp(Math.round((knobs[r.k]||0)*(r.stupeni.length-1)),
+                                0,r.stupeni.length-1)]
+          : '';
+        const t=`${imya}${shkala(knobs[r.k]||0,shr)}${st} ${r.podpis}`;
         return `<span class="${svoy?zn.yark:zn.obych}">${t}</span>`;
       }).join('  '));
     }
