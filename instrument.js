@@ -389,6 +389,9 @@ addEventListener('keydown',async e=>{
       const skor = e.shiftKey ? 10 : (e.metaKey||e.ctrlKey) ? 3 : 1;
       derzhim.set(c,{klyuch:r.k,znak,ruchka:r,nachalo:t,zhivo:t,skor});
       knobs[r.k]=clamp((knobs[r.k]||0)+znak*.02*skor,0,1);
+      // Голосу нужен источник: без микрофона ручка глубины крутится
+      // впустую, и это ровно то, на что легко не заметить.
+      if(r.k==='golos' && knobs.golos>0) vklyuchiMikrofon();
       poslednyaya=r; vspyshka=6; send();
     }
     return;
