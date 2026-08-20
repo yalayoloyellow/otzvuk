@@ -13,6 +13,11 @@ globalThis.AudioWorkletProcessor = class {
 const M = new Function(readFileSync('./chaos.worklet.js','utf8')
   + '\nreturn {Rez, Govorilka};')();
 const SR = 48000;
+// ТРАКТ СРЕДНЕЙ ДЛИНЫ. Ручка ГОЛОС/ТРАКТ растягивает все форманты разом:
+// dl = .86·1.45^тракт. Проверять форманты имеет смысл на dl = 1, иначе
+// стенд честно показывал бы одну и ту же ошибку по всем шести гласным —
+// не промах синтеза, а положение ручки.
+const TRAKT = Math.log(1 / .86) / Math.log(1.45);
 
 function fft(re, im){
   const n = re.length;
@@ -56,7 +61,7 @@ let hudF = 0;
 for (const bukva of Object.keys(GLASNYE)){
   const g = new M.Govorilka();
   g.govori(vTseli([{f:bukva, dl:2, gl:1}]));
-  for (let i=0;i<SR*.5;i++) g.step(.35, .5, 1);
+  for (let i=0;i<SR*.5;i++) g.step(.35, .5, 1, TRAKT, .5);
   const nado = GLASNYE[bukva];
   const osh = g.F.map((f,k)=>Math.abs(f/nado[k]-1)*100);
   hudF = Math.max(hudF, ...osh);
@@ -79,7 +84,7 @@ console.log('3. ФРАЗА «привет как дела»');
   const n = Math.round(SR*(dlit+.4));
   const y = new Float32Array(n);
   let nan = 0;
-  for (let i=0;i<n;i++){ y[i] = g.step(.35, .5, 0); if(!(y[i]===y[i])) nan++; }
+  for (let i=0;i<n;i++){ y[i] = g.step(.35, .5, 0, TRAKT, .5); if(!(y[i]===y[i])) nan++; }
   let pik=0, kv=0;
   for (let i=0;i<n;i++){ const a=Math.abs(y[i]); if(a>pik)pik=a; kv+=y[i]*y[i]; }
   // огибающая по 10 мс: у речи она обязана ходить, а не стоять

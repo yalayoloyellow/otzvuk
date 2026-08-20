@@ -42,22 +42,30 @@ const nVt = .045;             // тепловое напряжение диод�
 // Фильтр сведения: Баттерворт четвёртого порядка, два биквада каскадом.
 class Decim {
   constructor(){
-    this.z = [[0,0,0,0],[0,0,0,0]];
     const fc = SR * .43, K = Math.tan(Math.PI * fc / FS);
-    this.b = [];
-    for (const Q of [.5412, 1.3066]){
-      const n = 1 / (1 + K/Q + K*K);
-      this.b.push([K*K*n, 2*K*K*n, K*K*n, 2*(K*K-1)*n, (1 - K/Q + K*K)*n]);
+    // ДВА ЗВЕНА РАЗВЁРНУТЫ В ПОЛЯ. Коэффициенты лежали во вложенных массивах
+    // и разбирались на каждом отсчёте — тут это стоило четырнадцатой части
+    // всего времени. Числа те же, разложены иначе.
+    const Q = [.5412, 1.3066], k = [];
+    for (const q of Q){
+      const n = 1 / (1 + K/q + K*K);
+      k.push([K*K*n, 2*K*K*n, K*K*n, 2*(K*K-1)*n, (1 - K/q + K*K)*n]);
     }
+    this.b0 = k[0][0]; this.b1 = k[0][1]; this.b2 = k[0][2];
+    this.a1 = k[0][3]; this.a2 = k[0][4];
+    this.B0 = k[1][0]; this.B1 = k[1][1]; this.B2 = k[1][2];
+    this.A1 = k[1][3]; this.A2 = k[1][4];
+    this.x1 = 0; this.x2 = 0; this.y1 = 0; this.y2 = 0;
+    this.X1 = 0; this.X2 = 0; this.Y1 = 0; this.Y2 = 0;
   }
   step(x){
-    for (let i = 0; i < 2; i++){
-      const [b0,b1,b2,a1,a2] = this.b[i], z = this.z[i];
-      const y = b0*x + b1*z[0] + b2*z[1] - a1*z[2] - a2*z[3];
-      z[1] = z[0]; z[0] = x; z[3] = z[2]; z[2] = y;
-      x = y;
-    }
-    return x;
+    const u = this.b0*x + this.b1*this.x1 + this.b2*this.x2
+                        - this.a1*this.y1 - this.a2*this.y2;
+    this.x2 = this.x1; this.x1 = x; this.y2 = this.y1; this.y1 = u;
+    const v = this.B0*u + this.B1*this.X1 + this.B2*this.X2
+                        - this.A1*this.Y1 - this.A2*this.Y2;
+    this.X2 = this.X1; this.X1 = u; this.Y2 = this.Y1; this.Y1 = v;
+    return v;
   }
 }
 
@@ -248,6 +256,38 @@ class Build {
     // в основном по нему, а не по звону.
     this.shlepF = m(1400, 3200);       // где звенит само касание
     this.shlepA = m(.10, .22);
+
+    this.vyvod();
+  }
+
+  // ПРОИЗВОДНЫЕ ВЕЛИЧИНЫ. Из номиналов выводятся коэффициенты, которые в
+  // цепи нужны на каждом отсчёте, а меняются только вместе с самими
+  // номиналами — то есть при пересборке и при ведении, раз в блок. Считать
+  // их по сорок восемь тысяч раз в секунду не за что: это те же числа.
+  // Замер: одни только экспоненты оптопар съедали седьмую часть времени.
+  vyvod(){
+    this.aNagrev   = 1 - Math.exp(-dt / this.nagrev);
+    this.aOstyv    = 1 - Math.exp(-dt / this.ostyv);
+    this.aInerc    = 1 - Math.exp(-dt / this.inerc);
+    this.aKlNagrev = 1 - Math.exp(-dt / this.klNagrev);
+    this.aKlOstyv  = 1 - Math.exp(-dt / this.klOstyv);
+    // Характеристика фоторезистора — степень: R = Rтёмн·(Rсвет/Rтёмн)^s.
+    // В логарифме от неё остаётся одна экспонента вместо двух возведений.
+    this.lnOpto = Math.log(this.Rsvet / this.Rtemn);
+    this.lnKl   = Math.log(this.RklSvet / this.RklTemn);
+    // Фронт выхода: паразитная ёмкость монтажа через открытый канал.
+    this.aFront = 1 - Math.exp(-dt / (this.Rvyh * this.Cpar * 45));
+    // Развязка питания логики.
+    this.aRazv  = 1 - Math.exp(-dt / Math.max(1e-9, this.Crazv * this.Rvn));
+    // Разделительный конденсатор на выходе каскада.
+    this.aVyh   = 1 - Math.exp(-dt / (this.Cvyh * (this.Rkat + this.Rus) * 1400));
+    // Проводимости постоянных ветвей: деление стоит дороже умножения, а эти
+    // знаменатели не меняются между отсчётами.
+    this.Gbaza = 1 / this.Rbaza;
+    this.Gut   = 1 / this.Rut;
+    this.Gpl   = 1 / this.Rpl;
+    this.Rvet  = [this.Rsum0 / this.ves[0], this.Rsum0 / this.ves[1],
+                  this.Rsum0 / this.ves[2]];
   }
 }
 
@@ -267,11 +307,11 @@ class Battery {
   // и прибор начинает модулировать сам себя. Вот откуда хрип в самоделках;
   // тепловой шум резистора тут ни при чём, он даёт микровольты.
   step(I, razvyazka){
-    const τ = Math.max(1e-9, this.sb.Crazv * this.sb.Rvn);
+
     // ЭДС берётся из ЖИВОГО набора, а не из копии, снятой при сборке: когда
     // номиналы ведутся при переходе, копия осталась бы от прежнего прибора.
     const Vravn = this.sb.EMF * this.iznos - I * this.sb.Rvn;
-    this.V += (Vravn - this.V) * (1 - Math.exp(-dt / τ));
+    this.V += (Vravn - this.V) * this.sb.aRazv;
     if (this.V < 1) this.V = 1;
     const Cl = this.sb.Clog * Math.pow(.0009, 1 - clamp(razvyazka, 0, 1));
     const τl = Math.max(1e-9, Cl * this.sb.Rrazv);
@@ -289,20 +329,29 @@ class Battery {
 // заметная инерция слоя: он не успевает за быстрым сигналом, и от этого
 // управление само по себе получается мягким.
 class Opto {
-  constructor(sb){ this.sb = sb; this.nit = .5; this.svet = .5; }
+  constructor(sb){ this.sb = sb; this.nit = .5; this.svet = .5;
+                   this.stoit = -1; this.R = sb.Rtemn; }
   // Нить накаливания разогревается быстро, а остывает МЕДЛЕННО — теплоёмкость
   // одна, а мощность подводится только при разогреве. Отсюда несимметричная
   // огибающая: качели взлетают резко и сползают вниз долго, и внизу, в
   // области треска, прибор проводит больше времени, чем наверху.
   //
   step(upr){
+    const sb = this.sb;
     const cel = clamp(upr, 0, 1);
-    const τ = cel > this.nit ? this.sb.nagrev : this.sb.ostyv;
-    this.nit += (cel - this.nit) * (1 - Math.exp(-dt / τ));
+    // СТОЯЩИЙ СВЕТ НЕ СЧИТАЮТ ЗАНОВО. Нить дошла до температуры, слой светит
+    // ровно — сопротивление стоит, и степенная характеристика на том же
+    // свете даёт то же число. Порог взят по нити: миллионная доля хода это
+    // единицы миллионных в сопротивлении, глубоко под тепловым шумом.
+    if (this.stoit === cel) return this.R;
+    this.nit += (cel - this.nit) * (cel > this.nit ? sb.aNagrev : sb.aOstyv);
     // Инерция самого фоторезисторного слоя — она у него своя и небольшая.
-    this.svet += (this.nit - this.svet) * (1 - Math.exp(-dt / this.sb.inerc));
+    this.svet += (this.nit - this.svet) * sb.aInerc;
+    if (Math.abs(cel - this.nit) < 1e-6 && Math.abs(this.nit - this.svet) < 1e-6){
+      this.nit = this.svet = cel; this.stoit = cel;
+    } else this.stoit = -1;
     const s = Math.max(1e-4, this.svet);
-    return this.sb.Rtemn * Math.pow(this.sb.Rsvet / this.sb.Rtemn, Math.pow(s, this.sb.gamma));
+    return this.R = sb.Rtemn * Math.exp(sb.lnOpto * Math.pow(s, sb.gamma));
   }
 }
 
@@ -314,15 +363,22 @@ class Opto {
 // мощностью, а остывает сама, — поэтому включение резче выключения, и ничем
 // другим этого не подделать.
 class Klyuch {
-  constructor(sb){ this.sb = sb; this.nit = 0; this.svet = 0; }
+  constructor(sb){ this.sb = sb; this.nit = 0; this.svet = 0;
+                   this.stoit = -1; this.R = sb.RklTemn; }
   step(vkl){
     const sb = this.sb;
     const cel = vkl ? 1 : 0;
-    const t = cel > this.nit ? sb.klNagrev : sb.klOstyv;
-    this.nit += (cel - this.nit) * (1 - Math.exp(-dt / t));
-    this.svet += (this.nit - this.svet) * (1 - Math.exp(-dt / sb.inerc));
+    // Тумблер стоит в одном положении почти всегда — а ключ при этом считал
+    // две экспоненты и два возведения в степень на каждом отсчёте. Дошедшая
+    // до упора нить не меняет сопротивления: возвращаем то же число.
+    if (this.stoit === cel) return this.R;
+    this.nit += (cel - this.nit) * (cel > this.nit ? sb.aKlNagrev : sb.aKlOstyv);
+    this.svet += (this.nit - this.svet) * sb.aInerc;
+    if (Math.abs(cel - this.nit) < 1e-6 && Math.abs(this.nit - this.svet) < 1e-6){
+      this.nit = this.svet = cel; this.stoit = cel;
+    } else this.stoit = -1;
     const s = Math.max(1e-4, this.svet);
-    return sb.RklTemn * Math.pow(sb.RklSvet / sb.RklTemn, Math.pow(s, sb.gamma));
+    return this.R = sb.RklTemn * Math.exp(sb.lnKl * Math.pow(s, sb.gamma));
   }
 }
 
@@ -336,6 +392,10 @@ class Cell {
     this.vyh = 0; this.sgl = 0;
     this.tzar = 0; this.trazr = 0;
     this.f = 0; this.skv = .5; this.schelchok = 0; this.I = 0;
+    // Предел отвода считается по порогу ИМЕННО ЭТОГО элемента: точка покоя
+    // разряда обязана остаться ниже него, иначе генератор запрётся. Пороги
+    // впаяны в экземпляр, поэтому число выводится один раз.
+    this.kmin = 1 / vt.vniz - 1 + .09;
   }
 
   // Rос   — резистор обратной связи (обычно фоторезистор оптопары)
@@ -368,7 +428,7 @@ class Cell {
       const Vvyh = this.q ? Vdd : 0;
       // первый закон Кирхгофа: суммируем проводимости и токи ветвей
       const Gvh = Rvh ? 1/Rvh : 0;
-      const G = 1/Rf + 1/Ru + 1/sb.Rut + 1/Rsv + Gvh;
+      const G = 1/Rf + 1/Ru + sb.Gut + 1/Rsv + Gvh;
       const Ve = (Vvyh/Rf + (Vupr + Vsh)/Ru + Vsos/Rsv + (Vvh||0) * Gvh) / G;
       const τ = C / G;
       const prev = this.V;
@@ -386,13 +446,19 @@ class Cell {
         }
         continue;
       }
-      // Сколько времени осталось до порога — из точного решения экспоненты.
-      // Если асимптота его не достигает, переключения в этом шаге не будет.
-      let τdo = Infinity;
+      // Куда съедет напряжение к концу остатка шага — точное решение.
+      // ПОРЯДОК ВАЖЕН. Прежде здесь сначала брали логарифм — точное время
+      // пересечения порога, — и только потом, если пересечения не случилось,
+      // экспоненту. Логарифм считался на каждом отсчёте, а переключение
+      // приходит раз в сотню-другую: между ними лежит целый период звука.
+      // Порог достигнут внутри шага тогда и только тогда, когда к концу шага
+      // он уже пройден — а это видно по одной экспоненте, без логарифма.
       const d0 = prev - Ve, d1 = porog - Ve;
-      if (d0 !== 0 && d1 / d0 > 0 && Math.abs(d1) < Math.abs(d0)) τdo = -Math.log(d1 / d0) * τ;
+      const e = Math.exp(-ostatok / τ);
+      const ad0 = d0 < 0 ? -d0 : d0, ad1 = d1 < 0 ? -d1 : d1;
 
-      if (τdo <= ostatok){
+      if (d0 !== 0 && d1 / d0 > 0 && ad1 < ad0 && ad1 >= ad0 * e){
+        const τdo = -Math.log(d1 / d0) * τ;
         // доводим ровно до порога, переключаем и ДОСЧИТЫВАЕМ ОСТАТОК ШАГА
         this.V = porog;
         this.q ^= 1;
@@ -406,7 +472,7 @@ class Cell {
         if (this.q) this.tzar += τdo; else this.trazr += τdo;
         ostatok -= τdo;
       } else {
-        this.V += (Ve - this.V) * (1 - Math.exp(-ostatok / τ));
+        this.V += (Ve - this.V) * (1 - e);
         if (this.q) this.tzar += ostatok; else this.trazr += ostatok;
         ostatok = 0;
       }
@@ -424,13 +490,11 @@ class Cell {
 
     // Выход элемента заряжает паразитную ёмкость монтажа через свой канал —
     // отсюда конечная скорость фронта. Ступенька за один отсчёт даёт полосу
-    // шире слышимой; в железе её ограничивает именно эта RC.
+    // шире слышимой; в железе её ограничивает именно эта RC. Множитель при
+    // ней (в производных величинах сборки) прежде был впятеро больше — фронты
+    // сглаживались до неразличимости, и щелчки превращались в гудение.
     const Vcel = this.q ? Vdd : 0;
-    // Фронт ограничен зарядом паразитной ёмкости через открытый канал.
-    // Множитель прежде был впятеро больше — фронты сглаживались до
-    // неразличимости, и щелчки превращались в гудение.
-    const τf = sb.Rvyh * sb.Cpar * 45;
-    this.sgl += (Vcel - this.sgl) * (1 - Math.exp(-dt / τf));
+    this.sgl += (Vcel - this.sgl) * sb.aFront;
     this.vyh = this.sgl;
     // Ток потребления: заряд конденсатора плюс сквозной бросок при
     // переключении. Бросок длится десятки наносекунд, поэтому в средний ток
@@ -454,6 +518,8 @@ class Swing {
     this.medl = new Cell(sb, sb.Cm, sb.vt[1], shum);
     this.gul  = new Cell(sb, sb.Cg, sb.vt[2], shum);
     this.u = .5; this.g = .5; this.period = 0;
+    this.sway = -1; this.hit = -1; this.vv = -1;
+    this.K = 1; this.R0 = 12e3; this.k = 20;
   }
   // hit — подстроечник смещения в цепи медленного узла. Постоянный ток
   // помогает заряду и мешает разряду, поэтому конденсатор скатывается вниз
@@ -467,10 +533,22 @@ class Swing {
     // период: он-то считался по свежему номиналу.
     this.medl.C = this.sb.Cm; this.gul.C = this.sb.Cg;
     const vt = this.sb.vt[1];
-    // Постоянная схемы: сколько RC укладывается в период при этих порогах.
-    const K = Math.log((1 - vt.vniz) / (1 - vt.vverh)) + Math.log(vt.vverh / vt.vniz);
+    // ЛОГАРИФМЫ И СТЕПЕНИ — ОТ МЕДЛЕННЫХ ВЕЛИЧИН. Постоянная схемы зависит от
+    // порогов триггера (номинал), сопротивление — от ручки КАЧАНИЕ, отвод —
+    // от ручки УДАР. Ни одна из трёх не меняется от отсчёта к отсчёту, а
+    // считались они по сто девяносто две тысячи раз в секунду.
+    if (vt.vverh !== this.vv){
+      this.vv = vt.vverh;
+      // Постоянная схемы: сколько RC укладывается в период при этих порогах.
+      this.K = Math.log((1 - vt.vniz) / (1 - vt.vverh)) + Math.log(vt.vverh / vt.vniz);
+    }
     // Подстроечник: 12 кОм … 3.9 МОм
-    let R = 12e3 * Math.pow(3.9e6 / 12e3, sway);
+    if (sway !== this.sway){
+      this.sway = sway;
+      this.R0 = 12e3 * Math.pow(3.9e6 / 12e3, sway);
+    }
+    const K = this.K;
+    let R = this.R0;
     if (drift > .002){
       const Rg = R * 11;
       this.gul.step(Rg, 0, 1e12, 0, 0, 1e12, Vdd, temp);
@@ -484,7 +562,11 @@ class Swing {
     // Вплотную подойти нельзя: за порогом генератор просто запрётся.
     // Шкала растянута к правому краю: там, где точка покоя подходит к порогу
     // вплотную, каждый процент хода ручки стоит вдвое дороже предыдущего.
-    const k = 20 * Math.pow(1.9 / 20, Math.pow(clamp(hit, 0, 1), .55));
+    if (hit !== this.hit){
+      this.hit = hit;
+      this.k = 20 * Math.pow(1.9 / 20, Math.pow(clamp(hit, 0, 1), .55));
+    }
+    const k = this.k;
     this.medl.step(R, Vdd, R * k, 0, 0, 1e12, Vdd, temp);
     this.u = this.medl.upr(Vdd);
     this.period = K * R * this.sb.Cm;
@@ -733,6 +815,10 @@ class Device {
     this.vyh = 0;
     this.int = new Float32Array(32); this.inti = 0; this.intN = 0; this.ssch = 0;
     this.razbr = 0; this.gc = 0;
+    // Заведено заранее, чтобы в звуковом потоке ничего не выделялось.
+    this.vkl = new Int8Array(3);
+    this.dpr = -1; this.massht = 1; this.Rposl = 0;
+    this.kiarg = -1; this.ki = 20;
   }
 
   step(p, utechka, navodka, kontakt, gls, ogib, petl){
@@ -764,8 +850,14 @@ class Device {
     // на другом пищит, и между ними проходит непрерывно. Тумблером это было
     // бы тремя ступенями, а на приборе крутилось плавно.
     const d = clamp(p.range, 0, 1);
-    const massht = Math.pow(3.2, 1 - 2 * d);
-    const Rposl = 1.1e6 * Math.pow(.0009, d);
+    // Возведения в степень тут стоят дороже всего остального в строке, а
+    // зависят от одной ручки. Пока её не трогают — число то же самое.
+    if (d !== this.dpr){
+      this.dpr = d;
+      this.massht = Math.pow(3.2, 1 - 2 * d);
+      this.Rposl = 1.1e6 * Math.pow(.0009, d);
+    }
+    const massht = this.massht, Rposl = this.Rposl;
     // РАЗМАХ — насколько глубоко лампочка отрабатывает качели. Раскрытие идёт
     // от середины, поэтому ноль — ровный тон, а не гул на самом низу.
     const rzm = clamp(p.depth, 0, 1);
@@ -829,14 +921,28 @@ class Device {
     // Отвод, а не отдельный резистор: доля должна держаться при любой
     // частоте. С отдельным резистором смещение работало только на низах, где
     // цепь заряда с ним сопоставима, и скважность не падала ниже половины.
-    const ki = 20 * Math.pow(1.30 / 20, Math.pow(clamp(p.pulse + ritmSm * 2.6, 0, 1), .7));
+    // То же самое: ручка ИМПУЛЬС стоит, а сетка меняет добавку на шагах —
+    // между шагами показатель не шевелится, и степень даёт то же число.
+    const kiarg = clamp(p.pulse + ritmSm * 2.6, 0, 1);
+    if (kiarg !== this.kiarg){
+      this.kiarg = kiarg;
+      this.ki = 20 * Math.pow(1.30 / 20, Math.pow(kiarg, .7));
+    }
+    const ki = this.ki;
 
     // ТУМБЛЕРЫ ГЕНЕРАТОРОВ. Каждый снимает питание со своего элемента: тот
     // перестаёт и звучать, и потреблять ток из шины. Первый выключить нельзя —
     // это ведущий, на нём держится вся схема.
     // Первый генератор снимается тем же тумблером, что и прочие: ведущим он
     // был только по привычке, а питание у него такое же.
-    const vkl = [p.gen1 > .5 ? 1 : 0, p.gen2 > .5 ? 1 : 0, p.gen3 > .5 ? 1 : 0];
+    // Массив под тумблеры ЗАВЕДЁН ЗАРАНЕЕ и переписывается на месте. Здесь
+    // он создавался заново на каждом отсчёте — сто девяносто две тысячи
+    // коротких объектов в секунду. Живут они до конца отсчёта, но сборщик
+    // приходит за ними в звуковом потоке, и приход его слышен щелчком.
+    const vkl = this.vkl;
+    vkl[0] = p.gen1 > .5 ? 1 : 0;
+    vkl[1] = p.gen2 > .5 ? 1 : 0;
+    vkl[2] = p.gen3 > .5 ? 1 : 0;
     // ТУМБЛЕР СВЯЗИ. Замыкает между генераторами настоящий резистор — не
     // паразитную ёмкость монтажа, которая передаёт только фронты, а
     // постоянную link. Тогда они перестают идти каждый сам по себе и
@@ -851,7 +957,7 @@ class Device {
     // Суммирующий узел: ток каждой ветви втекает в базу через свой резистор,
     // а базовый резистор тянет узел к нулю. Отсюда и общий уровень, и то,
     // что ветви приседают друг под друга.
-    let Isum = 0, tok = 0, Gsum = 1 / sb.Rbaza;
+    let Isum = 0, tok = 0, Gsum = sb.Gbaza;
     for (let i = 0; i < 3; i++){
       // ПОГАШЕННЫЙ ГЕНЕРАТОР НЕ СЧИТАЕТСЯ. Физически он остаётся под питанием
       // и продолжает идти — я это специально и делал. Но когда его ключ
@@ -879,7 +985,7 @@ class Device {
       let R = (this.opto[i].step(sv) * massht + Rposl) * sb.sved[i];
       // ПИТЧ — общий подстроечник во всех трёх цепях разом. Вверх он тянет
       // всё, вниз — упирается в утечку платы, и низ остаётся на месте.
-      R = 1 / (1/R + 1/sb.Rpl);
+      R = 1 / (1/R + sb.Gpl);
       // РАЗВОД — подстроечники расходятся: первый на месте, второй рядом
       // (биения), третий уходит далеко вверх (шипение).
       R /= (1 + p.spread * (sb.razv[i] - 1));
@@ -890,12 +996,16 @@ class Device {
       // Ветвь до базы: свой резистор сведения последовательно с фоторезистором
       // ключа. Тумблер сюда не включён — он держит лампочку, и всё, что
       // слышно при переключении, происходит вот в этом сопротивлении.
-      const Gv = 1 / (sb.Rsum0 / sb.ves[i] + this.klyuch[i].step(vkl[i]));
+      // Стоящий ключ не спрашивают: у него то же сопротивление, что и
+      // отсчётом раньше, и вызов ради возврата поля тоже стоит денег.
+      const kl = this.klyuch[i];
+      const Gv = 1 / (sb.Rvet[i] +
+                      (kl.stoit === vkl[i] ? kl.R : kl.step(vkl[i])));
       // Предел отвода считается по порогу ИМЕННО ЭТОГО элемента: точка покоя
       // разряда обязана остаться ниже него, иначе генератор запрётся. Пороги
       // у трёх элементов немного разные, и общее число на всех запирало те
       // сборки, где нижний порог оказался выше.
-      const kmin = 1 / uzel.vt.vniz - 1 + .09;
+      const kmin = uzel.kmin;
       // ВХОД ОТ ПРЕДЫДУЩЕГО ПРИБОРА. Сигнал приходит не в микшер, а ТОКОМ
       // в конденсаторы: генератор бросает свой ход и захватывается — начинает
       // делить частоту входа на 2, 3, 5. Крутишь первый прибор — второй
@@ -922,7 +1032,7 @@ class Device {
       Isum += (petl || 0) * Gm;
       Gsum += Gm;
     }
-    for (const u of this.cells) u.prosh = u.vyh;
+    for (let i = 0; i < 3; i++){ const u = this.cells[i]; u.prosh = u.vyh; }
     // Генераторы больше не выключаются из расчёта: секция запитана всегда,
     // тумблер держит только лампочку своего ключа. Поэтому выключенный
     // генератор продолжает идти, тянуть свой ток из шины и толкать соседей
@@ -942,8 +1052,7 @@ class Device {
     // после этой правки он остался прежним. Источник не найден, записан
     // в долги.)
     if (this.holodny){ this.Cvyh = x; this.holodny = 0; }
-    const τv = sb.Cvyh * (sb.Rkat + sb.Rus) * 1400;
-    this.Cvyh += (x - this.Cvyh) * (1 - Math.exp(-dt / τv));
+    this.Cvyh += (x - this.Cvyh) * sb.aVyh;
     // Усиление каскада подобрано под ЭТУ суммирующую цепь: пассивный
     // смеситель с базовым резистором отдаёт на базу заметно меньше, чем
     // отдавало прежнее усреднение, и без пересчёта каскад перестал бы
@@ -1509,11 +1618,16 @@ class Predel {
   constructor(){
     this.n = Math.max(8, Math.round(SR * .002));
     this.z = new Float32Array(this.n);      // задержанный сигнал
-    this.nd = new Float32Array(this.n);     // и во столько раз его надо убавить
-    this.nd.fill(1);
     this.i = 0; this.g = 1;
     this.otp = 1 - Math.exp(-1 / (SR * .05));
     this.rabota = 1;
+    // ОЧЕРЕДЬ МИНИМУМОВ. Минимум по окну искался перебором всех девяноста
+    // шести ячеек на каждом отсчёте. Здесь он берётся сразу: в очереди лежат
+    // только те значения, которые ещё могут стать минимумом, — по убыванию
+    // от головы. Число на выходе то же самое, до последнего разряда.
+    this.oi = new Int32Array(this.n);      // когда записано
+    this.ov = new Float32Array(this.n);    // и что
+    this.gol = 0; this.hvost = 0; this.dl = 0; this.t = 0;
   }
   // ОТПУСКАНИЕ БЫЛО РУЧКОЙ И СНЯТО. Замер показал, что оно дублирует DRIVE,
   // только слабее: быстрое даёт громче и площе, медленное тише и живее — та
@@ -1533,7 +1647,6 @@ class Predel {
     const star = this.z[this.i];
     this.z[this.i] = y;
     const a = y < 0 ? -y : y;
-    this.nd[this.i] = a > pot ? pot / a : 1;
     this.i = (this.i + 1) % this.n;
 
     // МИНИМУМ ПО ВСЕМУ ОКНУ, а не догоняющая огибающая. Догоняющая — это
@@ -1542,8 +1655,18 @@ class Predel {
     // заглядывания. Замер это и поймал: при отпускании 5 мс выход доходил
     // до 0.977 при потолке 0.80. Минимум по окну не может ошибиться в
     // принципе — мы ЗНАЕМ будущее на эти две миллисекунды, гадать не о чем.
-    let cel = 1;
-    for (let k = 0; k < this.n; k++) if (this.nd[k] < cel) cel = this.nd[k];
+    const n = this.n, v = a > pot ? pot / a : 1, t = this.t++;
+    // с головы уходит то, что вышло за окно
+    while (this.dl && this.oi[this.gol] <= t - n){ this.gol = (this.gol + 1) % n; this.dl--; }
+    // с хвоста уходит всё, что не меньше нового: минимумом ему уже не быть
+    while (this.dl){
+      const h = (this.hvost - 1 + n) % n;
+      if (this.ov[h] < v) break;
+      this.hvost = h; this.dl--;
+    }
+    this.ov[this.hvost] = v; this.oi[this.hvost] = t;
+    this.hvost = (this.hvost + 1) % n; this.dl++;
+    const cel = this.ov[this.gol];
     // Вниз мгновенно: будущее известно, ждать нечего. Вверх по отпусканию.
     this.g = cel < this.g ? cel : this.g + (cel - this.g) * this.otp;
     if (this.g < this.rabota) this.rabota = this.g;
@@ -1724,7 +1847,9 @@ class Chaos extends AudioWorkletProcessor {
     this.mikKv = 0; this.vyhKv = 0; this.vozvrat = .55; this.proshY = 0;
     this.mikPik = 0;
     this.semya = 1;
-    this.rec = false; this.recBuf = [];
+    this.rec = false;
+    // Полторы секунды с запасом: отдаём каждую секунду, блок не длиннее 128.
+    this.recBuf = new Float32Array(SR * 2); this.recN = 0;
     this.pl = new Float32Array(9);
     this.utechka = 0; this.navodka = 0;
     this.pik = 0; this.report = 0; this.okno = 0; this.sryvy = 0;
@@ -1778,12 +1903,12 @@ class Chaos extends AudioWorkletProcessor {
       else if (d.t === 'rec'){
         const bylo = this.rec;
         this.rec = !!d.v;
-        if (this.rec && !bylo) this.recBuf = [];      // старт: с чистого листа
+        if (this.rec && !bylo) this.recN = 0;         // старт: с чистого листа
         else if (!this.rec && bylo){
           // Стоп: отдаём последнюю порцию вместе с признаком конца. Раньше
           // буфер обнулялся тут же, и конец записи не приходил вовсе.
-          this.port.postMessage({t:'rec', v:Float32Array.from(this.recBuf), stop:true});
-          this.recBuf = [];
+          this.port.postMessage({t:'rec', v:this.recBuf.slice(0, this.recN), stop:true});
+          this.recN = 0;
         }
       }
       // ПРОБЕЛ — удар ладонью по корпусу. Прежде он бросал плюс-минус вольт
@@ -1994,7 +2119,7 @@ class Chaos extends AudioWorkletProcessor {
       const ma = vhod < 0 ? -vhod : vhod;
       if (ma > this.mikPik) this.mikPik = ma;
       oL[s] = y; oR[s] = y;
-      if (this.rec) this.recBuf.push(y);
+      if (this.rec) this.recBuf[this.recN++] = y;
       const shago = clamp(Math.round(SR / (Math.max(20, this.pr.osn.f) * 128)), 1, 64);
       if (++this.oscsh >= shago){ this.oscsh = 0;
         this.osci = (this.osci + 1) & 255;
@@ -2011,9 +2136,12 @@ class Chaos extends AudioWorkletProcessor {
     }
 
     // Записанное отдаём порциями, чтобы не копить в ядре мегабайты.
-    if (this.rec && this.recBuf.length >= SR){
-      this.port.postMessage({t:'rec', v:Float32Array.from(this.recBuf)});
-      this.recBuf = [];
+    // Буфер записи ЗАВЕДЁН ЗАРАНЕЕ и отдаётся копией. Здесь рос обычный
+    // массив: при записи он перевыделялся прямо в звуковом потоке, а сборщик
+    // приходит за старым тогда, когда ему удобно, а не когда нам можно.
+    if (this.rec && this.recN >= SR){
+      this.port.postMessage({t:'rec', v:this.recBuf.slice(0, this.recN)});
+      this.recN = 0;
     }
 
     this.report += n;
