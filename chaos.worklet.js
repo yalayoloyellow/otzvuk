@@ -853,6 +853,22 @@ class Device {
     // что ветви приседают друг под друга.
     let Isum = 0, tok = 0, Gsum = 1 / sb.Rbaza;
     for (let i = 0; i < 3; i++){
+      // ПОГАШЕННЫЙ ГЕНЕРАТОР НЕ СЧИТАЕТСЯ. Физически он остаётся под питанием
+      // и продолжает идти — я это специально и делал. Но когда его ключ
+      // погас полностью, его фоторезистор держит одиннадцать мегаом против
+      // восьмидесяти килоом ветви, то есть вклад ниже минус восьмидесяти
+      // децибел: неслышно ничем. Остаётся перекрёстная наводка через ёмкость
+      // монтажа, а она пикофарадная.
+      //
+      // Цена честности здесь — треть всего времени воркла при одном
+      // включённом генераторе, а платить нечем: воркл и так не укладывался
+      // в срок, и звук пропадал щелчками. Это сознательный размен, а не
+      // недосмотр.
+      if (!vkl[i] && this.klyuch[i].svet < .01){
+        this.klyuch[i].step(0);
+        this.cells[i].prosh = this.cells[i].vyh;
+        continue;
+      }
       const uzel = this.cells[i];
       // Свет на фоторезистор: яркость от качелей, положение — от ХАРАКТЕРА.
       const sv = clamp(yarkost, 0, 1);
@@ -1687,6 +1703,7 @@ class Chaos extends AudioWorkletProcessor {
     // Куда движок ЕДЕТ (панель) и где он СЕЙЧАС (схема) — две разные вещи.
     this.cel = {};
     this.skor = {};      // скорость движка: у него есть масса
+    this.dvizh = [];     // какие движки сейчас едут — обычно ни одного
     for (const k in this.p) if (!TUMBLERY[k]){ this.cel[k] = this.p[k]; this.skor[k] = 0; }
     this.pr = new Device(1);
     this.svod = new Decim();
@@ -1743,6 +1760,7 @@ class Chaos extends AudioWorkletProcessor {
             if (Math.abs(v - this.cel[k]) > 1e-5)
               this.kont.kruti(Math.abs(v - this.cel[k]));
             this.cel[k] = v;
+            if (this.dvizh.indexOf(k) < 0) this.dvizh.push(k);
           }
         }
       }
@@ -1790,7 +1808,8 @@ class Chaos extends AudioWorkletProcessor {
     for (const k in novye){
       const v = clamp(novye[k], 0, 1);
       if (!(k in this.p)){ this.p[k] = v; if (!TUMBLERY[k]) this.cel[k] = v; continue; }
-      if (TUMBLERY[k]) this.p[k] = v; else this.cel[k] = v;
+      if (TUMBLERY[k]) this.p[k] = v;
+      else { this.cel[k] = v; if (this.dvizh.indexOf(k) < 0) this.dvizh.push(k); }
     }
   }
 
@@ -1856,12 +1875,24 @@ class Chaos extends AudioWorkletProcessor {
       // Движки подстроечников доезжают до заданного места. Это единственное
       // место, где панель встречается со схемой, и здесь же кончается цифра:
       // дальше по тракту ступенчатых величин нет вовсе.
-      for (const k in this.cel){
-        const c = this.cel[k], x = this.p[k], sk = this.skor[k] || 0;
-        if (KOMMUTACIYA[k] && migom){ this.p[k] = c; this.skor[k] = 0; continue; }
-        if (c === x && sk === 0) continue;
+      // ДВИЖУТСЯ ТОЛЬКО ТЕ, ЧТО ДВИЖУТСЯ. Здесь стоял обход `for...in` по
+      // объекту — сорок восемь тысяч раз в секунду, на каждом отсчёте. Замер:
+      // четверть всего времени воркла уходила на него одного. Хуже того,
+      // такой обход создаёт мусор, а сборка мусора в звуковом потоке — это
+      // ровно то, что слышно щелчком и пропаданием звука.
+      //
+      // Почти всегда не движется ничего. Список движущихся ведётся при
+      // получении новых значений, и цикл обычно пуст.
+      for (let q = this.dvizh.length - 1; q >= 0; q--){
+        const k = this.dvizh[q];
+        const c = this.cel[k], x = this.p[k], sk = this.skor[k];
+        if (KOMMUTACIYA[k] && migom){
+          this.p[k] = c; this.skor[k] = 0;
+          this.dvizh.splice(q, 1); continue;
+        }
         if (Math.abs(c - x) < 1e-7 && Math.abs(sk) < 1e-4){
-          this.p[k] = c; this.skor[k] = 0; continue;
+          this.p[k] = c; this.skor[k] = 0;
+          this.dvizh.splice(q, 1); continue;
         }
         const v = sk + (c - x) * w2dt - sk * zatdt;
         this.skor[k] = v;
