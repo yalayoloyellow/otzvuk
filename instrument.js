@@ -1153,6 +1153,12 @@ function shkala(v, sh){
   const n=clamp(Math.round(v*sh),0,sh);
   return '▮'.repeat(n)+'·'.repeat(sh-n);
 }
+// Та же шкала, но двумя кусками: горящее отдельно от погасшего.
+function shkalaHTML(v, sh, zona){
+  const n=clamp(Math.round(v*sh),0,sh);
+  return `<span class="gor${zona}">${'▮'.repeat(n)}</span>`+
+         `<span class="tuh${zona}">${'·'.repeat(sh-n)}</span>`;
+}
 function ruchki(){
   const sb=report.build||{};
   const uzko = Sh<80;
@@ -1177,8 +1183,8 @@ function ruchki(){
   const bpm = per>0 ? 240/per : 0;
   const vtemp = bpm>=40 && bpm<=200;
   stroki.push(
-    `<span class="dim">BPM    </span><span class="fg">`+
-    `${shkala(bpm?clamp(Math.log2(bpm/8)/8,0,1):0,shk)}</span> `+
+    `<span class="dim">BPM    </span>`+
+    shkalaHTML(bpm?clamp(Math.log2(bpm/8)/8,0,1):0,shk,0)+` `+
     (bpm ? `<span class="${vtemp?'hot':'dim2'}">${Math.round(bpm)}</span>` : '—')+
     `   <span class="dim">${rezhim}</span>`);
   // DROPOUT. Строка появляется только если звук правда рвался — иначе её нет.
@@ -1191,7 +1197,7 @@ function ruchki(){
   // дошёл ли сигнал до ядра, или разрешение не дали, или он просто молчит.
   const mk=clamp(report.mik||0,0,1), vz=report.vozvrat||0;
   stroki.push(
-    `<span class="golosdim">INPUT  </span><span class="golos">${shkala(mk,shk)} ` +
+    `<span class="golosdim">INPUT  </span>`+shkalaHTML(mk,shk,2)+`<span class="golos"> ` +
     (mk>.002 ? 'идёт' : mikrofon ? 'тихо'
       : knobs.ist>.5 ? 'говорилка молчит' : 'микрофон не включён') +
     // ROOM — сколько из вышедшего комната вернула в микрофон. По нему ядро
@@ -1212,9 +1218,9 @@ function ruchki(){
   // Прежде вся ячейка красилась одним цветом, и панель читалась ровным
   // пятном — а глазу нужно, чтобы шкала выступала из подписи.
   const ZONY = [
-    {z:'shema', imya:'dim',      obych:'fg',    yark:'hot'},
-    {z:'golos', imya:'golosdim', obych:'golos', yark:'goloshot'},
-    {z:'post',  imya:'postdim',  obych:'post',  yark:'posthot'},
+    {z:'shema', imya:'dim',      obych:'fg',    yark:'hot',      n:0},
+    {z:'golos', imya:'golosdim', obych:'golos', yark:'goloshot', n:2},
+    {z:'post',  imya:'postdim',  obych:'post',  yark:'posthot',  n:1},
   ];
   // Ручки: имя, шкала, клавиши. Ширина колонки и число колонок — от экрана.
   const shr = uzko ? 10 : 14;
@@ -1223,7 +1229,7 @@ function ruchki(){
   // столбцы, выровненные по своей зоне, разъезжаются между зонами, и панель
   // перестаёт читаться сверху вниз. Прежде ширины не было вовсе, и ступень
   // у GAP («×0.25») сдвигала соседний столбец вправо на пять знаков.
-  const yach=(r)=>{
+  const yach=(r, zn)=>{
     const imya=(r.imya+'        ').slice(0,7);
     const v = knobs[r.k]||0;
     // У ступенчатой ручки шкала врёт: показываем, в какое положение она
@@ -1243,7 +1249,8 @@ function ruchki(){
     const predel = r.stupeni ? r.stupeni.reduce((a,b)=>a.length>b.length?a:b).length
                  : r.konci   ? r.konci.join('+').length : 0;
     const hvost = predel ? ' '.repeat(predel - (st.length - 1)) : '';
-    return {imya, znach:`${shkala(v,shr)}${st}`, klav:r.podpis, hvost,
+    return {imya, znach:shkalaHTML(v,shr,zn.n)+st, znachT:shkala(v,shr)+st,
+            klav:r.podpis, hvost,
             t:`${imya}${shkala(v,shr)}${st} ${r.podpis}${hvost}`,
             svoy:r===poslednyaya&&vspyshka>0};
   };
@@ -1251,7 +1258,7 @@ function ruchki(){
   for(const zn of ZONY){
     const rk = KNOBS.filter(r=>(r.zona||'shema')===zn.z);
     for(let i=0;i<rk.length;i+=kolonok)
-      ryady.push({zn, yach:rk.slice(i,i+kolonok).map(yach)});
+      ryady.push({zn, yach:rk.slice(i,i+kolonok).map(r=>yach(r,zn))});
   }
   // Ширину столбца задают только те ячейки, за которыми в ряду что-то ещё
   // стоит. Последняя никого не двигает — и раздувать под неё весь столбец
@@ -1268,9 +1275,11 @@ function ruchki(){
         const dob = i===r.yach.length-1 ? ''
                   : ' '.repeat(Math.max(0, shirina[i]-c.t.length));
         // Тронутая ручка светится целиком: она сейчас главная на панели.
-        if(c.svoy) return `<span class="${zn.yark}">${c.imya}${c.znach} ${c.klav}</span>${c.hvost}${dob}`;
+        // Тронутая ручка светится целиком, включая погасшие сегменты: сейчас
+        // она главная на панели, и дробить её на ступени незачем.
+        if(c.svoy) return `<span class="${zn.yark}">${c.imya}${c.znachT} ${c.klav}</span>${c.hvost}${dob}`;
         return `<span class="${zn.imya}">${c.imya}</span>`+
-               `<span class="${zn.obych}">${c.znach}</span>`+
+               c.znach+
                ` <span class="dim2">${c.klav}</span>${c.hvost}${dob}`;
       }).join('  '));
     }
@@ -1305,7 +1314,7 @@ function ruchki(){
       `  <span class="dim2">enter сказать · esc отменить</span>`
     : `<span class="golosdim">TEXT   </span><span class="golos">${stroka.tekst||'—'}</span>`+
       `  <span class="dim2">enter — ввести</span>`);
-  stroki.push(`<span class="dim2">BUILD  ${sb.imya||'····'} ${(sb.semya!==undefined?sb.semya:seed)>>>0}`+
+  stroki.push(`<span class="dim3">BUILD  ${sb.imya||'····'} ${(sb.semya!==undefined?sb.semya:seed)>>>0}`+
               (sb.dinamik?` · ${Math.round(sb.dinamik)}Гц · ${(sb.emkost*1e9).toFixed(1)}нФ`:'')+
               `</span>`+put);
   return stroki.join('\n');
@@ -1329,7 +1338,7 @@ function legenda(){
   // стояла тут потому, что зон не было; теперь зелёные, синие и красные
   // ручки лежат отдельными блоками, и подпись под картиной повторяет то,
   // что и так видно сверху.
-  return `<span class="dim2">${kom.join(' \u00b7 ')}</span>`;
+  return `<span class="dim3">${kom.join(' \u00b7 ')}</span>`;
 }
 
 function kadr(){
