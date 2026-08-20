@@ -46,6 +46,11 @@ const KNOBS=[
   {k:'gryzn',m:['KeyG','KeyH'], imya:'ГЕЙТ'},
   // Насколько глубоко внешний сигнал входит в схему.
   {k:'golos',m:['Comma','Period'], imya:'ГОЛОС'},
+  // ПОСТ. Единственные две ручки на панели, которых в приборе нет: сведение,
+  // а не схема. ЖАТЬ подтягивает тихое к громкому, МАСТЕР — общий уровень,
+  // середина хода это единица.
+  {k:'zhat', m:['BracketLeft','BracketRight'], imya:'ЖАТЬ'},
+  {k:'master', m:['Minus','Equal'], imya:'МАСТЕР'},
 ];
 
 // ---- ТУМБЛЕРЫ --------------------------------------------------------------
@@ -85,7 +90,8 @@ const SWITCHES=[
 // Поэтому случайность живёт не в сигнале, а в ЭКЗЕМПЛЯРЕ прибора: собрал —
 // получил свой набор номиналов, и он твой, пока не пересоберёшь.
 const IMYAKL={Comma:',', Period:'.', Slash:'/', Semicolon:';', Quote:"'",
-             Backslash:'\\', Backquote:'`', Minus:'-', Equal:'='};
+             Backslash:'\\', Backquote:'`', Minus:'-', Equal:'=',
+             BracketLeft:'[', BracketRight:']'};
 for(const r of KNOBS)
   r.podpis=r.m.map(c=>IMYAKL[c] || c.replace('Key','').toLowerCase()).join('');
 
@@ -237,7 +243,8 @@ function peresoberi(novoe){
 
 // макро — то, что на панели; p — то, что уходит в движок
 const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
-             hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0};
+             hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
+             zhat:0, master:.5};
 const switches={gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0, kuda:0,
                 naruzhu:0, mix:0};
 
