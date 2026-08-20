@@ -113,7 +113,7 @@ const SWITCHES=[
 // из этих же таблиц и потому не может разойтись с тем, что делают клавиши.
 const KOMANDY=[
   {kl:'Tab',       imya:'пересобрать', deystvie:()=>peresoberi()},
-  {kl:'Space',     imya:'толчок',      deystvie:()=>node&&node.port.postMessage({t:'kick'})},
+  {kl:'Space',     imya:'удар по корпусу', deystvie:()=>node&&node.port.postMessage({t:'kick'})},
   {kl:'Backquote', imya:'запись',      deystvie:()=>zapis()},
   {kl:'ArrowUp',   imya:'пресет',      deystvie:()=>sohrani()},
   {kl:'ArrowDown', imya:'листать',     deystvie:e=>listay((e.metaKey||e.ctrlKey)?-1:1)},
