@@ -977,6 +977,161 @@ class Golos {
   }
 }
 
+// ---- ГОВОРИЛКА -------------------------------------------------------------
+// Голосовой тракт целиком: связки, три резонанса полости рта, турбулентность
+// в сужениях и излучение с губ. Та же схема, что в SAM на Apple II и в
+// «Говорящей книге», — оттуда и жестяной тембр: тракт огрублён до трёх
+// формант, и ухо слышит человека, но собранного из железа.
+//
+// Она ИСТОЧНИК, а не эффект: её выход воткнут в то же гнездо, что микрофон,
+// и дальше идёт по схеме прибора наравне с ним. Разбор текста в фонемы и
+// цели артикуляции живут в govor.js — здесь только физика, и про русский
+// язык этот код не знает ничего.
+class Rez {
+  constructor(){ this.y1 = 0; this.y2 = 0; this.A = 1; this.B = 0; this.C = 0; }
+  // Двухполюсный резонатор Клатта: полюс задаётся частотой и ПОЛОСОЙ, а не
+  // добротностью — так их и меряют у живого тракта.
+  nastroy(F, BW){
+    const C = -Math.exp(-2 * Math.PI * BW / SR);
+    const B = 2 * Math.exp(-Math.PI * BW / SR) * Math.cos(2 * Math.PI * F / SR);
+    this.A = 1 - B - C; this.B = B; this.C = C;
+  }
+  step(x){
+    const y = this.A * x + this.B * this.y1 + this.C * this.y2;
+    this.y2 = this.y1; this.y1 = y;
+    return y;
+  }
+}
+
+const RECH_DT = 1 / SR;
+// Полюс спада турбулентности: девятьсот герц даёт −6 дБ/окт выше него, то
+// есть ровно то, что прибавляет излучение с губ. Множитель возвращает
+// потерянный на фильтре размах.
+const SHUM_K = 1 - Math.exp(-2 * Math.PI * 900 / SR);
+// Сила турбулентности относительно связок. Выведена замером: в живой речи
+// шумные согласные ТИШЕ гласных, а не громче — здесь они выходят примерно
+// вполовину, как и должно быть.
+const SHUM_SILA = .15;
+const TIHO = {tip:'pauza', F:[500,1500,2500], B:[140,180,240],
+              gol:0, shum:0, ampl:0, smychka:0, dl:.2};
+
+class Govorilka {
+  constructor(){
+    this.q = []; this.i = 0; this.t = 0; this.hvost = 0;
+    this.F = [500,1500,2500]; this.B = [140,180,240];
+    this.rez = [new Rez(), new Rez(), new Rez()];
+    this.faza = 0; this.jit = 0; this.shim = 1;
+    this.amp = 0; this.gol = 0; this.shum = 0; this.drozh = 0;
+    this.yp = 0; this.tik = 0; this.shp = 0;
+  }
+  govori(celi){ this.q = celi || []; this.i = 0; this.t = 0; this.hvost = 0; }
+  molchi(){ this.q = []; this.i = 0; this.hvost = .08; }
+
+  step(ton, temp, povtor){
+    if (!this.q.length && this.hvost <= 0 && this.amp < 1e-5) return 0;
+    const skor = .45 + clamp(temp, 0, 1) * 2.2;
+    if (this.q.length){
+      this.t += RECH_DT * skor;
+      while (this.q.length && this.t >= this.q[this.i].dl){
+        this.t -= this.q[this.i].dl;
+        this.i++;
+        if (this.i >= this.q.length){
+          if (povtor) this.i = 0;
+          else { this.q = []; this.i = 0; this.hvost = .10; break; }
+        }
+      }
+    } else this.hvost -= RECH_DT;
+    const c = this.q.length ? this.q[this.i] : TIHO;
+
+    // Внутри фонемы. Взрывной согласный устроен так: тракт ПЕРЕКРЫТ (тишина,
+    // у звонких за смычкой гудят связки), потом давление срывает преграду —
+    // выброс шума, — и следом придыхание, пока связки не вернулись. Без этого
+    // «т» и «с» звучали бы одинаково.
+    let cel = c.ampl, shcel = c.shum, gcel = c.gol;
+    if (c.smychka > 0){
+      const d = this.t / c.dl;
+      if (d < c.smychka){ cel = c.gol ? .07 : 0; shcel = 0; }
+      else if (d < c.smychka + .16){ cel = c.ampl * 1.7; shcel = 1; gcel = 0; }
+      else { cel = c.ampl * .55; shcel = c.gol ? .35 : .85; }
+    }
+    if (c.tip === 'drozh'){
+      // «Р» — кончик языка бьёт по нёбу двадцать шесть раз в секунду. Это не
+      // модуляция для красоты: перекрытие тракта то есть, то нет.
+      this.drozh += RECH_DT * 26;
+      const m = .5 + .5 * Math.cos(2 * Math.PI * this.drozh);
+      cel *= .12 + .88 * m * m;
+    }
+
+    // Язык и губы имеют массу: форманты не прыгают, а ПЕРЕЕЗЖАЮТ. Без этого
+    // речь рассыпается на отдельные писки — переходы её и склеивают, и
+    // мягкость соседней согласной сама тянет за собой гласный, правил для
+    // этого не нужно.
+    const tau = (c.tip === 'vz' || c.tip === 'af') ? .012 : .028;
+    const kf = 1 - Math.exp(-RECH_DT / tau);
+    for (let j = 0; j < 3; j++){
+      this.F[j] += (c.F[j] - this.F[j]) * kf;
+      this.B[j] += (c.B[j] - this.B[j]) * kf;
+    }
+    // Связки открываются быстрее, чем закрываются, и тракт после них звенит.
+    const ka = 1 - Math.exp(-RECH_DT / (cel > this.amp ? .004 : .012));
+    this.amp += (cel - this.amp) * ka;
+    const kg = 1 - Math.exp(-RECH_DT / .006);
+    this.gol += (gcel - this.gol) * kg;
+    this.shum += (shcel - this.shum) * kg;
+
+    // ВЫСОТА. К концу фразы голос садится — это не украшение, а дыхание:
+    // давление в лёгких падает, и связки идут медленнее.
+    const f0baz = 62 * Math.pow(2, clamp(ton, 0, 1) * 2.4);
+    const proydeno = this.q.length ? this.i / this.q.length : 1;
+    const f0 = f0baz * (1 - proydeno * .17) * (1 + this.jit);
+    this.faza += f0 * RECH_DT;
+    if (this.faza >= 1){
+      this.faza -= 1;
+      // Связки не метроном: период и сила гуляют от цикла к циклу. Без этого
+      // выходит пила из генератора, а не голос.
+      this.jit = (Math.random() - .5) * .014;
+      this.shim = 1 + (Math.random() - .5) * .07;
+    }
+    // Импульс Розенберга: поток открывается плавно, закрывается резко.
+    const oq = .62, tp = oq * .68, ph = this.faza;
+    const g = ph < tp ? .5 * (1 - Math.cos(Math.PI * ph / tp))
+            : ph < oq ? Math.cos(Math.PI * (ph - tp) / (2 * (oq - tp)))
+            : 0;
+    // Турбулентность не белая. Воздух срывается в вихри у сужения, и спектр
+    // этого срыва падает — примерно шесть децибел на октаву. Если этого не
+    // учесть, излучение с губ (а оно даёт РОВНО ПЛЮС шесть на октаву) задерёт
+    // шум тем сильнее, чем выше свистит фонема: замер дал «ф» вшестеро
+    // громче гласного, «ш» в четырнадцать, «с» в пятьдесят шесть. Спад
+    // источника гасит подъём излучения, и остаётся то, что задано таблицей.
+    this.shp += (Math.random() * 2 - 1 - this.shp) * SHUM_K;
+    const sh = this.shp * SHUM_SILA;
+    // Турбулентность у звонких пульсирует вместе со связками: воздух идёт
+    // толчками, шум идёт за ним.
+    const shv = sh * (this.gol > .5 ? .5 + .5 * g : 1);
+    const gv = this.gol * g * this.shim * this.amp;
+    const nv = this.shum * shv * this.amp;
+
+    // Резонаторы перестраиваются не каждый отсчёт: форманты едут за
+    // десятки миллисекунд, а косинус с экспонентой стоят дороже самого хода.
+    if ((this.tik++ & 15) === 0)
+      for (let j = 0; j < 3; j++) this.rez[j].nastroy(this.F[j], this.B[j]);
+
+    // Параллельный банк со знакочередованием — иначе соседние форманты
+    // гасят друг друга в промежутке и спектр проваливается.
+    const y = this.rez[0].step(gv * 1.0 + nv * .10)
+            - this.rez[1].step(gv * .50 + nv * .90)
+            + this.rez[2].step(gv * .22 + nv * .70);
+    // Излучение с губ: наружу выходит не сам поток, а его ПРОИЗВОДНАЯ —
+    // отсюда наклон спектра, из-за которого речь звучит речью.
+    // Уровень выставлен замером по десятку фраз на всех высотах: худший пик
+    // ложится около 0.6, то есть говорилка приходит на вход схемы с тем же
+    // запасом, с каким туда приходит микрофон.
+    const out = (y - this.yp) * 4.4;
+    this.yp = y;
+    return clamp(out, -1, 1);
+  }
+}
+
 // ---- ПЕТЛЯ -----------------------------------------------------------------
 // Микрофон слышит динамик — круг замыкает сама комната. Усиление в петле
 // решает всё: до единицы это окраска (помещение подкрашивает звук), за
@@ -1287,6 +1442,8 @@ class Chaos extends AudioWorkletProcessor {
                petlya:0,
                // голос: глубина, точка ввода, слышен ли он сам по себе
                golos:0, kuda:0, naruzhu:0,
+               // говорилка: чем воткнуто в гнездо, высота, скорость, повтор
+               ist:0, ton:.35, temp:.5, povtor:0,
                // ПОСТ: не детали прибора, а слой поверх него.
                mix:0, zhat:0, master:.5 };
     // Куда движок ЕДЕТ (панель) и где он СЕЙЧАС (схема) — две разные вещи.
@@ -1303,6 +1460,7 @@ class Chaos extends AudioWorkletProcessor {
     // модулятор, а второй такой же поверх превращает всё в кашу.
     this.petlya = new Petlya();
     this.golos = new Golos();
+    this.govor = new Govorilka();
     this.zhmi = new Zhmi();
     this.predel = new Predel();
     this.zad = new Float32Array(this.predel.n); this.zadi = 0;
@@ -1349,6 +1507,12 @@ class Chaos extends AudioWorkletProcessor {
       }
       else if (d.t === 'pads'){ for (let i = 0; i < 9; i++) this.pl[i] = d.v[i] || 0; }
       else if (d.t === 'seed') this.smena(d.v, d.p);
+      // Разбор текста в фонемы и цели артикуляции делает панель: это работа
+      // со ЯЗЫКОМ, и в ядре ей делать нечего. Сюда приходит готовая цепочка.
+      else if (d.t === 'rech'){
+        if (d.v && d.v.length) this.govor.govori(d.v);
+        else this.govor.molchi();
+      }
 
       // ЗАПИСЬ. Копию выхода собираем прямо в ядре и отдаём блоками: так
       // пишется ровно то, что слышно, без пересборки цепи и без кодеков.
@@ -1476,8 +1640,16 @@ class Chaos extends AudioWorkletProcessor {
         usil = clamp(BAZA_PETLI * this.p.petlya / this.vozvrat, 40, 6000);
       }
       const petl = this.petlya.step(mik, usil);
+
+      // ЧТО ВОТКНУТО В ГНЕЗДО. Микрофон и говорилка — два источника на одном
+      // входе, и ИСТОЧНИК это не переключатель, а потенциометр между ними:
+      // на середине слышны оба. Петля при этом остаётся на микрофоне —
+      // круг замыкает воздух, и говорилке в нём делать нечего.
+      const rech = this.govor.step(this.p.ton, this.p.temp, this.p.povtor > .5);
+      const dg = clamp(this.p.ist, 0, 1);
+      const vhod = mik * (1 - dg) + rech * dg;
       for (let k = 0; k < OVER; k++){
-        const gls = this.golos.step(vh ? (vh[s] || 0) : 0, this.p.golos);
+        const gls = this.golos.step(vhod, this.p.golos);
         y = this.svod.step(this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib, petl));
       }
       if (!(y === y)){ y = 0; this.pr.zhivoy(); this.svod = new Decim(); this.sryvy++; }
@@ -1499,12 +1671,12 @@ class Chaos extends AudioWorkletProcessor {
       // Источник слышен сам по себе, поверх прибора. Коэффициент .8 при
       // приборных 0.149 по пику делал его впятеро громче всего остального —
       // это не «слышен», это «вместо».
-      if (this.p.naruzhu > .002 && vh)
-        y = y + (vh[s] || 0) * .35 * this.p.naruzhu;
+      if (this.p.naruzhu > .002)
+        y = y + vhod * .35 * this.p.naruzhu;
       // МАСТЕР: середина хода — единица, дальше вдвое.
       y = koleno(this.predel.step(y * this.p.master * 2));
       this.proshY = y;
-      const ma = mik < 0 ? -mik : mik;
+      const ma = vhod < 0 ? -vhod : vhod;
       if (ma > this.mikPik) this.mikPik = ma;
       oL[s] = y; oR[s] = y;
       if (this.rec) this.recBuf.push(y);

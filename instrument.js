@@ -10,6 +10,8 @@
 //  питания (насколько просажена), уровень. Это и есть карта, по которой
 //  «зная, что крутишь, попадаешь в нужную область».
 // ============================================================================
+import {vFonemy, vTseli} from './govor.js';
+
 const $ = s => document.querySelector(s);
 const clamp = (v,a,b) => v<a?a:v>b?b:v;
 
@@ -49,6 +51,13 @@ const KNOBS=[
   // ПОСТ. Единственные две ручки на панели, которых в приборе нет: сведение,
   // а не схема. ЖАТЬ подтягивает тихое к громкому, МАСТЕР — общий уровень,
   // середина хода это единица.
+  // ГОВОРИЛКА. ИСТОЧНИК — не переключатель, а потенциометр между микрофоном
+  // и говорилкой: на середине слышны оба. Стрелки взяты потому, что все
+  // двадцать шесть букв и вся пунктуация уже заняты, а деваться некуда.
+  {k:'ist',  m:['ArrowLeft','ArrowRight'], imya:'ИСТОЧНИК'},
+  {k:'ton',  m:['ArrowDown','ArrowUp'],    imya:'ТОН'},
+  {k:'temp', m:['Digit9','Digit0'],        imya:'ТЕМП'},
+
   {k:'zhat', m:['BracketLeft','BracketRight'], imya:'ЖАТЬ', post:1},
   {k:'master', m:['Minus','Equal'], imya:'МАСТЕР', post:1},
 ];
@@ -77,6 +86,7 @@ const SWITCHES=[
   // может. Это слой ПОСТА поверх схемы: включён — плавно едет всё, включая
   // смену пресета и пересборку, а переход между двумя приборами делается
   // так, как он и делается — две коробки играют разом, рука ведёт фейдер.
+  {k:'povtor', kl:'Backquote', imya:'ПОВТОР', podpis:['раз','по кругу']},
   {k:'mix', kl:'Backslash', imya:'МИКШИР', podpis:['резко','плавно'], post:1},
 ];
 
@@ -91,7 +101,9 @@ const SWITCHES=[
 // получил свой набор номиналов, и он твой, пока не пересоберёшь.
 const IMYAKL={Comma:',', Period:'.', Slash:'/', Semicolon:';', Quote:"'",
              Backslash:'\\', Backquote:'`', Minus:'-', Equal:'=',
-             BracketLeft:'[', BracketRight:']'};
+             BracketLeft:'[', BracketRight:']',
+             ArrowLeft:'←', ArrowRight:'→', ArrowUp:'↑', ArrowDown:'↓',
+             Digit9:'9', Digit0:'0', Enter:'⏎'};
 for(const r of KNOBS)
   r.podpis=r.m.map(c=>IMYAKL[c] || c.replace('Key','').toLowerCase()).join('');
 
@@ -114,7 +126,7 @@ let presets=[], tekuschiy=-1, vest='', vestdo=0;
 function skazhi(t){ vest=t; vestdo=performance.now()+2600; }
 function snimok(){
   return {name:nazovis(), time:new Date().toISOString().slice(0,19).replace('T',' '),
-          seed, knobs:{...knobs}, switches:{...switches}};
+          seed, knobs:{...knobs}, switches:{...switches}, tekst:stroka.tekst};
 }
 function nazovis(){
   const p=report.period>0 ? report.period.toFixed(2)+'с' : '';
@@ -160,11 +172,35 @@ function primenit(p){
   const pervy = a => Array.isArray(a) ? a[0] : a;
   Object.assign(knobs, perevod(pervy(p.sets || p.наборы || p.knobs || p.макро)));
   Object.assign(switches, perevod(pervy(p.switches || p.тумблеры)));
+  if(typeof p.tekst === 'string'){ stroka.tekst = p.tekst; setTimeout(skazhiTekst, 60); }
   const s = pervy(p.seeds || p.семена) ?? p.seed ?? p.семя;
   if(s!==undefined && s!==null) seed=s>>>0;
   shli();
   skazhi('пресет: '+(p.name||p.имя||p.file));
 }
+// ---- СТРОКА ТЕКСТА ---------------------------------------------------------
+// Говорилке нужна фраза, а панель управляется голыми буквами — значит на
+// время ввода клавиатура целиком уходит в строку и ни одна ручка не
+// шевелится. Enter открывает и он же говорит, Esc отменяет.
+//
+// Разбор текста в фонемы и цели артикуляции живёт в govor.js: это работа со
+// ЯЗЫКОМ, и в ядре ей делать нечего. Туда уходит уже готовая цепочка целей.
+const stroka = {aktivna:false, tekst:''};
+function skazhiTekst(){
+  if(!node) return;
+  const f = vFonemy(stroka.tekst);
+  node.port.postMessage({t:'rech', v: stroka.tekst.trim() ? vTseli(f) : []});
+  if(!stroka.tekst.trim()){ skazhi('говорилка молчит'); return; }
+  // Сказанное некуда деть, если гнездо не переключено на говорилку и её
+  // никуда не подмешивают. Молчать в такой момент было бы издевательством.
+  const podskazka=[];
+  if(knobs.ist < .02){ knobs.ist = 1; podskazka.push('источник → говорилка'); }
+  if(knobs.golos < .02 && !switches.naruzhu) podskazka.push('подними ГОЛОС или НАРУЖУ');
+  send();
+  skazhi(`${f.filter(x=>x.f!=='pauza').length} фонем`+
+         (podskazka.length ? ' · ' + podskazka.join(' · ') : ''));
+}
+
 // ---- МИКРОФОН --------------------------------------------------------------
 // Петля замыкается через воздух, поэтому микрофон должен отдавать сырой
 // сигнал: эхоподавление, шумодав и авторегулировка усиления в браузере
@@ -244,9 +280,9 @@ function peresoberi(novoe){
 // макро — то, что на панели; p — то, что уходит в движок
 const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
-             zhat:0, master:.5};
+             zhat:0, master:.5, ist:0, ton:.35, temp:.5};
 const switches={gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0, kuda:0,
-                naruzhu:0, mix:0};
+                naruzhu:0, mix:0, povtor:0};
 
 const p={};
 
@@ -354,6 +390,16 @@ addEventListener('keydown',async e=>{
   if(e.altKey) return;
   const c=e.code;
   if(!idet){ await pusk(); if(c==='Space'){ e.preventDefault(); return; } }
+  // Пока строка открыта, клавиатура принадлежит ей целиком.
+  if(stroka.aktivna){
+    e.preventDefault();
+    if(c==='Enter'){ stroka.aktivna=false; skazhiTekst(); return; }
+    if(c==='Escape'){ stroka.aktivna=false; return; }
+    if(c==='Backspace'){ stroka.tekst=stroka.tekst.slice(0,-1); return; }
+    if(e.key && e.key.length===1 && !e.metaKey && !e.ctrlKey) stroka.tekst+=e.key;
+    return;
+  }
+  if(c==='Enter'){ e.preventDefault(); stroka.aktivna=true; return; }
   // Пересборка прибора: новый экземпляр с другими номиналами. Ручки на
   // панели остаются где стояли — меняется сам прибор, а не настройка.
   if(c==='Tab'){ e.preventDefault(); peresoberi(); return; }
@@ -393,6 +439,8 @@ addEventListener('keydown',async e=>{
       // Голосу нужен источник: без микрофона ручка глубины крутится
       // впустую, и это ровно то, на что легко не заметить.
       if(r.k==='golos' && knobs.golos>0) vklyuchiMikrofon();
+      // Микрофон нужен, пока ИСТОЧНИК не уведён целиком в говорилку.
+      if(r.k==='ist' && knobs.ist<.98) vklyuchiMikrofon();
       poslednyaya=r; vspyshka=6; send();
     }
     return;
@@ -685,7 +733,9 @@ function ruchki(){
   // от него ядро само считает усиление петли.
   const mk=clamp(report.mik||0,0,1), vz=report.vozvrat||0;
   stroki.push(
-    `  ВХОД    ${shkala(mk,shk)} ${mikrofon ? (mk>.002?'идёт':'тихо') : 'не включён'}`+
+    `  ВХОД    ${shkala(mk,shk)} ` +
+    (mk>.002 ? 'идёт' : mikrofon ? 'тихо'
+      : knobs.ist>.5 ? 'говорилка молчит' : 'микрофон не включён') +
     (switches.petlya ? `   ВОЗВРАТ ${vz.toFixed(2)}` : ''));
   // Сетка ритма: где удары и где сейчас счётчик.
   const ris=report.risunok||[];
@@ -729,6 +779,12 @@ function ruchki(){
     ? ` <span class="fg">→ ${bd.imya} ${bd.semya>>>0}</span>`+
       ` <span class="dim">${Math.round((report.perehod||0)*100)}%</span>`
     : '';
+  // Строка текста показывается всегда: без неё непонятно, что скажется.
+  stroki.push(stroka.aktivna
+    ? `  <span class="hot">ТЕКСТ   ${stroka.tekst}▏</span>`+
+      `  <span class="dim2">enter сказать · esc отменить</span>`
+    : `  <span class="dim">ТЕКСТ   ${stroka.tekst||'—'}</span>`+
+      `  <span class="dim2">enter — ввести</span>`);
   stroki.push(`  <span class="dim2">СБОРКА ${sb.imya||'····'} ${(sb.semya!==undefined?sb.semya:seed)>>>0}`+
               (sb.dinamik?` · ${Math.round(sb.dinamik)}Гц · ${(sb.emkost*1e9).toFixed(1)}нФ`:'')+
               `</span>`+put);
