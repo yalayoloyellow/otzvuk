@@ -68,6 +68,11 @@ const SWITCHES=[
   // Куда воткнут внешний сигнал и слышен ли он сам по себе.
   {k:'kuda',    kl:'Semicolon', imya:'КУДА', podpis:['накал','питание'], mikro:1},
   {k:'naruzhu', kl:'Quote', imya:'НАРУЖУ',  podpis:['нет','слышен'], mikro:1},
+  // МИКШИРОВАНИЕ — единственное на панели, чего в приборе нет и быть не
+  // может. Это слой ПОСТА поверх схемы: включён — плавно едет всё, включая
+  // смену пресета и пересборку, а переход между двумя приборами делается
+  // так, как он и делается — две коробки играют разом, рука ведёт фейдер.
+  {k:'mix', kl:'Backslash', imya:'МИКШИР', podpis:['резко','плавно']},
 ];
 
 
@@ -79,7 +84,8 @@ const SWITCHES=[
 // случайность здесь — это ровно то, к чему у него НЕТ ДОСТУПА, но что звучит.
 // Поэтому случайность живёт не в сигнале, а в ЭКЗЕМПЛЯРЕ прибора: собрал —
 // получил свой набор номиналов, и он твой, пока не пересоберёшь.
-const IMYAKL={Comma:',', Period:'.', Slash:'/', Semicolon:';', Quote:"'"};
+const IMYAKL={Comma:',', Period:'.', Slash:'/', Semicolon:';', Quote:"'",
+             Backslash:'\\', Backquote:'`', Minus:'-', Equal:'='};
 for(const r of KNOBS)
   r.podpis=r.m.map(c=>IMYAKL[c] || c.replace('Key','').toLowerCase()).join('');
 
@@ -149,9 +155,8 @@ function primenit(p){
   Object.assign(knobs, perevod(pervy(p.sets || p.наборы || p.knobs || p.макро)));
   Object.assign(switches, perevod(pervy(p.switches || p.тумблеры)));
   const s = pervy(p.seeds || p.семена) ?? p.seed ?? p.семя;
-  if(s!==undefined && s!==null){ seed=s>>>0;
-    node&&node.port.postMessage({t:'seed', v:seed}); }
-  send();
+  if(s!==undefined && s!==null) seed=s>>>0;
+  shli();
   skazhi('пресет: '+(p.name||p.имя||p.file));
 }
 // ---- МИКРОФОН --------------------------------------------------------------
@@ -226,29 +231,15 @@ async function listay(step){
 }
 function peresoberi(novoe){
   seed = novoe!==undefined ? novoe>>>0 : (Math.random()*4294967295)>>>0;
-  node&&node.port.postMessage({t:'seed', v:seed});
-  send();
+  shli();
 }
 
-// Разводка макро-ручек во внутренние величины. Здесь и живёт то, что в
-// железке было впаяно: соотношения номиналов, подобранные так, чтобы прибор
-// звучал в любом положении, а не только в удачном.
-// Ручки на панели — это ровно те величины, что стоят в схеме, поэтому
-// разводить нечего: что покрутил, то и поехало. Всё остальное — номиналы
-// сборки, они живут в ядре и наружу не выходят, как впаянные детали.
-function razvedi(){
-  const v={...knobs};
-  for(const t of SWITCHES){
-    const pol=t.pol||2;
-    v[t.k] = pol>2 ? switches[t.k]/(pol-1) : switches[t.k];
-  }
-  return v;
-}
 
 // макро — то, что на панели; p — то, что уходит в движок
 const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0};
-const switches={gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0, kuda:0, naruzhu:0};
+const switches={gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0, kuda:0,
+                naruzhu:0, mix:0};
 
 const p={};
 
@@ -280,17 +271,23 @@ setInterval(()=>{
   if(derzhim.size) send();
 },1000/60);
 
-function send(){
-  if(!node) return;
-  // Многопозиционный переключатель хранится целым номером положения, а в
-  // ядро уходит долей — иначе восьмое положение приезжало как восьмёрка,
-  // ядро зажимало её в единицу, и рисунок не менялся вовсе.
+// Всё положение панели одним объектом. Многопозиционный переключатель
+// хранится целым номером, а в ядро уходит долей — иначе восьмое положение
+// приезжало как восьмёрка, ядро зажимало её в единицу, и рисунок не менялся.
+function sostoyanie(){
   const v={...knobs};
   for(const t of SWITCHES){
     const pol=t.pol||2;
     v[t.k] = pol>2 ? switches[t.k]/(pol-1) : switches[t.k];
   }
-  node.port.postMessage({t:'p', v});
+  return v;
+}
+function send(){ if(node) node.port.postMessage({t:'p', v:sostoyanie()}); }
+// Смена ВСЕГО состояния разом: сборка и ручки одним сообщением. По частям
+// нельзя — под микшированием ядро начало бы перевод на старых ручках и
+// доводило бы их движками уже в новом приборе.
+function shli(){
+  if(node) node.port.postMessage({t:'seed', v:seed, p:sostoyanie()});
 }
 
 // Сцены переживают перезагрузку: найденную точку обидно терять.
@@ -336,11 +333,8 @@ async function pusk(){
   };
   await ctx.resume();
   idet=true;
-  // Обе сборки и оба набора ручек уходят в ядро сразу: второй прибор стоит
-  // в цепи и звучит, даже когда на экране первый.
-  node.port.postMessage({t:'seed', v:seed});
-
-  send();
+  // Сборка и ручки уходят одним сообщением — состояние прибора целиком.
+  shli();
   window.dbg.sostoyanie='играет';
   }catch(e){ window.dbg.oshibka=''+e; window.dbg.sostoyanie='упал'; }
 }
@@ -660,8 +654,7 @@ function ruchki(){
     // читаются, а галочка на их месте — нет.
     const prostoy = t.podpis[0]==='выкл' || t.podpis[0]==='нет';
     const vid = (pol>2 || !prostoy) ? (t.podpis[z]||String(z)) : (z?'▮':'·');
-    const kl = {Slash:'/', Semicolon:';', Quote:'\'', Comma:',', Period:'.'}[t.kl]
-             || t.kl.replace('Key','').toLowerCase();
+    const kl = IMYAKL[t.kl] || t.kl.replace('Key','').toLowerCase();
     return `<span class="${z?'hot':'dim'}">${t.imya} ${vid}</span>`+
            ` <span class="dim2">${kl}</span>`;
   }).join('  '));

@@ -613,19 +613,23 @@ class Device {
     this.osn = this.cells[0];
     this.din = new Speaker(this.sb);
     this.setka = new Setka();
-    this.Cvyh = 0; this.scDC = 0; this.temp = 0; this.moschn = 0;
+    this.Cvyh = 0; this.holodny = 1; this.scDC = 0; this.temp = 0; this.moschn = 0;
     this.vyh = 0;
     this.int = new Float32Array(32); this.inti = 0; this.intN = 0; this.ssch = 0;
     this.razbr = 0; this.gc = 0;
   }
 
-  step(p, utechka, navodka, kontakt, gls, ogib){
+  step(p, utechka, navodka, kontakt, gls, ogib, petl){
     const sb = this.sb;
     let Vdd = this.bat.Vl * (kontakt === undefined ? 1 : kontakt);
     // Точка ввода внешнего сигнала. Номер положения переключателя.
-    const tochka = p.kuda > .5 ? 1 : 0;
+    // КУДА — не выбор одной точки из двух, а положение переключателя между
+    // ними: на середине сигнал входит в обе разом. Мгновенный выбор был
+    // ступенькой ровно там, где её быть не должно.
+    const tochka = clamp(p.kuda, 0, 1);
     const gl = p.golos || 0;
-    if (gl > .002 && tochka === 1) Vdd *= 1 + clamp(gls || 0, -.9, .9) * .85 * gl;
+    if (gl > .002 && tochka > .002)
+      Vdd *= 1 + clamp(gls || 0, -.9, .9) * .85 * gl * tochka;
 
     const u = this.swing.step(p.sway, p.drift, p.hit, Vdd, this.temp);
 
@@ -656,8 +660,10 @@ class Device {
     const svmin = .05, svmaks = .34 + har * .62;
     let yarkost = svmin + (svmaks - svmin) * clamp(.5 + (u - .5) * rzm, 0, 1);
     // НАКАЛ: огибающая источника ведёт лампочку — прибор говорит его ритмом.
-    if (gl > .002 && tochka === 0)
-      yarkost = clamp(yarkost * (1 - gl * .95) + clamp((ogib || 0) * 1.8, 0, 1) * gl * .95, 0, 1);
+    if (gl > .002 && tochka < .998){
+      const dolya = gl * .95 * (1 - tochka);
+      yarkost = clamp(yarkost * (1 - dolya) + clamp((ogib || 0) * 1.8, 0, 1) * dolya, 0, 1);
+    }
 
     // СЕТКА. Ключи по фронтам счётчика коммутируют те же номиналы, что и
     // ручки: на ударном шаге лампочка гаснет, фоторезистор уходит в темноту
@@ -721,7 +727,11 @@ class Device {
     // ЗАХВАТЫВАЮТСЯ в целые отношения: 2:1, 3:2, 5:4. Это язык Арнольда, и
     // слышно его как ритмическую фигуру вместо расстроенного гула.
     // Связь замыкается ручкой или ударом сетки — это один и тот же провод.
-    const Rsv = (p.link > .5 || ritmSv > .12) ? sb.Rsvyazi / (1 + ritmSv * 2) : 1e12;
+    // Замкнута связь или нет — величина непрерывная: наполовину замкнутая
+    // связь это вдвое больший резистор, и генераторы захватываются слабее.
+    // Удар сетки замыкает её по-прежнему резко: там это ключ, а не ручка.
+    const zamk = Math.max(clamp(p.link, 0, 1), ritmSv > .12 ? 1 : 0);
+    const Rsv = zamk > 1e-4 ? sb.Rsvyazi / (zamk * (1 + ritmSv * 2)) : 1e12;
     // Суммирующий узел: ток каждой ветви втекает в базу через свой резистор,
     // а базовый резистор тянет узел к нулю. Отсюда и общий уровень, и то,
     // что ветви приседают друг под друга.
@@ -766,6 +776,20 @@ class Device {
       Gsum += Gv;
       tok += uzel.Ipit;
     }
+    // МИКРОФОННЫЙ ВХОД — такая же ветвь суммирующего узла, как генератор:
+    // свой резистор на ту же базу, и ручка ПЕТЛЯ этим резистором и работает.
+    // Отсюда всё остальное следует само: петля не может перекричать прибор,
+    // потому что нагружает с ним один узел и делит его; вой садится на
+    // резонансы капсюля и корпуса, потому что идёт через них; а порог
+    // самовозбуждения проходится плавно, потому что это проводимость, а не
+    // ключ. Ко входу КАСКАДА её ставить было нельзя: прибор вгоняет каскад
+    // в ограничение вчетверо, и там петлю просто съедает.
+    const pl = clamp(p.petlya, 0, 1);
+    if (pl > .002){
+      const Gm = pl / (sb.Rsum0 * .8);
+      Isum += (petl || 0) * Gm;
+      Gsum += Gm;
+    }
     for (const u of this.cells) u.prosh = u.vyh;
     // Генераторы больше не выключаются из расчёта: секция запитана всегда,
     // тумблер держит только лампочку своего ключа. Поэтому выключенный
@@ -775,11 +799,17 @@ class Device {
     let x = Isum / Gsum;
 
     // ТУМБЛЕР ГРЯЗИ снимает конденсатор развязки питания логики.
-    this.bat.step(tok + (this.tokdin || 0), p.dirt > .5 ? 0 : 1);
+    this.bat.step(tok + (this.tokdin || 0), 1 - clamp(p.dirt, 0, 1));
     this.bat.sadis();
 
     // Разделительный конденсатор: перекошенный pulse несёт постоянную
     // составляющую, и без него диффузор просто уехал бы в упор.
+    // Tab — это ДРУГОЙ прибор, а не включение питания: он стоит на столе и
+    // уже работает, значит и разделительный конденсатор на нём давно заряжен,
+    // а не пуст. (Проверено: бросок уровня при Tab, ×4.5, идёт НЕ отсюда —
+    // после этой правки он остался прежним. Источник не найден, записан
+    // в долги.)
+    if (this.holodny){ this.Cvyh = x; this.holodny = 0; }
     const τv = sb.Cvyh * (sb.Rkat + sb.Rus) * 1400;
     this.Cvyh += (x - this.Cvyh) * (1 - Math.exp(-dt / τv));
     // Усиление каскада подобрано под ЭТУ суммирующую цепь: пассивный
@@ -918,17 +948,29 @@ class Golos {
 // реальный усилитель, и потому фидбек в железе не разносит колонки, а
 // входит в устойчивое самовозбуждение.
 class Petlya {
-  constructor(){ this.dc = 0; this.hp = 0; }
-  step(vh, usil, Vdd){
-    if (!usil) return 0;
+  constructor(){ this.dc = 0; }
+  // Отдаёт НАПРЯЖЕНИЕ на вход каскада, а не готовый звук. Своего
+  // ограничителя у неё больше нет и быть не должно: в комнате усилитель
+  // один на всех, и петля упирается в то же питание, что и прибор. Прежде
+  // она складывалась с выходом уже ПОСЛЕ прибора — то есть имела свой
+  // усилитель и свой динамик параллельно приборному, и потому глушила его
+  // втрое по пику и в восемь раз по средней громкости.
+  step(vh, vkl){
+    if (!vkl) return 0;
     // микрофон отдаёт и постоянку, и рокот стола — их в петлю пускать нельзя
     this.dc += (vh - this.dc) * (18 * 2 * Math.PI / FS);
-    const x = (vh - this.dc) * usil * 4.5;
-    // Предел берётся в долях полной шкалы выхода: сигнал сюда приходит уже
-    // нормированным, а не в вольтах шины. Считать его от питания было
-    // ошибкой — предел выходил втрое выше самой шкалы и ничего не держал.
-    const pred = .45 * clamp(Vdd / 9, .2, 1);
-    return pred * Math.tanh(x / pred);
+    // Коэффициент — это усиление МИКРОФОННОГО входа, и он большой не от
+    // произвола: микрофон отдаёт милливольты, а на вход каскада нужны вольты.
+    // Замер передачи «вольт на входе → выход» дал 0.038 на резонансе корпуса
+    // (107 Гц) и 0.036 на резонансе капсюля (1002 Гц), то есть для единичной
+    // петли нужно около двадцати шести. При комнате, возвращающей половину,
+    // положение «комната» даёт 0.73 — окраска у самого порога, а «вой» 1.46 —
+    // устойчивое самовозбуждение. Куда оно сядет по частоте, схема решает
+    // сама: выше всего она усиливает на своих двух резонансах.
+    // Усиление микрофонного предусилителя. Ручка ПЕТЛЯ им не заведует —
+    // она сидит дальше, резистором ветви в суммирующем узле; здесь только
+    // то, что микрофон отдаёт милливольты, а узлу нужны вольты.
+    return (vh - this.dc) * 400;
   }
 }
 
@@ -942,7 +984,18 @@ class Petlya {
 // НАРУЖУ и ПЕТЛЯ стоят среди подстроечников не по недосмотру: это уровни в
 // цепи выхода, у них свой разделительный конденсатор, и рвать их контактом
 // никто бы не стал — щёлкало бы в полшкалы.
-const TUMBLERY = {gen1:1, gen2:1, gen3:1, link:1, dirt:1, kuda:1};
+// Мгновенно — только то, у чего нет ни движка, ни инерции: лампочки ключей
+// (сама лампочка включается сразу, медленный там фоторезистор) и режим
+// микширования, который вообще не деталь, а слой поверх прибора.
+const TUMBLERY = {gen1:1, gen2:1, gen3:1, mix:1};
+// Коммутация: в обычном режиме мгновенна, под микшированием едет.
+const KOMMUTACIYA = {link:1, dirt:1, kuda:1};
+
+// Сколько длится перевод между двумя приборами при смене пресета или сборки.
+// Это движение руки на кроссфейдере, а не техническая сглаживалка.
+const PEREHOD = 1.5;
+const VEDU = .035;      // ход движка под пальцем
+const VEDU_MIX = .30;   // он же в режиме микширования
 
 class Chaos extends AudioWorkletProcessor {
   constructor(){
@@ -958,13 +1011,19 @@ class Chaos extends AudioWorkletProcessor {
                // микрофонная петля: усиление в круге
                petlya:0,
                // голос: глубина, точка ввода, слышен ли он сам по себе
-               golos:0, kuda:0, naruzhu:0 };
+               golos:0, kuda:0, naruzhu:0,
+               // ПОСТ: не деталь прибора, а режим поверх него.
+               mix:0 };
     // Куда движок ЕДЕТ (панель) и где он СЕЙЧАС (схема) — две разные вещи.
     this.cel = {};
     for (const k in this.p) if (!TUMBLERY[k]) this.cel[k] = this.p[k];
-    this.kdv = 1 - Math.exp(-1 / (SR * .035));
     this.pr = new Device(1);
     this.svod = new Decim();
+    // Уходящая сторона перевода: свой прибор, свой фильтр сведения и свои
+    // ЗАСТЫВШИЕ ручки. Она не должна ехать за новыми настройками — она
+    // доигрывает то, что играла.
+    this.prSt = null; this.svodSt = null; this.pSt = null;
+    this.mixT = 1; this.mixSh = 1 / (SR * PEREHOD);
     this.kont = new Contacts();
     // ОДИН ПРИБОР. Две коробки в цепи пробовали — красивого звука это не
     // давало ни при какой связи: внутри прибора осциллятор и так идёт в
@@ -1000,7 +1059,7 @@ class Chaos extends AudioWorkletProcessor {
         }
       }
       else if (d.t === 'pads'){ for (let i = 0; i < 9; i++) this.pl[i] = d.v[i] || 0; }
-      else if (d.t === 'seed'){ this.pr = new Device(d.v); this.svod = new Decim(); }
+      else if (d.t === 'seed') this.smena(d.v, d.p);
 
       // ЗАПИСЬ. Копию выхода собираем прямо в ядре и отдаём блоками: так
       // пишется ровно то, что слышно, без пересборки цепи и без кодеков.
@@ -1017,8 +1076,30 @@ class Chaos extends AudioWorkletProcessor {
       }
       else if (d.t === 'kick'){
         for (const g of this.pr.cells) g.V += (Math.random() - .5) * 2;
+        if (this.prSt) for (const g of this.prSt.cells) g.V += (Math.random() - .5) * 2;
       }
     };
+  }
+
+  // СМЕНА СОСТОЯНИЯ — пресет или пересборка. Прибор целиком меняется на
+  // другой: другие номиналы, другие ручки. Физически такого перехода не
+  // бывает — детали местами не меняются, — поэтому он и живёт в ПОСТЕ:
+  // две коробки играют разом, и рука ведёт кроссфейдер от одной к другой.
+  smena(semya, novye){
+    if (this.p.mix > .5){
+      this.prSt = this.pr; this.svodSt = this.svod; this.pSt = {...this.p};
+      this.mixT = 0;
+    } else { this.prSt = null; this.svodSt = null; this.mixT = 1; }
+    this.pr = new Device(semya);
+    this.svod = new Decim();
+    // Новая сторона приходит уже на своих настройках: движку ехать некуда,
+    // это другой прибор, а не подкрутка прежнего.
+    if (novye) for (const k in novye){
+      if (!(k in this.p)) continue;
+      const v = clamp(novye[k], 0, 1);
+      this.p[k] = v;
+      if (k in this.cel) this.cel[k] = v;
+    }
   }
 
   process(inputs, outputs){
@@ -1034,36 +1115,64 @@ class Chaos extends AudioWorkletProcessor {
     this.utechka += (u - this.utechka) * .01;
     this.navodka = this.navodka * .9993 + (Math.random() - .5) * this.utechka * .02;
 
+    // Под микшированием движки идут медленнее, а коммутация перестаёт быть
+    // мгновенной вовсе. Без него всё как в железе: ручка едет под пальцем,
+    // контакт замыкается сразу.
+    const plavno = this.p.mix > .5;
+    const kR = 1 - Math.exp(-1 / (SR * (plavno ? VEDU_MIX : VEDU)));
+    const kT = plavno ? kR : 1;
+
     for (let s = 0; s < n; s++){
       // Движки подстроечников доезжают до заданного места. Это единственное
       // место, где панель встречается со схемой, и здесь же кончается цифра:
       // дальше по тракту ступенчатых величин нет вовсе.
       for (const k in this.cel){
         const c = this.cel[k], v = this.p[k];
-        if (c !== v) this.p[k] = Math.abs(c - v) < 1e-6 ? c : v + (c - v) * this.kdv;
+        if (c === v) continue;
+        const k1 = KOMMUTACIYA[k] ? kT : kR;
+        this.p[k] = (k1 >= 1 || Math.abs(c - v) < 1e-6) ? c : v + (c - v) * k1;
       }
-      let y = 0;
+      let y = 0, yst = 0;
       // Рука на приборе: хлопок контактов рвёт питание, движок шуршит в
       // частотозадающей цепи.
       const kont = this.kont.step();
       const shoroh = this.kont.trenie();
       const ut = this.utechka + shoroh * .7, nav = this.navodka + shoroh * .04;
+      // Микрофон слышит комнату, а комната слышит динамик — круг замыкается
+      // не здесь, а в воздухе. Сигнал петли идёт в обе стороны разом: гнездо
+      // на столе одно.
+      const petl = (this.p.petlya > .002 && vh)
+        ? this.petlya.step(vh[s] || 0, this.p.petlya) : 0;
       for (let k = 0; k < OVER; k++){
         const gls = this.golos.step(vh ? (vh[s] || 0) : 0, this.p.golos);
-        y = this.svod.step(this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib));
+        y = this.svod.step(this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib, petl));
+        if (this.prSt)
+          yst = this.svodSt.step(
+            this.prSt.step(this.pSt, ut, nav, kont, gls, this.golos.ogib, petl));
       }
       if (!(y === y)){ y = 0; this.pr.zhivoy(); this.svod = new Decim(); this.sryvy++; }
+      if (this.prSt){
+        if (!(yst === yst)){ yst = 0; this.prSt.zhivoy(); this.svodSt = new Decim(); }
+        this.mixT += this.mixSh;
+        if (this.mixT >= 1){ this.mixT = 1; this.prSt = null; this.svodSt = null; }
+        else {
+          // Равномощный перевод: стороны независимы, и складывать их линейно
+          // нельзя — на середине провалилась бы громкость. Сумма квадратов
+          // держится постоянной, как на любом приличном кроссфейдере.
+          const u = this.mixT * Math.PI / 2;
+          y = yst * Math.cos(u) + y * Math.sin(u);
+        }
+      }
       y = clamp(y, -1, 1);
       if (++this.okno >= SR * .25){ this.okno = 0; this.pr.mera(); }
       const a = y < 0 ? -y : y;
       if (a > this.pik) this.pik = a;
       // ГОЛОС НАРУЖУ: источник слышен сам по себе, поверх прибора.
+      // Источник слышен сам по себе, поверх прибора. Коэффициент .8 при
+      // приборных 0.149 по пику делал его впятеро громче всего остального —
+      // это не «слышен», это «вместо».
       if (this.p.naruzhu > .002 && vh)
-        y = clamp(y + (vh[s] || 0) * .8 * this.p.naruzhu, -1, 1);
-      // Петля подмешивается к выходу: дальше её несёт воздух до микрофона.
-      if (this.p.petlya > .002 && vh){
-        y = clamp(y + this.petlya.step(vh[s] || 0, this.p.petlya, this.pr.bat.Vl), -1, 1);
-      }
+        y = clamp(y + (vh[s] || 0) * .35 * this.p.naruzhu, -1, 1);
       oL[s] = y; oR[s] = y;
       if (this.rec) this.recBuf.push(y);
       const shago = clamp(Math.round(SR / (Math.max(20, this.pr.osn.f) * 128)), 1, 64);
@@ -1087,7 +1196,7 @@ class Chaos extends AudioWorkletProcessor {
       for (let i = 0; i < 200; i++) l[i] = this.sled[(this.sli + i) % 200];
       const pr = this.pr, sb = pr.sb;
       this.port.postMessage({
-        pik: this.pik, sryvy: this.sryvy,
+        pik: this.pik, sryvy: this.sryvy, perehod: this.mixT,
         razbros: pr.razbr, period: pr.swing.period,
         pitch: pr.osn.f || 0, duty: pr.osn.skv,
         shina: pr.bat.Vl / sb.EMF,

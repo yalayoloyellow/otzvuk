@@ -55,7 +55,5 @@ const vse = Object.values(ur);
 const srPik = vse.reduce((a,b)=>a+b.pik,0)/vse.length;
 const srRms = vse.reduce((a,b)=>a+b.rms,0)/vse.length;
 console.log('\nсредний пик прибора', srPik.toFixed(3), ' средний скз', srRms.toFixed(3));
-console.log('предел петли (Vdd~8.4В):', (.45*Math.min(1, 8.4/9)).toFixed(3),
-            ' → петля громче прибора в', (.45*Math.min(1,8.4/9)/srPik).toFixed(1), 'раз по пику,',
-            (.45*Math.min(1,8.4/9)*.707/srRms).toFixed(1), 'раз по скз');
-console.log('голос наружу: коэффициент .8 на сигнал микрофона (сырой, до -6..-12 dBFS)');
+console.log('петля и голос идут ветвями суммирующего узла — своего предела');
+console.log('у них больше нет: их держит тот же каскад, что и прибор.');
