@@ -551,6 +551,18 @@ function zapas(){
 // Размер поля считается по окну: сколько знакомест влезает, столько и
 // рисуем. Фиксированная сетка на узком экране уезжала за край.
 const PHOSPHOR=' ·∙:∴*≋≡▒▓█';
+// Яркость знакоместа падает на десяток ступеней фосфора через степень 0.55.
+// Ступеней десять, а знакомест в картине десятки тысяч на каждый отчёт —
+// таблица на тысячу делений даёт ту же ступень, что и степень, и стоит
+// одно обращение вместо логарифма с экспонентой.
+const SVET=new Uint8Array(1024);
+for(let i=0;i<1024;i++)
+  SVET[i]=clamp(Math.round(Math.pow(i/1023,.55)*(PHOSPHOR.length-1)),
+                0,PHOSPHOR.length-1);
+// СЕТКА. Те же числа, что и в разметке: модуль — строка, рамка — два
+// модуля сверху и снизу, три слева и справа. Держать их в одном месте
+// незачем в двух: разойдутся.
+const MODUL=16, RAMKA_V=2*MODUL;
 let Sh=112, V=40, pole=new Float32Array(Sh*V), shipy=new Float32Array(Sh*V), kolonok=3;
 // Второй след — то, что отдал ПРИБОР, до поста. Разница между ними и есть
 // работа поста, и она рисуется красным.
@@ -567,10 +579,25 @@ function pomer(){
   proba.textContent='0'.repeat(100);
   ris.appendChild(proba);
   const shs=proba.getBoundingClientRect().width/100 || 6.6;
-  const vs=proba.getBoundingClientRect().height || 12;
   proba.remove();
-  const nov=clamp(Math.floor((ris.clientWidth||innerWidth-28)/shs)-1,40,220);
-  const novv=clamp(Math.round(nov*.34),14,54);
+  // Картина занимает всё, что осталось после рамки, и пересчитывает
+  // знакоместа под окно. Потолок в 220 знаков был случайным: на широком
+  // экране он оставлял пустые поля по бокам поверх настоящих отступов.
+  const nov=clamp(Math.floor((ris.clientWidth||innerWidth-96)/shs)-1,40,420);
+  // ВЫСОТА. У картины есть СВОЯ пропорция — широкая полоса вдвое шире, чем
+  // выше: знакоместо 6.6 на 10, строк треть от знаков, отсюда без малого
+  // два к одному на экране. Это форма фигуры, и она не должна плавать за
+  // окном — иначе одна и та же сборка выглядит по-разному на разных
+  // машинах.
+  //
+  // Но и уезжать под сгиб она не должна: инструмент, который надо листать,
+  // это не инструмент. Поэтому пропорция — ПОТОЛОК, а не правило: сколько
+  // осталось от окна после рамки, панели и двух промежутков, столько и
+  // берём, но не больше своей формы.
+  const str=parseFloat(getComputedStyle(ris).lineHeight)||10;
+  const panel=($('#knobs').offsetHeight||24*MODUL)+($('#line').offsetHeight||MODUL);
+  const svobodno=(innerHeight||800)-2*RAMKA_V-panel-2*MODUL;
+  const novv=clamp(Math.min(Math.round(nov*.34), Math.floor(svobodno/str)),14,80);
   if(nov!==Sh||novv!==V){ Sh=nov; V=novv;
     // Оба слоя пересоздаются вместе: если пересоздать только один, второй
     // остаётся прежней длины и на краях отдаёт undefined.
@@ -690,14 +717,17 @@ function kartina(){
   // ПОСЛЕСВЕЧЕНИЕ: внизу качелей след держится дольше, наверху гаснет быстро.
   // Тело тлеет долго — оно и держит форму существа; щупальца гаснут почти
   // мгновенно, чтобы выстреливать и пропадать вместе с волной.
-  const spad=.90 + (1-u)*.06;
+  // Шаг теперь один на ОТЧЁТ, а их вдвое меньше, чем кадров экрана. Чтобы
+  // след держался ровно столько же, множитель берётся в квадрате — это в
+  // точности два прежних шага подряд, а не подобранное на глаз число.
+  const spad1=.90 + (1-u)*.06, spad=spad1*spad1, shsp=.42*.42;
   for(let i=0;i<pole.length;i++){
-    pole[i]*=spad; shipy[i]*=.42;
-    poleD[i]*=spad; shipyD[i]*=.42;
-    poleG[i]*=spad; shipyG[i]*=.42;
+    pole[i]*=spad; shipy[i]*=shsp;
+    poleD[i]*=spad; shipyD[i]*=shsp;
+    poleG[i]*=spad; shipyG[i]*=shsp;
   }
 
-  ugol += .003 + u*.016;
+  ugol += (.003 + u*.016)*2;
   const geo={ cx:(Sh-1)/2, cy:(V-1)/2, ko:Math.cos(ugol), si:Math.sin(ugol),
               // Закрутка: внизу качелей внешние витки отстают и петля
               // сворачивается, наверху распрямляется в ровное кольцо.
@@ -732,7 +762,7 @@ function kartina(){
       // Слабый фон не рисуем совсем: он сливал рисунок в кашу.
       let v=Math.max(a,b,g);
       v = v<.045 ? 0 : (v-.045)/.955;
-      const ch=PHOSPHOR[clamp(Math.round(Math.pow(v,.55)*(PHOSPHOR.length-1)),0,PHOSPHOR.length-1)];
+      const ch=PHOSPHOR[SVET[v<=0?0:v>=1?1023:(v*1023)|0]];
       // Где вмешались оба, показываем того, кто вмешался сильнее.
       const d=Math.max(dp,dg), kto=dg>dp?'g':'p';
       const kl = v<=0 ? null : d>.14 ? kto+'1' : d>.05 ? kto+'2' : null;
@@ -805,18 +835,18 @@ function ruchki(){
   const bpm = per>0 ? 240/per : 0;
   const vtemp = bpm>=40 && bpm<=200;
   stroki.push(
-    `  ПЕРИОД  ${shkala(per?clamp(Math.log2(per/.02)/9,0,1):0,shk)} ${per?per.toFixed(2)+'с':'—'}`+
+    `ПЕРИОД  ${shkala(per?clamp(Math.log2(per/.02)/9,0,1):0,shk)} ${per?per.toFixed(2)+'с':'—'}`+
     (bpm ? `   <span class="${vtemp?'hot':'dim2'}">${Math.round(bpm)} уд/мин</span>` : ''));
   stroki.push(
-    `  ВЫСОТА  ${shkala(pit?clamp(Math.log2(pit/20)/8,0,1):0,shk)} ${pit?Math.round(pit)+'Гц':'—'}`);
+    `ВЫСОТА  ${shkala(pit?clamp(Math.log2(pit/20)/8,0,1):0,shk)} ${pit?Math.round(pit)+'Гц':'—'}`);
   stroki.push(
-    `  ИМПУЛЬС ${shkala(duty,shk)} ${Math.round(duty*100)}%   ${rezhim}`);
+    `ИМПУЛЬС ${shkala(duty,shk)} ${Math.round(duty*100)}%   ${rezhim}`);
   stroki.push(
-    `  УРОВЕНЬ ${shkala(l,shk)}   ШИНА ${shkala(sh,Math.max(4,shk-4))}`);
+    `УРОВЕНЬ ${shkala(l,shk)}   ШИНА ${shkala(sh,Math.max(4,shk-4))}`);
   // СРЫВЫ. Строка появляется только если звук правда рвался — иначе её нет.
   const pot = zapas();
   if (pot > 20) stroki.push(
-    `  <span class="post">СРЫВЫ   потеряно ${Math.round(pot)} мс звука — `+
+    `<span class="post">СРЫВЫ   потеряно ${Math.round(pot)} мс звука — `+
     `воркл не укладывается в срок</span>`);
   // ВХОД. Без этой строки проверить микрофон нельзя вовсе: не слышно, дошёл
   // ли сигнал до ядра, или разрешение не дали, или он просто молчит.
@@ -824,7 +854,7 @@ function ruchki(){
   // от него ядро само считает усиление петли.
   const mk=clamp(report.mik||0,0,1), vz=report.vozvrat||0;
   stroki.push(
-    `  <span class="golos">ВХОД    ${shkala(mk,shk)} ` +
+    `<span class="golos">ВХОД    ${shkala(mk,shk)} ` +
     (mk>.002 ? 'идёт' : mikrofon ? 'тихо'
       : knobs.ist>.5 ? 'говорилка молчит' : 'микрофон не включён') +
     (switches.petlya ? `   ВОЗВРАТ ${vz.toFixed(2)}` : '') + `</span>`);
@@ -833,7 +863,7 @@ function ruchki(){
   if(ris.length){
     const shag=report.shag|0;
     const s=ris.map((v,i)=> i===shag ? (v?'█':'▒') : (v?'▮':'·')).join('');
-    stroki.push(`  СЕТКА   ${s}`);
+    stroki.push(`СЕТКА   ${s}`);
   }
   stroki.push('');
 
@@ -849,7 +879,7 @@ function ruchki(){
   for(const zn of ZONY){
     const rk = KNOBS.filter(r=>(r.zona||'shema')===zn.z);
     for(let i=0;i<rk.length;i+=kolonok){
-      stroki.push('  '+rk.slice(i,i+kolonok).map(r=>{
+      stroki.push(rk.slice(i,i+kolonok).map(r=>{
         const svoy=r===poslednyaya&&vspyshka>0;
         const imya=(r.imya+'          ').slice(0,uzko?8:9);
         // У ступенчатой ручки шкала врёт: показываем, в какое положение
@@ -863,7 +893,7 @@ function ruchki(){
       }).join('  '));
     }
     const tm = SWITCHES.filter(t=>(t.zona||'shema')===zn.z);
-    if(tm.length) stroki.push('  '+tm.map(t=>{
+    if(tm.length) stroki.push(tm.map(t=>{
       const z=switches[t.k], pol=t.pol||2;
       // Подпись показываем везде, где она осмысленна: «накал» и «питание»
       // читаются, а галочка на их месте — нет.
@@ -886,11 +916,11 @@ function ruchki(){
     : '';
   // Строка текста показывается всегда: без неё непонятно, что скажется.
   stroki.push(stroka.aktivna
-    ? `  <span class="goloshot">ТЕКСТ   ${stroka.tekst}▏</span>`+
+    ? `<span class="goloshot">ТЕКСТ   ${stroka.tekst}▏</span>`+
       `  <span class="dim2">enter сказать · esc отменить</span>`
-    : `  <span class="golos">ТЕКСТ   ${stroka.tekst||'—'}</span>`+
+    : `<span class="golos">ТЕКСТ   ${stroka.tekst||'—'}</span>`+
       `  <span class="dim2">enter — ввести</span>`);
-  stroki.push(`  <span class="dim2">СБОРКА ${sb.imya||'····'} ${(sb.semya!==undefined?sb.semya:seed)>>>0}`+
+  stroki.push(`<span class="dim2">СБОРКА ${sb.imya||'····'} ${(sb.semya!==undefined?sb.semya:seed)>>>0}`+
               (sb.dinamik?` · ${Math.round(sb.dinamik)}Гц · ${(sb.emkost*1e9).toFixed(1)}нФ`:'')+
               `</span>`+put);
   return stroki.join('\n');
@@ -910,11 +940,11 @@ function legenda(){
   // своей строки нет и быть не может, потому что они не величины.
   const kom = KOMANDY.map(k => `${k.shift?'\u21e7':''}${klavisha(k.kl)} ${k.imya}`);
   kom.push('1\u20138 площадки', '\u2318 втрое', '\u21e7 вдесятеро');
-  return `  <span class="dim2">${kom.join(' \u00b7 ')}</span>\n`+
-    `  <span class="dim2">на картине: </span>`+
-    `<span class="post">красное \u2014 работа поста</span>`+
-    `<span class="dim2"> \u00b7 </span>`+
-    `<span class="golos">синее \u2014 голос слышен сам</span>`;
+  // ЦВЕТ ОБЪЯСНЯЕТ СЕБЯ САМ. Строка «красное — работа поста, синее — голос»
+  // стояла тут потому, что зон не было; теперь зелёные, синие и красные
+  // ручки лежат отдельными блоками, и подпись под картиной повторяет то,
+  // что и так видно сверху.
+  return `<span class="dim2">${kom.join(' \u00b7 ')}</span>`;
 }
 
 function kadr(){
@@ -925,20 +955,39 @@ function kadr(){
   }
   requestAnimationFrame(kadr);
 }
+// Что уже стоит на экране. Разметку меняем ТОЛЬКО когда она правда другая:
+// сама по себе замена — разбор строки, пересчёт раскладки и перерисовка, и
+// шестьдесят раз в секунду это заметная доля главного потока. У каждой
+// вкладки свой звуковой поток, а вот главный и ядра — общие, и отсюда
+// «подтормаживает на двух-трёх».
+let bylOtchet = -1, byliRuchki = '', bylaStroka = '', bylaShapka = null;
+let merenoPoPaneli = 0;
 function kadr_(){
   if(vspyshka>0) vspyshka--;
-  $('#head').innerHTML = idet
-    ? `<span class="dim2">о т з в у к · инструмент</span>`
-    : `<span class="hot">о т з в у к · инструмент</span>\n\n  нажми любую клавишу`;
-  if(idet){
-    $('#canvas').innerHTML=kartina();
-    // Перерисовываем вкладки только когда они правда изменились: лишняя
-    // замена разметки съедала клики.
-    $('#knobs').innerHTML=ruchki();
-    $('#line').innerHTML=legenda()+
-      (vest && performance.now()<vestdo ? `\n  <span class="hot">${vest}</span>`
-       : presets.length ? `\n  <span class="dim2">${presets.length} пресетов</span>` : '');
+  if(!idet){
+    // Заголовка нет. До запуска здесь стоит одно приглашение, после — пусто.
+    if(bylaShapka!==0){ bylaShapka=0;
+      $('#head').innerHTML = `<span class="hot">нажми любую клавишу</span>`; }
+    return;
   }
+  if(bylaShapka!==1){ bylaShapka=1; $('#head').innerHTML=''; }
+
+  // КАРТИНА ПЕРЕРИСОВЫВАЕТСЯ НА ОТЧЁТ, а не на кадр экрана. Прибор
+  // отчитывается тридцать раз в секунду — между отчётами рисовать нечего,
+  // те же данные легли бы дважды. Заодно уходит расхождение на экранах со
+  // 120 Гц: там след гас вдвое быстрее просто потому, что кадров больше.
+  const n = window.dbg.otchetov|0;
+  if(n!==bylOtchet){ bylOtchet=n; $('#canvas').innerHTML=kartina(); }
+
+  const r = ruchki();
+  if(r!==byliRuchki){ byliRuchki=r; $('#knobs').innerHTML=r;
+    // Первый замер шёл, когда панели ещё не было и её высоту брать было
+    // неоткуда. Как только она нарисована — меряем по-настоящему, один раз.
+    if(!merenoPoPaneli){ merenoPoPaneli=1; pomer(); } }
+  const l = legenda()+
+    (vest && performance.now()<vestdo ? `\n<span class="hot">${vest}</span>`
+     : presets.length ? `\n<span class="dim2">${presets.length} пресетов</span>` : '');
+  if(l!==bylaStroka){ bylaStroka=l; $('#line').innerHTML=l; }
 }
 pomer();
 kadr();

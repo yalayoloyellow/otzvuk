@@ -5,7 +5,9 @@
 <style>
   /* Один цвет, три яркости. Жёлтый и оранжевый выбивались из фосфора и
      ломали общий вид. */
-  :root{ --bg:#06080a; --fg:#a8f090; --dim:#4a7a44; --dim2:#264a26;
+  /* Тусклых ЦВЕТОВ здесь больше нет: тише — это тот же зелёный вполсилы,
+     а не другой, грязный. Осталась только рамка вкладки. */
+  :root{ --bg:#06080a; --fg:#a8f090;
          --hot:#d8ffc0; --warn:#d8ffc0; --line:#13210f;
          /* Красный — и только он — означает ПОСТ: то, чего в приборе нет.
             На панели им подписаны его ручки, на картине — ровно те места,
@@ -16,42 +18,67 @@
             места, где голос слышен сам по себе. */
          --golos:#6fb3ff; --goloshot:#c2e2ff }
   *{box-sizing:border-box;margin:0;padding:0}
+
+  /* СЕТКА. В текстовом интерфейсе всё меряется знакоместом — другого модуля
+     тут нет. Один кегль на всё, одна строка как модуль, и всякое расстояние
+     кратно ей. Тогда ничего не «почти совпадает».
+
+         кегль        11px
+         строка       16px   ← модуль
+         знакоместо    6.6px  (0.6 em у моноширинного)
+
+     Отступ по вертикали два модуля, по горизонтали три — ровно в полтора
+     раза, как и должен стоять текст на листе. */
   body{background:var(--bg);color:var(--fg);
-    font:400 13px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;
-    letter-spacing:.02em;padding:14px;-webkit-font-smoothing:antialiased;
+    font:400 11px/16px ui-monospace,SFMono-Regular,Menlo,monospace;
+    /* Разрядки нет: она растянула бы знакоместо, и картина с текстом
+       перестали бы стоять в одной сетке. */
+    letter-spacing:0;padding:32px 48px;-webkit-font-smoothing:antialiased;
     text-shadow:0 0 6px rgba(160,255,120,.22)}
   pre{white-space:pre;font:inherit}
   /* Экран тянется по окну, а не по фиксированной сетке: раньше легенда
      уезжала вправо на всём, что уже 104 символов. */
   #screen{width:100%;margin:0 auto}
   #canvas{white-space:pre}
-  .dim{color:var(--dim)}
+  /* Заголовка нет. До запуска здесь стоит приглашение, после — пусто, и
+     пустая строка не должна занимать модуль. */
+  #head:empty{display:none}
+  #head{margin-bottom:16px}
+  /* ТУСКЛОЕ — ПРОЗРАЧНОСТЬЮ, а не тёмным цветом. Тёмно-зелёный читался
+     грязью на чёрном; тот же зелёный вполсилы читается тишиной. */
+  .dim{color:var(--fg);opacity:.55}
   .fg{color:var(--fg)}
-  .dim2{color:var(--dim2)}
+  .dim2{color:var(--fg);opacity:.34}
   .hot{color:var(--hot)}
   .post{color:var(--post)}
   .posthot{color:var(--posthot);text-shadow:0 0 6px rgba(255,122,92,.4)}
   .golos{color:var(--golos)}
   .goloshot{color:var(--goloshot);text-shadow:0 0 6px rgba(111,179,255,.4)}
   .warn{color:var(--warn)}
-  #canvas{color:var(--fg);line-height:.92;font-size:11px;letter-spacing:0;
+  /* У картины СВОЙ межстрочный — плотный. Иначе знакоместо вытягивается по
+     вертикали и фигура выходит узкой. Это второй ритм, и он намеренный:
+     картина и текст остаются двумя блоками через один модуль. */
+  #canvas{color:var(--fg);line-height:10px;
+    margin-bottom:16px;
     text-shadow:0 0 8px rgba(150,255,110,.35),0 0 18px rgba(120,255,90,.14)}
   /* Работа поста на картине: там, где след после обработки разошёлся с тем,
      что отдал прибор. p1 — разошёлся сильно, p2 — слегка. */
   #canvas .p1{color:var(--post);text-shadow:0 0 8px rgba(255,122,92,.45),
     0 0 18px rgba(255,80,50,.18)}
-  #canvas .p2{color:#8a3524;text-shadow:0 0 6px rgba(255,122,92,.18)}
+  #canvas .p2{color:var(--post);opacity:.42;
+    text-shadow:0 0 6px rgba(255,122,92,.18)}
   /* Голос на картине: где он слышен сам по себе, поверх прибора. */
   #canvas .g1{color:var(--golos);text-shadow:0 0 8px rgba(111,179,255,.45),
     0 0 18px rgba(80,150,255,.18)}
-  #canvas .g2{color:#2f5c8a;text-shadow:0 0 6px rgba(111,179,255,.18)}
-  #line{color:var(--dim);margin-top:6px;font-size:11px;white-space:pre-wrap}
+  #canvas .g2{color:var(--golos);opacity:.42;
+    text-shadow:0 0 6px rgba(111,179,255,.18)}
+  #line{color:var(--fg);margin-top:16px;white-space:pre-wrap}
   #devices,#knobs{white-space:pre-wrap}
   b{font-weight:400;color:var(--hot)}
   #tabs{margin:2px 0 4px}
   /* Вкладка должна выглядеть нажимаемой: рамка, курсор, отклик на наведение. */
   .tab{cursor:pointer;padding:1px 6px;border:1px solid var(--line);border-radius:3px}
-  .tab:hover{color:var(--hot);border-color:var(--dim)}
+  .tab:hover{color:var(--hot);border-color:var(--fg)}
 </style>
 <div id="screen">
 <pre id="head"></pre>
