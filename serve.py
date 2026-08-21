@@ -7,6 +7,8 @@
 """
 import json
 import os
+import subprocess
+import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote
 
@@ -249,9 +251,44 @@ class Handler(SimpleHTTPRequestHandler):
         pass
 
 
+# Свои окна умеют все хромоподобные: `--app=` открывает окно без вкладок и
+# адресной строки. Имя бинарника внутри .app совпадает с именем приложения у
+# всех шести, потому и таблица такая короткая.
+БРАУЗЕРЫ = ["Comet", "Google Chrome", "Chromium", "Yandex",
+            "Brave Browser", "Microsoft Edge"]
+
+
+def okno():
+    """Открыть прибор своим окном, а не вкладкой.
+
+    Вкладка стоила трёх вещей разом: Tab и его сочетания забирал себе
+    браузер, случайное закрытие резало звук щелчком, а рядом всегда сидели
+    чужие вкладки. У окна ничего этого нет.
+
+    Бинарник зовём НАПРЯМУЮ, а не через `open`: у хромоподобных свой
+    одиночка — если браузер уже запущен, он примет команду и откроет окно в
+    ТОМ ЖЕ профиле. Это важно не только для скорости: захват звука вкладки
+    видит только вкладки своего профиля.
+    """
+    адрес = f"http://127.0.0.1:{PORT}/instrument.html"
+    for имя in БРАУЗЕРЫ:
+        путь = f"/Applications/{имя}.app/Contents/MacOS/{имя}"
+        if os.path.exists(путь):
+            subprocess.Popen([путь, f"--app={адрес}"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"окно: {имя}")
+            return
+    print("окно: хромоподобного браузера не нашлось, открой вкладкой")
+
+
 if __name__ == "__main__":
     os.makedirs(RECS, exist_ok=True)
     os.makedirs(INBOX, exist_ok=True)
     os.makedirs(ИСТОК, exist_ok=True)
+    сервер = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"отзвук: http://127.0.0.1:{PORT}  ·  записи: {RECS}")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    # Окно открываем ПОСЛЕ того, как порт занят, иначе браузер успевает
+    # ткнуться в пустоту и показать свою страницу об ошибке.
+    if "--okno" in sys.argv:
+        okno()
+    сервер.serve_forever()
