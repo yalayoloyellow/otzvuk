@@ -156,6 +156,34 @@ class Handler(SimpleHTTPRequestHandler):
         except (ValueError, OSError) as e:
             self._json(500, {"error": str(e)})
 
+    def do_DELETE(self):
+        # УДАЛЁННЫЙ ПРЕСЕТ НЕ СТИРАЕТСЯ, А ПЕРЕЕЗЖАЕТ. Промах мышью не должен
+        # стоить сохранённого звука: файл уходит в `presets/удалённые/`, и
+        # вернуть его — вопрос перетаскивания обратно.
+        p = unquote(self.path.split("?")[0])
+        if p.startswith("/presets/"):
+            имя = os.path.basename(p[len("/presets/"):])
+            if not имя.endswith(".json"):
+                return self._json(400, {"error": "не пресет"})
+            try:
+                for папка in (ПРЕСЕТЫ, ПРЕСЕТЫ_СТАР):
+                    путь = os.path.join(папка, имя)
+                    if not os.path.isfile(путь):
+                        continue
+                    корзина = os.path.join(ПРЕСЕТЫ, "удалённые")
+                    os.makedirs(корзина, exist_ok=True)
+                    куда = os.path.join(корзина, имя)
+                    k = 2
+                    while os.path.exists(куда):
+                        куда = os.path.join(корзина, f"{имя[:-5]} ({k}).json")
+                        k += 1
+                    os.replace(путь, куда)
+                    return self._json(200, {"ok": True, "file": имя})
+                return self._json(404, {"error": "нет такого"})
+            except OSError as e:
+                return self._json(500, {"error": str(e)})
+        return self._json(404, {"error": "нет такого"})
+
     def do_POST(self):
         if unquote(self.path.split("?")[0]) == "/presets":
             try:

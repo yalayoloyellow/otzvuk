@@ -145,10 +145,15 @@ const SWITCHES=[
 // из этих же таблиц и потому не может разойтись с тем, что делают клавиши.
 const KOMANDY=[
   {kl:'Tab',       imya:'пересобрать', deystvie:()=>peresoberi()},
+  // Обе клавиши освободились вместе с вкладкой: своему окну Tab не нужен.
+  {kl:'Tab',       imya:'назад по сборкам', shift:1, deystvie:()=>nazad()},
+  {kl:'Tab',       imya:'бросок костей', ctrl:1, deystvie:()=>brosok()},
   {kl:'Space',     imya:'удар по корпусу', deystvie:()=>node&&node.port.postMessage({t:'kick'})},
   {kl:'Backquote', imya:'запись',      deystvie:()=>zapis()},
-  {kl:'ArrowUp',   imya:'пресет',      deystvie:()=>sohrani()},
-  {kl:'ArrowDown', imya:'листать',     deystvie:e=>listay((e.metaKey||e.ctrlKey)?-1:1)},
+  // Стрелки ТОЛЬКО ЛИСТАЮТ. Сохранение висело на ↑ и стоило спокойствия:
+  // рука боялась листать. Опасное ушло под мышь, в панель.
+  {kl:'ArrowUp',   imya:'листать',     deystvie:()=>listay(-1)},
+  {kl:'ArrowDown', imya:'',            deystvie:()=>listay(1)},
 ];
 
 // Пары, на которых висит по две величины: Shift выбирает вторую.
@@ -319,15 +324,59 @@ async function sohraniZapis(){
   }catch(e){ skazhi('не записалось: '+e.message); }
 }
 
+// УДАЛЯЕТ ТОЛЬКО МЫШЬ, и только то, что сейчас на экране. Пока сохранение и
+// удаление висели на стрелках, рука их боялась: одно лишнее нажатие плодило
+// записи, и листать приходилось с оглядкой. Теперь стрелки только листают,
+// а опасное лежит под курсором — там, где случайно не нажмёшь.
+async function udali(){
+  if(tekuschiy<0 || !presets[tekuschiy]){ skazhi('нечего удалять'); return; }
+  const p=presets[tekuschiy];
+  try{
+    const o=await fetch('/presets/'+encodeURIComponent(p.file),{method:'DELETE'});
+    const d=await o.json();
+    if(!d.ok){ skazhi('не удалилось: '+(d.error||'?')); return; }
+    await zagruzispisok();
+    // Остаёмся на том же месте списка, а не прыгаем в начало: чаще всего
+    // удаляют несколько подряд.
+    if(presets.length){ tekuschiy=Math.min(tekuschiy, presets.length-1);
+                        primenit(presets[tekuschiy]); }
+    else tekuschiy=-1;
+    skazhi('в корзину: '+String(p.file).replace('.json',''));
+  }catch(e){ skazhi('не удалилось: '+e.message); }
+}
+
 async function listay(step){
   if(!presets.length) await zagruzispisok();
   if(!presets.length){ skazhi('пресетов пока нет'); return; }
   tekuschiy=((tekuschiy+step)%presets.length+presets.length)%presets.length;
   primenit(presets[tekuschiy]);
 }
+// ИСТОРИЯ СБОРОК. Tab кидает новый прибор, и до сих пор прежний пропадал
+// навсегда: понравившееся успевало исчезнуть раньше, чем рука тянулась
+// сохранить. Теперь шаг назад возвращает предыдущее семя.
+//
+// Ветка отбрасывается при новом броске — как во всякой истории правок:
+// уйдя назад и кинув заново, вперёд возвращаться уже некуда.
+const istoriya=[seed]; let mesto=0;
 function peresoberi(novoe){
   seed = novoe!==undefined ? novoe>>>0 : (Math.random()*4294967295)>>>0;
+  istoriya.length=mesto+1; istoriya.push(seed); mesto=istoriya.length-1;
   shli();
+}
+function nazad(){
+  if(mesto<=0){ skazhi('дальше некуда'); return; }
+  seed=istoriya[--mesto]; shli();
+  skazhi(`сборка ${mesto+1} из ${istoriya.length}`);
+}
+// ПОЛНЫЙ БРОСОК: и прибор, и все ручки разом. Единственное, чего он не
+// трогает, — MASTER: это громкость на выходе, а не характер звука, и
+// выпавший ноль читался бы как поломка, а не как новая сборка.
+function brosok(){
+  for(const r of KNOBS) if(r.k!=='master') knobs[r.k]=Math.random();
+  poslednyaya=null;
+  send();
+  peresoberi();
+  skazhi('бросок костей');
 }
 
 
@@ -451,6 +500,16 @@ async function pusk(){
 addEventListener('pointerdown',()=>{ pusk(); });
 
 // ---- клавиатура -----------------------------------------------------------
+// ТЫК ПО ПАНЕЛИ. Слушатель ОДИН и висит на самой панели, а не на словах:
+// разметка панели переставляется, как только меняется хоть одна подпись, и
+// слушатели, повешенные на слова, исчезали бы вместе с ними.
+const TYKI={sohrani, udali};
+$('#knobs').addEventListener('click', e=>{
+  const t=e.target.closest('[data-tyk]'); if(!t) return;
+  e.preventDefault();
+  const d=TYKI[t.dataset.tyk]; if(d) d();
+});
+
 addEventListener('keydown',async e=>{
   if(e.altKey) return;
   const c=e.code;
@@ -471,6 +530,7 @@ addEventListener('keydown',async e=>{
   for(const km of KOMANDY){
     if(c!==km.kl) continue;
     if(!!km.shift !== !!e.shiftKey) continue;
+    if(!!km.ctrl !== !!e.ctrlKey) continue;
     e.preventDefault(); if(!e.repeat) km.deystvie(e);
     return;
   }
@@ -711,15 +771,28 @@ function otsechka(v, n, dolya, nizhniy){
   return Math.max(nizhniy, k/shag);
 }
 
+// Ширина знакоместа, снятая в прошлый раз. Нужна ЗАЩЁЛКОЙ: если мерка вдруг
+// вернёт ноль, взять старое верно, а взять запасные 6.6 — нет.
+let SHS=4.82;
 function pomer(){
   const ris=$('#canvas');
   if(!ris) return;
+  // МЕРКУ СТАВИМ В ПАНЕЛЬ, А НЕ В КАРТИНУ.
+  //
+  // Картину мы сами прячем через `display:none`, когда места мало, — а в
+  // спрятанном узле ширина любого пробника ноль. Мерка падала на запасные
+  // 6.6 вместо настоящих 4.82, и дальше всё считалось с чужим знакоместом:
+  // панель выходила шириной 343 вместо 251, места «не оставалось» никогда, и
+  // картина не возвращалась, даже когда окно расширяли обратно. Защёлка.
+  // Панель видна всегда, шрифт и сетка у неё те же.
   const proba=document.createElement('span');
   proba.style.cssText='position:absolute;visibility:hidden;white-space:pre';
   proba.textContent='0'.repeat(100);
-  ris.appendChild(proba);
-  const shs=proba.getBoundingClientRect().width/100 || 6.6;
+  ($('#panel')||ris).appendChild(proba);
+  const мерка=proba.getBoundingClientRect().width/100;
   proba.remove();
+  if(мерка>1) SHS=мерка;
+  const shs=SHS;
 
   // ПРОПОРЦИЯ КАРТИНЫ ПОСТОЯННА. Вдвое шире, чем выше — горизонтальный овал.
   // Это форма фигуры, и она не должна зависеть от того, какое окно человек
@@ -758,14 +831,22 @@ function pomer(){
   //
   // ЧИСЛО СТРОК ЧЁТНОЕ: строка картины — половина модуля, и только при чётном
   // их числе низ картины садится на ту же линию, что и строки панели.
-  let nov=Math.min(poShir, POTOLOK_KART);
+  //
+  // ПОЛ ДЕРЖИТ РАЗМЕР ПОЛЯ, А НЕ ВИДИМОСТЬ. Это разные вещи, и путать их
+  // нельзя: пороги ступеней считаются ПО КАРТИНЕ и раздаются панели. Стоило
+  // полю схлопнуться в ноль знакомест — а на узком окне остаток выходил
+  // отрицательным, — как гистограмма оказывалась пустой, все пять порогов
+  // садились в `POROG_GOR`, и от шкал оставались одни острия: тринадцать
+  // точек на всю панель, ни дорожек, ни хвостов. Поле живёт всегда, просто
+  // ниже пола его не показывают.
+  let nov=Math.max(POL_KART, Math.min(poShir, POTOLOK_KART));
   let novv=Math.max(10, Math.round(nov*naZnak)&~1);
   if(novv>poVys){
     novv=Math.max(10, poVys&~1);
     nov=Math.round(novv/naZnak);
   }
-  // Меньше пола картину не рисуем вовсе: там уже не фигура, а крапина.
-  const est = nov>=POL_KART;
+  // Меньше пола картину не показываем: там уже не фигура, а крапина.
+  const est = poShir>=POL_KART;
   // ПАНЕЛЬ — ОДНА ФОРМА ВСЕГДА: одна колонка, постоянная ширина, никаких
   // порогов. Перекладка по колонкам и была источником рывков: высота панели
   // прыгала вдвое-втрое, высота картины считается из «сколько осталось после
@@ -1333,9 +1414,16 @@ function ruchki(){
                        ` · ${(sb.emkost*1e9).toFixed(1)}нФ</span>` : ''));
   // Число пресетов живёт при сборке, а не в легенде внизу: это состояние
   // прибора, а не подсказка по клавишам.
-  if(presets.length) stroki.push(
-    `<span class="z1">${vpole('',POLE_IMENI)}${vpole('',POLE_KLAV)}`+
-    `${presets.length} пресетов</span>`);
+  //
+  // СОХРАНЕНИЕ И УДАЛЕНИЕ — МЫШЬЮ, и это единственное место в приборе, где
+  // мышь вообще нужна. Осознанно: оба действия редкие и необратимые, им и
+  // место под курсором, а не под пальцем, лежащим на клавиатуре во время
+  // игры. «Удалить» появляется, только когда есть что удалять.
+  const skolko = presets.length ? `${presets.length} пресетов` : 'пресетов нет';
+  stroki.push(
+    `<span class="z1">${vpole('',POLE_IMENI)}${vpole('',POLE_KLAV)}${skolko}</span>`+
+    `  <span class="tyk z2" data-tyk="sohrani">сохранить</span>`+
+    (tekuschiy>=0 ? `  <span class="tyk k3" data-tyk="udali">удалить</span>` : ''));
   return stroki.map(dobey).join('\n');
 }
 
@@ -1453,7 +1541,14 @@ function legenda(){
   // каждого тумблера клавиша написана рядом с ним же — повторять их внизу
   // значит заполнять экран тем, что и так видно. Остаются команды: у них
   // своей строки нет и быть не может, потому что они не величины.
-  const kom = KOMANDY.map(k => `${k.shift?'\u21e7':''}${klavisha(k.kl)} ${k.imya}`);
+  // Клавиша без подписи примыкает к предыдущей: ↑ и ↓ делают одно дело в две
+  // стороны, и «↑ листать · ↓ листать» было бы враньём про два разных дела.
+  const kom=[];
+  for(const k of KOMANDY){
+    const kl=`${k.ctrl?'\u2303':''}${k.shift?'\u21e7':''}${klavisha(k.kl)}`;
+    if(!k.imya && kom.length) kom[kom.length-1]=kom[kom.length-1].replace(' ', ' '+kl+' ');
+    else kom.push(`${kl} ${k.imya}`);
+  }
   kom.push('1\u20138 площадки', '\u2318 втрое', '\u21e7 вдесятеро');
   // ЦВЕТ ОБЪЯСНЯЕТ СЕБЯ САМ. Строка «красное — работа поста, синее — голос»
   // стояла тут потому, что зон не было; теперь зелёные, синие и красные
