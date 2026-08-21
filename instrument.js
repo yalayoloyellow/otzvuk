@@ -260,21 +260,64 @@ function skazhiTekst(){
          (podskazka.length ? ' · ' + podskazka.join(' · ') : ''));
 }
 
-// ---- МИКРОФОН --------------------------------------------------------------
-// Петля замыкается через воздух, поэтому микрофон должен отдавать сырой
-// сигнал: эхоподавление, шумодав и авторегулировка усиления в браузере
-// душат фидбек как «дефект» — их надо снимать явно, иначе вместо петли
-// приходит вычищенная тишина.
-let mikrofon=null;
+// ---- ВХОДНОЕ ГНЕЗДО --------------------------------------------------------
+// В гнездо втыкается ОДНО из двух: микрофон или звук вкладки. Дальше по тракту
+// разницы нет вовсе — XMOD, DRY, ROUTE, петля работают с тем, что пришло, и
+// ни одной новой сущности ради вкладки не заводится.
+//
+// СЫРОЙ СИГНАЛ ОБЯЗАТЕЛЕН. Петля замыкается через воздух, а эхоподавление,
+// шумодав и авторегулировка усиления душат фидбек как «дефект»: их надо
+// снимать явно, иначе вместо петли приходит вычищенная тишина.
+let mikrofon=null, potokVhoda=null, vhod='mik';
+function otsoedini(){
+  if(mikrofon){ try{ mikrofon.disconnect(); }catch(e){} mikrofon=null; }
+  if(potokVhoda){ for(const d of potokVhoda.getTracks()) d.stop(); potokVhoda=null; }
+}
+function votkni(potok){
+  otsoedini();
+  potokVhoda=potok;
+  mikrofon=ctx.createMediaStreamSource(potok);
+  mikrofon.connect(node);
+  // Показ можно остановить кнопкой самого браузера, и узнать об этом иначе
+  // нельзя: гнездо пустеет молча, а панель показывала бы «идёт».
+  for(const d of potok.getAudioTracks())
+    d.onended=()=>{ if(potokVhoda===potok){ otsoedini(); skazhi('источник отключился'); } };
+}
+const СЫРО={echoCancellation:false, noiseSuppression:false, autoGainControl:false};
 async function vklyuchiMikrofon(){
-  if(mikrofon || !ctx) return;
+  if(!ctx || (vhod==='mik' && mikrofon)) return;
   try{
-    const potok=await navigator.mediaDevices.getUserMedia({audio:{
-      echoCancellation:false, noiseSuppression:false, autoGainControl:false}});
-    mikrofon=ctx.createMediaStreamSource(potok);
-    mikrofon.connect(node);
-    skazhi('микрофон подключён');
+    const potok=await navigator.mediaDevices.getUserMedia({audio:СЫРО});
+    vhod='mik'; votkni(potok); skazhi('микрофон подключён');
   }catch(e){ skazhi('микрофон не дали: '+e.name); }
+}
+// ЗВУК ВКЛАДКИ. Радио, видео, что угодно звучащее становится материалом.
+//
+// `suppressLocalAudioPlayback` — здесь главное: без него захваченное идёт и в
+// колонки, и в прибор, то есть слышно дважды — сырым и обработанным. С ним
+// исходный звук замолкает, и наружу выходит только то, что прошло схему.
+//
+// КАРТИНКУ ПРОСИМ, ХОТЯ ОНА НЕ НУЖНА: браузер не отдаёт захват без видео.
+// Отключить дорожку нельзя — с её концом кончается весь захват, — поэтому
+// зажимаем её до почтовой марки в кадр в секунду и никуда не показываем.
+//
+// `selfBrowserSurface:'exclude'` убирает из списка нашу же вкладку: выбрать
+// её значило бы замкнуть звук сам на себя мимо всякой схемы.
+async function vklyuchiVkladku(){
+  if(!ctx) return;
+  if(!navigator.mediaDevices.getDisplayMedia){ skazhi('браузер не умеет захват'); return; }
+  try{
+    const potok=await navigator.mediaDevices.getDisplayMedia({
+      video:{width:{max:160}, height:{max:120}, frameRate:{max:1}},
+      audio:{...СЫРО, suppressLocalAudioPlayback:true},
+      selfBrowserSurface:'exclude', systemAudio:'include'});
+    if(!potok.getAudioTracks().length){
+      for(const d of potok.getTracks()) d.stop();
+      skazhi('звука не дали — надо отметить «поделиться звуком»');
+      return;
+    }
+    vhod='tab'; votkni(potok); skazhi('вкладка подключена');
+  }catch(e){ skazhi('вкладку не дали: '+e.name); }
 }
 
 // ---- ЗАПИСЬ ----------------------------------------------------------------
@@ -503,7 +546,7 @@ addEventListener('pointerdown',()=>{ pusk(); });
 // ТЫК ПО ПАНЕЛИ. Слушатель ОДИН и висит на самой панели, а не на словах:
 // разметка панели переставляется, как только меняется хоть одна подпись, и
 // слушатели, повешенные на слова, исчезали бы вместе с ними.
-const TYKI={sohrani, udali};
+const TYKI={sohrani, udali, mik:vklyuchiMikrofon, tab:vklyuchiVkladku};
 $('#knobs').addEventListener('click', e=>{
   const t=e.target.closest('[data-tyk]'); if(!t) return;
   e.preventDefault();
@@ -1347,10 +1390,14 @@ function ruchki(){
   // только когда сигнал ПРАВДА идёт: при молчащем входе это число ни о чём,
   // а строку удлиняет.
   const idet = mk>.002;
-  stroki.push(chelo('INPUT','',zg)+shkalaMesto(mk,shk,2)+`<span class="s3"> ` +
-    (idet ? 'идёт' : mikrofon ? 'тихо'
-      : knobs.ist>.5 ? 'говорилка молчит' : 'микрофон выключен') +
-    (idet && switches.petlya ? `   ROOM ${vz.toFixed(2)}` : '') + `</span>`);
+  // ЧТО ВОТКНУТО В ГНЕЗДО — выбирается мышью, прямо в строке показания.
+  // Клавиши на это нет и не будет: свободных не осталось, а главное — выбор
+  // источника это настройка, а не игра. Браузер всё равно потребует жеста и
+  // покажет свой список, так что рука в этот миг уже на мыши.
+  const ist=(k,imya)=>`<span class="tyk ${vhod===k?'s4':'s1'}" data-tyk="${k}">${imya}</span>`;
+  stroki.push(chelo('INPUT','',zg)+shkalaMesto(mk,shk,2)+
+    `<span class="s3"> ${idet?'идёт':mikrofon?'тихо':'нет'}</span>  `+
+    ist('mik','мик')+`<span class="s1"> · </span>`+ist('tab','вкладка'));
   stroki.push('');
 
   // РУЧКА. Тронутая светится целиком, включая погасшие сегменты: сейчас она
@@ -1389,7 +1436,12 @@ function ruchki(){
   for(const [z,g] of GRUPPY){
     const zn=ZONY[z];
     for(const r of KNOBS) if((r.zona||'shema')===z && r.gr===g) stroki.push(ruchka(r,zn));
-    for(const t of SWITCHES) if((t.zona||'shema')===z && t.gr===g) stroki.push(tumbler(t,zn));
+    for(const t of SWITCHES) if((t.zona||'shema')===z && t.gr===g)
+      // ROOM — сколько из вышедшего комната вернула в микрофон. Стоял он у
+      // INPUT и удлинял строку вдвое, а место ему тут: без петли это число
+      // ни о чём, по нему ядро само считает усиление круга.
+      stroki.push(tumbler(t,zn)+
+        (t.k==='petlya'&&switches.petlya ? `  <span class="s1">ROOM ${vz.toFixed(2)}</span>` : ''));
     stroki.push('');
   }
 
