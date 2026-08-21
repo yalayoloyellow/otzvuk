@@ -194,10 +194,24 @@ const KOMANDY=[
   {kl:'Tab',       imya:'бросок костей', ctrl:1, deystvie:()=>brosok()},
   {kl:'Space',     imya:'удар по корпусу', deystvie:()=>node&&node.port.postMessage({t:'kick'})},
   {kl:'Backquote', imya:'запись',      deystvie:()=>zapis()},
-  // Стрелки ТОЛЬКО ЛИСТАЮТ. Сохранение висело на ↑ и стоило спокойствия:
-  // рука боялась листать. Опасное ушло под мышь, в панель.
+  // Стрелки ЛИСТАЮТ, а опасное сидит на сочетании с ctrl. Сохранение висело
+  // на голой ↑ и стоило спокойствия: рука боялась листать. Мышь эту работу
+  // тоже не взяла — тыкать в текстовую строку оказалось неудобно, — так что
+  // всё вернулось на клавиатуру, но так, чтобы ненароком не нажалось.
   {kl:'ArrowUp',   imya:'листать',     deystvie:()=>listay(-1)},
   {kl:'ArrowDown', imya:'',            deystvie:()=>listay(1)},
+  // ALT ДЕРЖИТ ВСЁ РЕДКОЕ И ОПАСНОЕ, и это правило, а не случайность: в самом
+  // приборе он не занят ничем, ни одна игровая клавиша его не использует, и
+  // ненароком его не зажмёшь.
+  //
+  // Ctrl со стрелками не годится: на маке это системный переключатель рабочих
+  // столов, и до страницы такое нажатие не доходит вовсе. Cmd со стрелками
+  // забирает браузер. Alt со стрелками свободен и там, и там.
+  {kl:'ArrowUp',   imya:'сохранить',   alt:1, deystvie:()=>sohrani()},
+  {kl:'ArrowDown', imya:'удалить',     alt:1, deystvie:()=>udali()},
+  // Гнездо там же: одно место, одна буква, вторая половина под shift.
+  {kl:'KeyM',      imya:'микрофон',    alt:1, deystvie:()=>vklyuchiMikrofon()},
+  {kl:'KeyM',      imya:'вкладка',     alt:1, shift:1, deystvie:()=>vklyuchiVkladku()},
 ];
 
 // Пары, на которых висит по две величины: Shift выбирает вторую.
@@ -607,18 +621,7 @@ async function pusk(){
 addEventListener('pointerdown',()=>{ pusk(); });
 
 // ---- клавиатура -----------------------------------------------------------
-// ТЫК ПО ПАНЕЛИ. Слушатель ОДИН и висит на самой панели, а не на словах:
-// разметка панели переставляется, как только меняется хоть одна подпись, и
-// слушатели, повешенные на слова, исчезали бы вместе с ними.
-const TYKI={sohrani, udali, mik:vklyuchiMikrofon, tab:vklyuchiVkladku};
-$('#knobs').addEventListener('click', e=>{
-  const t=e.target.closest('[data-tyk]'); if(!t) return;
-  e.preventDefault();
-  const d=TYKI[t.dataset.tyk]; if(d) d();
-});
-
 addEventListener('keydown',async e=>{
-  if(e.altKey) return;
   const c=e.code;
   // ПЕРВОЕ НАЖАТИЕ — ЭТО И ЕСТЬ ВКЛЮЧЕНИЕ ПРИБОРА, и больше ничего.
   //
@@ -649,10 +652,14 @@ addEventListener('keydown',async e=>{
     if(c!==km.kl) continue;
     if(!!km.shift !== !!e.shiftKey) continue;
     if(!!km.ctrl !== !!e.ctrlKey) continue;
+    if(!!km.alt !== !!e.altKey) continue;
     e.preventDefault(); if(!e.repeat) km.deystvie(e);
     return;
   }
 
+  // Дальше alt не пускаем: иначе он крутил бы ручки и щёлкал тумблерами
+  // заодно с командой.
+  if(e.altKey) return;
   // Тумблер щёлкает от одного нажатия и держится сам — это не ручка,
   // которую надо вести.
   for(const t of SWITCHES){
@@ -1554,11 +1561,14 @@ function ruchki(){
   // Клавиши на это нет и не будет: свободных не осталось, а главное — выбор
   // источника это настройка, а не игра. Браузер всё равно потребует жеста и
   // покажет свой список, так что рука в этот миг уже на мыши.
-  // Каждый вход горит сам по себе: можно оба разом.
-  const ist=(k,imya)=>`<span class="tyk ${VHODY[k]?'s4':'s1'}" data-tyk="${k}">${imya}</span>`;
+  // Каждый вход горит сам по себе: можно оба разом. Клавиши подписаны рядом,
+  // как у всего остального на панели.
+  const ist=(k,imya,kl)=>`<span class="${VHODY[k]?'s4':'s1'}">${imya}</span>`+
+                         `<span class="s1"> ${kl}</span>`;
   stroki.push(chelo('INPUT','',zg)+shkalaMesto(mk,shk,2)+
     `<span class="s3"> ${idet?'идёт':(VHODY.mik||VHODY.tab)?'тихо':'нет'}</span>  `+
-    ist('mik','мик')+`<span class="s1"> · </span>`+ist('tab','вкладка'));
+    ist('mik','мик','\u2325m')+`<span class="s1"> · </span>`+
+    ist('tab','вкладка','\u2325\u21e7m'));
   stroki.push('');
 
   for(const [z,g] of GRUPPY){
@@ -1595,15 +1605,15 @@ function ruchki(){
   // Число пресетов живёт при сборке, а не в легенде внизу: это состояние
   // прибора, а не подсказка по клавишам.
   //
-  // СОХРАНЕНИЕ И УДАЛЕНИЕ — МЫШЬЮ, и это единственное место в приборе, где
-  // мышь вообще нужна. Осознанно: оба действия редкие и необратимые, им и
-  // место под курсором, а не под пальцем, лежащим на клавиатуре во время
-  // игры. «Удалить» появляется, только когда есть что удалять.
+  // СОХРАНЕНИЕ И УДАЛЕНИЕ НА СОЧЕТАНИЯХ. Мышь эту работу не взяла: тыкать
+  // курсором в строку текста оказалось неудобно, а ради двух действий держать
+  // на панели место под курсор — плата не по товару. Ctrl не даст нажать
+  // ненароком, а удалённое всё равно уезжает в корзину.
   const skolko = presets.length ? `${presets.length} пресетов` : 'пресетов нет';
   stroki.push(
     `<span class="z1">${vpole('',POLE_IMENI)}${vpole('',POLE_KLAV)}${skolko}</span>`+
-    `  <span class="tyk z2" data-tyk="sohrani">сохранить</span>`+
-    (tekuschiy>=0 ? `  <span class="tyk k3" data-tyk="udali">удалить</span>` : ''));
+    `  <span class="z2">\u2325\u2191 сохранить</span>`+
+    (tekuschiy>=0 ? `  <span class="k3">\u2325\u2193 удалить</span>` : ''));
   return stroki.map(dobey).join('\n');
 }
 
@@ -1725,7 +1735,7 @@ function legenda(){
   // стороны, и «↑ листать · ↓ листать» было бы враньём про два разных дела.
   const kom=[];
   for(const k of KOMANDY){
-    const kl=`${k.ctrl?'\u2303':''}${k.shift?'\u21e7':''}${klavisha(k.kl)}`;
+    const kl=`${k.ctrl?'\u2303':''}${k.alt?'\u2325':''}${k.shift?'\u21e7':''}${klavisha(k.kl)}`;
     if(!k.imya && kom.length) kom[kom.length-1]=kom[kom.length-1].replace(' ', ' '+kl+' ');
     else kom.push(`${kl} ${k.imya}`);
   }
