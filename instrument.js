@@ -609,6 +609,8 @@ const ZN_NET=ZNAKI[0][1], ZN_EST=ZNAKI[0][4];
 // Модуль сетки — строка. Она теперь одна на панель и картину: 8 пикселей.
 // Рамка сверху и снизу четыре модуля, по бокам десять знакомест.
 const MODUL=8, RAMKA_V=4*MODUL;
+// Ниже этого числа знакомест картина не ужимается, а уходит за правый край.
+const POL_KARTINY=56;
 // ПРОПОРЦИЯ КАРТИНЫ: вдвое шире, чем выше. Знакоместо 6.6 на 10 пикселей,
 // значит строк должно быть 6.6/(10·2) от числа знаков в строке.
 const OVAL=2;
@@ -706,9 +708,6 @@ function pomer(){
   const shs=proba.getBoundingClientRect().width/100 || 6.6;
   proba.remove();
 
-  // СТОЯ или ЛЁЖА — по форме окна, тем же порогом, что и в разметке.
-  const lezha=(innerWidth||800)/(innerHeight||800) >= 1.25;
-
   // ПРОПОРЦИЯ КАРТИНЫ ПОСТОЯННА. Вдвое шире, чем выше — горизонтальный овал.
   // Это форма фигуры, и она не должна зависеть от того, какое окно человек
   // растянул: одна и та же сборка обязана выглядеть одинаково. Меняется
@@ -718,28 +717,38 @@ function pomer(){
   // стороны: в широком коротком окне фигура расплющивалась в ленту, в
   // высоком узком вытягивалась в вертикальный овал.
   const str=parseFloat(getComputedStyle(ris).lineHeight)||8;
-  const zanyato=($('#line').offsetHeight||MODUL)+MODUL
-    + (lezha ? 0 : ($('#knobs').offsetHeight||24*MODUL)+MODUL);
-  const shirDost=(ris.parentElement.clientWidth||innerWidth-16*shs);
+  // МЕСТО ПОД КАРТИНУ СЧИТАЕТСЯ ОТ ОКНА, а не спрашивается у разметки.
+  // Спросить не у кого: клетка картины берёт ширину по содержимому, а
+  // содержимое — она сама. Панель же постоянной ширины, и вычесть её честно.
+  const ramka=parseFloat(getComputedStyle(document.body).paddingLeft)||48;
+  const zanyato=($('#line').offsetHeight||MODUL)+MODUL;
+  const shirPan=($('#knobs').offsetWidth||0);
+  const shirDost=(innerWidth||800)-2*ramka-shirPan-(shirPan?8*shs:0);
   const vysDost=(innerHeight||800)-2*RAMKA_V-zanyato;
-  const poShir=clamp(Math.floor(shirDost/shs),30,420);
+  const poShir=clamp(Math.floor(shirDost/shs),0,420);
   const poVys=clamp(Math.floor(vysDost/str),10,200);
   // Сколько строк картины приходится на знакоместо при нужной пропорции.
   const naZnak=shs/(OVAL*str);
-  // Вписываем прямоугольник постоянной пропорции в то, что осталось: по
-  // ширине или по высоте — что первым упрётся. ЧИСЛО СТРОК ЧЁТНОЕ: строка
-  // картины — половина модуля, и только при чётном их числе низ картины
-  // садится на ту же линию, что и строки панели.
-  let novv=Math.min(poVys, Math.round(poShir*naZnak));
+  // У КАРТИНЫ ЕСТЬ ПОЛ. Пока места хватает, она вписывается в остаток: по
+  // ширине или по высоте — что первым упрётся. Ниже пола она НЕ ужимается, а
+  // вытесняется за правый край окна и там обрезается. Иначе в узком высоком
+  // окне фигура превратилась бы в марку — всё ещё на месте, но смотреть не
+  // на что.
+  //
+  // ЧИСЛО СТРОК ЧЁТНОЕ: строка картины — половина модуля, и только при чётном
+  // их числе низ картины садится на ту же линию, что и строки панели.
+  let novv=Math.min(poVys, Math.round(Math.max(poShir,POL_KARTINY)*naZnak));
   novv -= novv & 1;
   novv = Math.max(10, novv);
-  const nov=clamp(Math.round(novv/naZnak),30,poShir);
+  const nov=Math.max(POL_KARTINY, Math.round(novv/naZnak));
+  // КОГДА ОТ КАРТИНЫ НЕ ОСТАЁТСЯ НИЧЕГО, её не рисуем вовсе, и панель встаёт
+  // одна — по центру и по горизонтали, и по вертикали. Показывать полоску в
+  // два знакоместа незачем: это не картина, а обрезок.
+  const est = poShir >= POL_KARTINY*.5;
   // ПАНЕЛЬ — ОДНА ФОРМА ВСЕГДА: одна колонка, постоянная ширина, никаких
   // порогов. Перекладка по колонкам и была источником рывков: высота панели
   // прыгала вдвое-втрое, высота картины считается из «сколько осталось после
-  // панели», и перемер шёл вторым проходом на следующем кадре. Теперь при
-  // сжатии окна меняется только масштаб картины — дёргаться нечему, и
-  // переход остаётся один: лёжа ↔ стоя.
+  // панели», и перемер шёл вторым проходом на следующем кадре.
   kolonok = 1;
   // Первый раз собираем в любом случае: размер может совпасть с исходным,
   // а полей и слоёв ещё нет вовсе.
@@ -750,12 +759,14 @@ function pomer(){
   const pan=$('#panel');
   if(pan){
     const vys=novv*str, ph=($('#knobs').offsetHeight||0);
-    const sdvig = lezha && ph && vys>ph
+    const sdvig = est && ph && vys>ph
       ? Math.round((vys-ph)/2/MODUL)*MODUL : 0;
     if(pan.style.marginTop!==sdvig+'px') pan.style.marginTop=sdvig+'px';
   }
   // Размер коробки задаётся ЧИСЛОМ, а не содержимым: все слои сняты с потока,
   // и держать её было бы нечем.
+  const kor=ris.parentElement;
+  if(kor) kor.style.display = est ? '' : 'none';
   ris.style.width=(Sh*shs)+'px';
   ris.style.height=(V*str)+'px';
 }
