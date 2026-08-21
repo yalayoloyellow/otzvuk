@@ -41,16 +41,15 @@ function хроника(seed, события){
   return ряд;
 }
 
-const события = [[.5, {v:{pit:0}}], [4.0, {v:{pit:1}}]];
+const события = [[.5, {v:{pit:0}}]];
 const ряд = хроника(139297718, события);
 console.log('время, с    питание, В    уровень, дБ от начального');
 const нач = ряд[20].скз;
 for (const r of ряд){
   const мс = Math.round(r.t * 1000);
   // Смотрим в упор на оба перехода, между ними ничего не происходит.
-  if (мс < 440) continue;
-  if (мс > 560 && мс < 3900 && мс % 200 > 12) continue;
-  if (мс > 4200) continue;
+  if (мс < 900 || мс > 2400) continue;
+  if (мс % 60 > 12) continue;
   const дб = 20 * Math.log10(Math.max(1e-7, r.скз / нач));
   const полоса = '█'.repeat(Math.max(0, Math.round((дб + 60) / 3)));
   console.log(String(мс).padStart(7) + r.V.toFixed(2).padStart(12) +
