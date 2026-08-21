@@ -719,14 +719,19 @@ function pomer(){
   // стороны: в широком коротком окне фигура расплющивалась в ленту, в
   // высоком узком вытягивалась в вертикальный овал.
   const str=parseFloat(getComputedStyle(ris).lineHeight)||8;
-  // МЕСТО ПОД КАРТИНУ СЧИТАЕТСЯ ОТ ОКНА, а не спрашивается у разметки.
-  // Спросить не у кого: клетка картины берёт ширину по содержимому, а
-  // содержимое — она сама. Панель же постоянной ширины, и вычесть её честно.
-  const ramka=parseFloat(getComputedStyle(document.body).paddingLeft)||48;
+  // МЕСТО ПОД КАРТИНУ МЕРЯЕТСЯ ПО РАЗМЕТКЕ, а не по innerWidth.
+  //
+  // Спрашивать окно нельзя: при масштабе страницы innerWidth и настоящая
+  // ширина верстки расходятся — намерено 944 против 664, и картина считалась
+  // на треть шире места, а потому вылезала за край всегда. Экран же во всю
+  // рамку и от содержимого не зависит: у него и спрашиваем. Клетку самой
+  // картины спрашивать по-прежнему нельзя — она берёт ширину по содержимому,
+  // а содержимое это она сама.
   const zanyato=($('#line').offsetHeight||MODUL)+MODUL;
   const shirPan=($('#knobs').offsetWidth||0);
-  const shirDost=(innerWidth||800)-2*ramka-shirPan-(shirPan?8*shs:0);
-  const vysDost=(innerHeight||800)-2*RAMKA_V-zanyato;
+  const ekr=$('#screen');
+  const shirDost=(ekr?ekr.clientWidth:800)-shirPan-(shirPan?8*shs:0);
+  const vysDost=(document.documentElement.clientHeight||800)-2*RAMKA_V-zanyato;
   const poShir=clamp(Math.floor(shirDost/shs),0,420);
   const poVys=clamp(Math.floor(vysDost/str),10,200);
   // Сколько строк картины приходится на знакоместо при нужной пропорции.
