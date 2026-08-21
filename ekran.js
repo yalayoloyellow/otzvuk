@@ -49,6 +49,15 @@ export const KOD = ZNAKI.map(r => [...r].map(c => c.charCodeAt(0)));
 export const KLASS = [['z0','z1','z2','z3','z4'],
                       ['kg0','kg1','kg2','k3','k4'],
                       ['sg0','sg1','sg2','s3','s4']];
+// У ПАНЕЛИ АКЦЕНТЫ ИДУТ ПОЛНОЙ ЛЕСТНИЦЕЙ. Там зона красная целиком, вплоть до
+// погасшей дорожки, и яркий тон на нулевой ступени слепил бы: замер по глазу
+// (0.299R+0.587G+0.114B) для яркого #ff7a5c даёт 158 — это уровень ТРЕТЬЕЙ
+// зелёной ступени, и красная дорожка горела бы вдвое ярче зелёной. Тёмные
+// ступени палитры для того и заведены: 73 102 130 158 210 против зелёных
+// 69 111 160 208 236.
+export const KLASS_PANELI = [['z0','z1','z2','z3','z4'],
+                             ['k0','k1','k2','k3','k4'],
+                             ['s0','s1','s2','s3','s4']];
 
 // ДОЛИ СВЕРХУ от всех горящих знакомест. Последняя — граница отрисовки: всё,
 // что тусклее, не рисуется вовсе. Тусклая масса это пустая порода: там, где
@@ -106,8 +115,8 @@ export class Ekran {
   // вмешательство там просто не помечается. У панели niz=0: зона целиком
   // своего цвета — решение хозяина, — а от бурого её держит не запрет, а
   // жирный ряд знаков акцента: цвет несут чернила.
-  constructor(el, Sh, V, niz = NIZ_AKCENTA) {
-    this.el = el; this.niz = niz; this.peresoberi(Sh, V);
+  constructor(el, Sh, V, niz = NIZ_AKCENTA, klass = KLASS) {
+    this.el = el; this.niz = niz; this.klass = klass; this.peresoberi(Sh, V);
   }
   peresoberi(Sh, V) {
     this.Sh = Sh; this.V = V;
@@ -121,7 +130,7 @@ export class Ekran {
     for (let c = 0; c < CVETOV; c++) for (let t = 0; t < STUPENEY; t++) {
       this.sloi.push(new Uint16Array(dlina));
       const e = document.createElement('pre');
-      e.className = 'sl ' + KLASS[c][t];
+      e.className = 'sl ' + this.klass[c][t];
       this.el.appendChild(e); this.pre.push(e);
     }
     this.est = new Uint8Array(SLOEV);
