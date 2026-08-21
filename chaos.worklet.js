@@ -967,7 +967,7 @@ class Device {
     this.kiarg = -1; this.ki = 20;
   }
 
-  step(p, utechka, navodka, kontakt, gls, ogib, petl, pyat){
+  step(p, utechka, navodka, kontakt, gls, ogib, petl, pyat, shoroh){
     const sb = this.sb;
     // ЗВОН ПЛАТЫ — обычный затухающий резонатор. Считается ДО узлов: керамика
     // видит движение платы, а не наоборот.
@@ -1228,6 +1228,12 @@ class Device {
       // РАЗВОД — подстроечники расходятся: первый на месте, второй рядом
       // (биения), третий уходит далеко вверх (шипение).
       R /= (1 + p.spread * (sb.razv[i] - 1));
+      // ДВИЖОК ПОДСТРОЕЧНИКА ПРЯМО ЗДЕСЬ. Пятно контакта скачет по
+      // неоднородному слою — при вращении шорохом, от удара подскоком. И то и
+      // другое это скачок СОПРОТИВЛЕНИЯ в частотозадающей цепи, а не шум,
+      // подмешанный к звуку: слышно не «шорох поверх», а как от него ведёт
+      // сам генератор.
+      if (shoroh) R *= 1 + shoroh * .9;
       // Прежде здесь стояла заглушка: палец подключал сопротивление
       // параллельно цепи заряда, одинаково от всех восьми площадок сразу.
       // Это и был тот смаз, из-за которого пятачки молчали — одинаковая
@@ -1437,19 +1443,38 @@ class Device {
 // пятно контакта прыгает, и сопротивление скачет тем сильнее, чем быстрее
 // крутишь. Это тот самый шорох, по которому ухо и опознаёт живую ручку.
 class Contacts {
-  constructor(){ this.dreb = 0; this.faza = 0; this.shoroh = 0; }
-  schelkni(){ this.dreb = 1; this.faza = 0; }
+  constructor(){ this.dreb = 0; this.faza = 0; this.dl = .007; this.shoroh = 0; }
+  schelkni(){ this.dreb = 1; this.faza = 0; this.dl = .007; }
+  // УДАР ВЫБИВАЕТ БАТАРЕЮ ИЗ ДЕРЖАТЕЛЯ. Пружинный контакт держит крону
+  // прижимом, и толчок его на миллисекунды отпускает — питание пропадает
+  // совсем, а потом возвращается. Это НЕ всегда: зависит от держателя, от
+  // того, куда пришёлся удар, и от силы. Отсюда вероятность, растущая с
+  // силой, — а не «каждый раз одинаково».
+  //
+  // Слышно это глотком: прибор проваливается и заводится заново.
+  ryvok(sila){
+    if (Math.random() > .15 + clamp(sila, 0, 1) * .55) return false;
+    this.dreb = 1; this.faza = 0;
+    // Отрыв короче дребезга тумблера и тем длиннее, чем сильнее удар.
+    this.dl = .0015 + Math.random() * .009 * clamp(sila, 0, 1);
+    return true;
+  }
   // множитель питания: во время дребезга оно рвётся
   step(){
     if (this.dreb > 0){
       this.faza += 1 / SR;
-      const t = this.faza / .007;      // пружина успокаивается за семь миллисекунд
+      const t = this.faza / this.dl;
       if (t >= 1){ this.dreb = 0; return 1; }
       return Math.random() < (1 - t) * .35 ? .04 + Math.random() * .2 : 1;
     }
     return 1;
   }
   kruti(skorost){ this.shoroh = Math.min(1, this.shoroh + skorost * 26); }
+  // ПОДСКОК ДВИЖКА. Тот же механизм, что даёт шорох при вращении: пятно
+  // контакта прыгает по неоднородному слою. Только от удара оно подскакивает
+  // разом, а не скребёт постепенно, и потому всплеск на порядок сильнее
+  // самого быстрого вращения.
+  tolchok(sila){ this.shoroh = Math.min(1, this.shoroh + clamp(sila, 0, 1) * .75); }
   trenie(){
     this.shoroh *= .9992;
     return this.shoroh > .002 ? (Math.random() - .5) * this.shoroh : 0;
@@ -2237,7 +2262,15 @@ class Chaos extends AudioWorkletProcessor {
       // замкнутой относительно того, как прибор меняется сам. То есть никак.
       else if (d.t === 'kick'){
         // Сила слегка гуляет: дважды одинаково рукой не ударишь.
-        this.pr.bey(UDAR_SILA * (.85 + Math.random() * .3));
+        // Сила слегка гуляет: дважды одинаково рукой не ударишь.
+        const sila = UDAR_SILA * (.85 + Math.random() * .3);
+        // Толчок доходит до схемы тремя путями разом, и все три настоящие:
+        //   · плата звенит, керамика бросает заряд в узлы;
+        //   · движок подстроечника подскакивает по слою;
+        //   · пружина держателя батареи отпускает контакт — иногда.
+        this.pr.bey(sila);
+        this.kont.tolchok(sila * 7);
+        this.kont.ryvok(sila * 9);
       }
     };
   }
@@ -2361,7 +2394,11 @@ class Chaos extends AudioWorkletProcessor {
       // частотозадающей цепи.
       const kont = this.kont.step();
       const shoroh = this.kont.trenie();
-      const ut = this.utechka + shoroh * .7, nav = this.navodka + shoroh * .04;
+      // ШОРОХ ДВИЖКА ИДЁТ В ЦЕПЬ ЗАРЯДА, а не в утечку. Он и сидит в ней:
+      // подстроечник ПИТЧ стоит во всех трёх цепях, и пятно контакта прыгает
+      // прямо в частотозадающем месте. Через утечку он шёл, пока там стояла
+      // заглушка площадок; заглушку сняли, и шорох остался ни при чём.
+      const ut = this.utechka, nav = this.navodka + shoroh * .04;
       // Микрофон слышит комнату, а комната слышит динамик — круг замыкается
       // не здесь, а в воздухе.
       //
@@ -2391,7 +2428,8 @@ class Chaos extends AudioWorkletProcessor {
       const vhod = mik * (1 - dg) + rech * dg;
       for (let k = 0; k < OVER; k++){
         const gls = this.golos.step(vhod, this.p.golos);
-        y = this.svod.step(this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib, petl, this.pl));
+        y = this.svod.step(this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib,
+                                        petl, this.pl, shoroh));
       }
       if (!(y === y)){ y = 0; this.pr.zhivoy(); this.svod = new Decim(); this.sryvy++; }
       // ГОЛОС НАРУЖУ — сам источник, слышный поверх прибора. Он входит в
