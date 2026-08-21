@@ -70,6 +70,11 @@ const KNOBS=[
   {k:'drift',  m:['KeyG','KeyH'], imya:'SLOP',   gr:'kach'},
   // ---- СХЕМА · СЕТКА ----
   {k:'gryzn',  m:['KeyJ','KeyK'], imya:'SEQ',    gr:'setka'}, // глубина вмешательства счётчика
+  // STARVE — реостат между батареей и схемой. Свободной пары в зелёной зоне
+  // не осталось ни одной, и это не теснота, а полнота: все буквы разобраны
+  // самой панелью. Второй слой при SEQ — не случайность: питание и сетка
+  // стоят в одной группе, а рядом SAG, с которым голодание и работает в паре.
+  {k:'starve', m:['KeyJ','KeyK'], imya:'STARVE', gr:'setka', shift:1},
 
   // ---- ГОЛОС · ИСТОЧНИК ----
   // SOURCE — не переключатель, а потенциометр между микрофоном и
@@ -424,7 +429,7 @@ function brosok(){
 
 
 // макро — то, что на панели; p — то, что уходит в движок
-const knobs={sway:.55, tone:.5, depth:.75, pulse:.2,
+const knobs={starve:0, sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
              zhat:0, drive:.15, master:1, ist:0, ton:.35, temp:.5,
              trakt:.3, naruzhu:0, kuda:0};
