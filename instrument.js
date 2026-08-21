@@ -304,27 +304,38 @@ function skazhiTekst(){
 // СЫРОЙ СИГНАЛ ОБЯЗАТЕЛЕН. Петля замыкается через воздух, а эхоподавление,
 // шумодав и авторегулировка усиления душат фидбек как «дефект»: их надо
 // снимать явно, иначе вместо петли приходит вычищенная тишина.
-let mikrofon=null, potokVhoda=null, vhod='mik';
-function otsoedini(){
-  if(mikrofon){ try{ mikrofon.disconnect(); }catch(e){} mikrofon=null; }
-  if(potokVhoda){ for(const d of potokVhoda.getTracks()) d.stop(); potokVhoda=null; }
+// ГНЕЗДО ПРИНИМАЕТ ОБА СРАЗУ. Микрофон и звук вкладки — не «или», а два
+// независимых входа в один узел: комната плюс радио, голос поверх видео.
+// Переключателем это было ровно один заход и оказалось враньём про железо:
+// в гнездо втыкают что воткнётся, а смешивает их сумматор.
+const VHODY = {mik:null, tab:null};
+function otsoedini(kakoy){
+  const v = VHODY[kakoy]; if(!v) return;
+  try{ v.uzel.disconnect(); }catch(e){}
+  for(const d of v.potok.getTracks()) d.stop();
+  VHODY[kakoy] = null;
 }
-function votkni(potok){
-  otsoedini();
-  potokVhoda=potok;
-  mikrofon=ctx.createMediaStreamSource(potok);
-  mikrofon.connect(node);
+function votkni(kakoy, potok){
+  otsoedini(kakoy);
+  const uzel = ctx.createMediaStreamSource(potok);
+  uzel.connect(node);
+  VHODY[kakoy] = {uzel, potok};
   // Показ можно остановить кнопкой самого браузера, и узнать об этом иначе
   // нельзя: гнездо пустеет молча, а панель показывала бы «идёт».
   for(const d of potok.getAudioTracks())
-    d.onended=()=>{ if(potokVhoda===potok){ otsoedini(); skazhi('источник отключился'); } };
+    d.onended=()=>{ if(VHODY[kakoy] && VHODY[kakoy].potok===potok){
+      otsoedini(kakoy); skazhi(kakoy==='mik'?'микрофон отключился':'вкладка отключилась'); } };
 }
 const СЫРО={echoCancellation:false, noiseSuppression:false, autoGainControl:false};
+// СЫРОЙ СИГНАЛ ОБЯЗАТЕЛЕН. Петля замыкается через воздух, а эхоподавление,
+// шумодав и авторегулировка усиления душат фидбек как «дефект»: их надо
+// снимать явно, иначе вместо петли приходит вычищенная тишина.
 async function vklyuchiMikrofon(){
-  if(!ctx || (vhod==='mik' && mikrofon)) return;
+  if(!ctx) return;
+  if(VHODY.mik){ otsoedini('mik'); skazhi('микрофон вынут'); return; }
   try{
     const potok=await navigator.mediaDevices.getUserMedia({audio:СЫРО});
-    vhod='mik'; votkni(potok); skazhi('микрофон подключён');
+    votkni('mik', potok); skazhi('микрофон подключён');
   }catch(e){ skazhi('микрофон не дали: '+e.name); }
 }
 // ЗВУК ВКЛАДКИ. Радио, видео, что угодно звучащее становится материалом.
@@ -341,6 +352,7 @@ async function vklyuchiMikrofon(){
 // её значило бы замкнуть звук сам на себя мимо всякой схемы.
 async function vklyuchiVkladku(){
   if(!ctx) return;
+  if(VHODY.tab){ otsoedini('tab'); skazhi('вкладка вынута'); return; }
   if(!navigator.mediaDevices.getDisplayMedia){ skazhi('браузер не умеет захват'); return; }
   try{
     const potok=await navigator.mediaDevices.getDisplayMedia({
@@ -352,7 +364,7 @@ async function vklyuchiVkladku(){
       skazhi('звука не дали — надо отметить «поделиться звуком»');
       return;
     }
-    vhod='tab'; votkni(potok); skazhi('вкладка подключена');
+    votkni('tab', potok); skazhi('вкладка подключена');
   }catch(e){ skazhi('вкладку не дали: '+e.name); }
 }
 
@@ -592,7 +604,22 @@ $('#knobs').addEventListener('click', e=>{
 addEventListener('keydown',async e=>{
   if(e.altKey) return;
   const c=e.code;
-  if(!idet){ await pusk(); if(c==='Space'){ e.preventDefault(); return; } }
+  // ПЕРВОЕ НАЖАТИЕ — ЭТО И ЕСТЬ ВКЛЮЧЕНИЕ ПРИБОРА, и больше ничего.
+  //
+  // Выключатель заводится разомкнутым: коробка, простоявшая на полке, пуста.
+  // Но открыть страницу, нажать клавишу и не услышать ничего — это читается
+  // поломкой, а не выключателем. Поэтому первая клавиша замыкает питание, а
+  // дальше POWER работает как обычный тумблер. Заодно слышно, как прибор
+  // заводится: накопитель заряжается броском тока, и это настоящая ступенька
+  // на шине.
+  //
+  // Нажатие при этом СЪЕДАЕТСЯ целиком — иначе та же клавиша тут же сделала
+  // бы что-то ещё, а первое движение должно значить ровно одно.
+  if(!idet){
+    await pusk();
+    if(!switches.pit){ switches.pit=1; send(); }
+    e.preventDefault(); return;
+  }
   // Пока строка открыта, клавиатура принадлежит ей целиком.
   if(stroka.aktivna){
     e.preventDefault();
@@ -1515,9 +1542,10 @@ function ruchki(){
   // Клавиши на это нет и не будет: свободных не осталось, а главное — выбор
   // источника это настройка, а не игра. Браузер всё равно потребует жеста и
   // покажет свой список, так что рука в этот миг уже на мыши.
-  const ist=(k,imya)=>`<span class="tyk ${vhod===k?'s4':'s1'}" data-tyk="${k}">${imya}</span>`;
+  // Каждый вход горит сам по себе: можно оба разом.
+  const ist=(k,imya)=>`<span class="tyk ${VHODY[k]?'s4':'s1'}" data-tyk="${k}">${imya}</span>`;
   stroki.push(chelo('INPUT','',zg)+shkalaMesto(mk,shk,2)+
-    `<span class="s3"> ${idet?'идёт':mikrofon?'тихо':'нет'}</span>  `+
+    `<span class="s3"> ${idet?'идёт':(VHODY.mik||VHODY.tab)?'тихо':'нет'}</span>  `+
     ist('mik','мик')+`<span class="s1"> · </span>`+ist('tab','вкладка'));
   stroki.push('');
 

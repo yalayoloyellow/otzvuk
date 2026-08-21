@@ -2032,7 +2032,19 @@ class Chaos extends AudioWorkletProcessor {
     if (!novye) return;
     for (const k in novye){
       const v = clamp(novye[k], 0, 1);
-      if (!(k in this.p)){ this.p[k] = v; if (!TUMBLERY[k]) this.cel[k] = v; continue; }
+      // НОВОЙ ВЕЛИЧИНЕ НУЖНА И СКОРОСТЬ, А НЕ ТОЛЬКО ЦЕЛЬ.
+      //
+      // Движок считается по трём числам: где он, куда едет и с какой
+      // скоростью. Здесь заводились только первые два — и всё работало ровно
+      // до того дня, когда на панели появилась ПЕРВАЯ величина, которой не
+      // было при сборке ядра. Дальше при первом же движении из скорости
+      // читалось `undefined`, движок уезжал в NaN, а с ним и всё питание:
+      // прибор молчал, а причина сидела за три файла отсюда.
+      if (!(k in this.p)){
+        this.p[k] = v;
+        if (!TUMBLERY[k]){ this.cel[k] = v; this.skor[k] = 0; }
+        continue;
+      }
       if (TUMBLERY[k]) this.p[k] = v;
       else { this.cel[k] = v; if (this.dvizh.indexOf(k) < 0) this.dvizh.push(k); }
     }
@@ -2063,7 +2075,7 @@ class Chaos extends AudioWorkletProcessor {
     if (novye) for (const k in novye){
       const v = clamp(novye[k], 0, 1);
       this.p[k] = v;
-      if (!TUMBLERY[k]) this.cel[k] = v;
+      if (!TUMBLERY[k]){ this.cel[k] = v; this.skor[k] = 0; }
     }
   }
 
@@ -2110,7 +2122,10 @@ class Chaos extends AudioWorkletProcessor {
       // получении новых значений, и цикл обычно пуст.
       for (let q = this.dvizh.length - 1; q >= 0; q--){
         const k = this.dvizh[q];
-        const c = this.cel[k], x = this.p[k], sk = this.skor[k];
+        const c = this.cel[k], x = this.p[k];
+        // Подпорка на будущее: если скорость всё-таки не завелась, движок
+        // трогается с нуля, а не разносит NaN по всему прибору.
+        const sk = this.skor[k] || 0;
         if (KOMMUTACIYA[k] && migom){
           this.p[k] = c; this.skor[k] = 0;
           this.dvizh.splice(q, 1); continue;
