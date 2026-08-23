@@ -158,6 +158,17 @@ const SWITCHES=[
   {k:'set',  kl:'KeyB', imya:'MAINS', gr:'pit', shift:1},
   // SAG — снятие развязки питания: шина проседает, и логика слышит сама себя.
   {k:'dirt', kl:'KeyV', imya:'SAG',   gr:'pit', shift:1},
+  // FAULT — держимая неисправность: плохая пайка на дорожке, по которой
+  // течёт ток громкоговорителя. Логика цепляется к той же дорожке и получает
+  // на питание копию собственного выхода. Пороги триггеров заданы долями
+  // питания — значит выход начинает править частотой, а частота выходом.
+  //
+  // Пробел прежде был разовым ударом по корпусу. Как СОБЫТИЕ он звучал
+  // заготовкой — три захода и три замера это подтвердили, — а как ДЕРЖИМОЕ
+  // СОСТОЯНИЕ тот же механизм не имеет огибающей вовсе: есть две ступеньки,
+  // вход и выход, и между ними стоячий режим. Комическая полоса 0.3–3 Гц,
+  // из которой мы столько выбирались, при этом пуста по устройству.
+  {k:'sboy', kl:'Space', imya:'FAULT', gr:'pit'},
   // ---- СХЕМА ----
   {k:'gen1', kl:'KeyZ', imya:'OSC 1', gr:'gen'},
   {k:'gen2', kl:'KeyX', imya:'OSC 2', gr:'gen'},
@@ -192,7 +203,6 @@ const KOMANDY=[
   // Обе клавиши освободились вместе с вкладкой: своему окну Tab не нужен.
   {kl:'Tab',       imya:'назад по сборкам', shift:1, deystvie:()=>nazad()},
   {kl:'Tab',       imya:'бросок костей', ctrl:1, deystvie:()=>brosok()},
-  {kl:'Space',     imya:'удар по корпусу', deystvie:()=>node&&node.port.postMessage({t:'kick'})},
   {kl:'Backquote', imya:'запись',      deystvie:()=>zapis()},
   // Стрелки ЛИСТАЮТ, а опасное сидит на сочетании с ctrl. Сохранение висело
   // на голой ↑ и стоило спокойствия: рука боялась листать. Мышь эту работу
@@ -216,7 +226,7 @@ const KOMANDY=[
 
 // Пары, на которых висит по две величины: Shift выбирает вторую.
 const DVUSLOYNYE = new Set(KNOBS.filter(r=>r.shift).flatMap(r=>r.m));
-const IMYAKL={Comma:',', Period:'.', Slash:'/', Semicolon:';', Quote:"'",
+const IMYAKL={Comma:',', Period:'.', Slash:'/', Semicolon:';', Quote:"'", Space:'␣',
              Backslash:'\\', Backquote:'`', Minus:'-', Equal:'=',
              BracketLeft:'[', BracketRight:']',
              ArrowLeft:'←', ArrowRight:'→', ArrowUp:'↑', ArrowDown:'↓',
@@ -499,7 +509,7 @@ const knobs={volt:.5, bak:.5, sway:.55, tone:.5, depth:.75, pulse:.2,
              zhat:0, drive:.15, master:1, ist:0, ton:.35, temp:.5,
              trakt:.3, naruzhu:0, kuda:0};
 const switches={pit:0, set:0, gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0,
-                mix:0, povtor:0};
+                mix:0, povtor:0, sboy:0};
 
 const p={};
 
@@ -1485,8 +1495,8 @@ function ruchki(){
   // ПИТАНИЕ СТОИТ ВЫШЕ ВСЕХ ПОКАЗАНИЙ: сперва орган, потом то, что он даёт.
   // Порядок внутри назван поимённо, а не «сперва ручки, потом тумблеры»:
   // сначала есть ли ток, потом откуда он, потом сколько его и надолго ли, и
-  // только в конце — как схема его слышит.
-  for(const imya of ['POWER','MAINS','VOLTS','TANK','SAG']){
+  // только в конце — как схема его слышит, исправная и неисправная.
+  for(const imya of ['POWER','MAINS','VOLTS','TANK','SAG','FAULT']){
     const r=KNOBS.find(x=>x.imya===imya), t=SWITCHES.find(x=>x.imya===imya);
     stroki.push(r ? ruchka(r,zs) : tumbler(t,zs));
   }
