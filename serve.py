@@ -232,6 +232,29 @@ class Handler(SimpleHTTPRequestHandler):
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
 
+        # БЫСТРЫЙ ЩУП. Полсекунды состояния схемы поотсчётно. Отсчёты
+        # приходят восьмибитной строкой в base64 и ложатся отдельным
+        # двоичным файлом: полтора мегабайта чисел в JSON раздулись бы в
+        # двадцать и потеряли бы точность на печати.
+        if self.path.split("?")[0] == "/bystro":
+            try:
+                import base64
+                n = int(self.headers.get("Content-Length") or 0)
+                д = json.loads(self.rfile.read(n) or b"{}")
+                папка = os.path.join(STORE, "щуп")
+                os.makedirs(папка, exist_ok=True)
+                имя = "".join(c for c in str(д.get("имя") or "щуп")
+                              if c.isalnum() or c in "-_ ")[:40].strip().replace(" ", "-")
+                номер = len([f for f in os.listdir(папка) if f.endswith(".json")]) + 1
+                осн = os.path.join(папка, f"{номер:04d}-{имя or 'щуп'}")
+                with open(осн + ".f32", "wb") as f:
+                    f.write(base64.b64decode(д.pop("dannye", "")))
+                with open(осн + ".json", "w", encoding="utf-8") as f:
+                    json.dump(д, f, ensure_ascii=False)
+                return self._json(200, {"ok": True, "file": os.path.basename(осн)})
+            except (ValueError, OSError) as e:
+                return self._json(500, {"error": str(e)})
+
         if self.path.split("?")[0] == "/clap":
             from urllib.parse import parse_qs
             # WAV из браузера → эмбеддинг CLAP. Модель живёт в отдельном

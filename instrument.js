@@ -210,6 +210,8 @@ const KOMANDY=[
   // ставить сколько угодно раз — из повторов и выводится эталон.
   {kl:'KeyP', imya:'пометить явление', alt:1, deystvie:()=>{
     stroka.aktivna=true; stroka.pometka=true; stroka.tekst=''; }},
+  // Полсекунды схемы поотсчётно — то, чего обычный снимок не видит.
+  {kl:'KeyB', imya:'быстрый щуп', alt:1, deystvie:()=>bystro()},
   // Стрелки ЛИСТАЮТ, а опасное сидит на сочетании с ctrl. Сохранение висело
   // на голой ↑ и стоило спокойствия: рука боялась листать. Мышь эту работу
   // тоже не взяла — тыкать в текстовую строку оказалось неудобно, — так что
@@ -543,6 +545,34 @@ function zameryay(){
   if(t-ogib_kogda>500){ ogib_kogda=t; ogib_posl=zamer.krivye(); }
 }
 
+// БЫСТРЫЙ ЩУП. Полсекунды состояния схемы, записанные КАЖДЫЙ отсчёт:形а
+// напряжения на узлах, момент каждого переключения, ход питания, ток
+// капсюля. Обычный снимок берётся раз в пятьдесят миллисекунд и всего этого
+// не видит вовсе.
+//
+// Отсчёты уходят как есть, восьмибитной строкой: разбирать их в JSON значит
+// раздуть полтора мегабайта в двадцать и потерять точность на печати.
+let bystro_imya='быстро';
+function bystro(имя){
+  if(!node) return;
+  bystro_imya=имя||('быстро-'+Date.now());
+  node.port.postMessage({t:'быстро', v:.5});
+  skazhi('щуп заряжен');
+}
+async function bystroPrishlo(d){
+  const b=new Uint8Array(d.v.buffer);
+  let дв=''; const кус=8192;
+  for(let i=0;i<b.length;i+=кус) дв+=String.fromCharCode.apply(null,b.subarray(i,i+кус));
+  try{
+    const r=await fetch('/bystro',{method:'POST',body:JSON.stringify({
+      имя:bystro_imya, polya:d.polya, sr:d.sr, otschetov:d.v.length/d.polya.length,
+      nominaly:d.nominaly, snimok:d.snimok, sostoyanie:sostoyanie(),
+      semya:(report.build||{}).semya||null, dannye:btoa(дв)})});
+    const j=await r.json();
+    skazhi('быстрый щуп: '+(j.file||'лёг'));
+  }catch(e){ skazhi('щуп не лёг: '+e.message); }
+}
+
 // ПОМЕТКА ЯВЛЕНИЯ. Не «нравится» и не «не нравится»: вкус тут ни при чём.
 // Человек называет то, что услышал — «захлёбывание», «ровное качание»,
 // «треск от удара», — и программа кладёт рядом двадцать секунд чисел и
@@ -560,6 +590,9 @@ async function metka(kakaya){
     sostoyanie:sostoyanie(), semya:(report.build||{}).semya||null,
     imya:(report.build||{}).imya||null,
     krivye:ogib_posl||zamer.krivye(),
+    // Номиналы кладутся ОДИН РАЗ на запись: они впаяны и в кадре им делать
+    // нечего, а без них видно поведение и не видно причины.
+    nominaly:(report.nominaly||null),
     kadry:KADRY.slice(-skolko),
   };
   try{
@@ -690,6 +723,7 @@ async function pusk(){
   node.port.onmessage=e=>{
     const d=e.data;
     if(d && d.t==='rec'){ zapisPrishla(d); return; }
+    if(d && d.t==='быстро'){ bystroPrishlo(d); return; }
     report=d; window.dbg.otchetov=(window.dbg.otchetov||0)+1; window.dbg.o=report;
   };
   await ctx.resume();
