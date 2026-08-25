@@ -693,6 +693,11 @@ setInterval(()=>{
     if(derzhitsya < .28) continue;
     const razgon=Math.min(derzhitsya-.28, 2.2);
     const skorost=(.12+razgon*.8)*(s.skor||1);
+    // ОТПУСТИЛ БУКВУ, А СТРЕЛКУ ДЕРЖИШЬ. Стрелка оставалась записанной, круг
+    // продолжал крутиться вхолостую и КАЖДЫЙ КАДР зажигал вспышку — строка
+    // ручки залипала подсвеченной навсегда, и панель выглядела сломанной.
+    // Нет буквы — нечего вести, стрелку забываем.
+    if(!derzhimRuchki.size){ derzhim.delete(k); continue; }
     const step=skorost/60;
     // Стрелка ведёт ВСЕ ручки, которые сейчас держат: две буквы — два
     // движения от одного пальца.
@@ -943,6 +948,8 @@ addEventListener('keydown',async e=>{
 addEventListener('keyup',e=>{
   derzhim.delete(e.code);
   derzhimRuchki.delete(e.code);
+  // Последняя буква отпущена — вести больше нечего, и держать стрелки незачем.
+  if(!derzhimRuchki.size) derzhim.clear();
   const п = PLOSCHADKI[e.code];
   if(п) ploschadki.delete(п);
 });
