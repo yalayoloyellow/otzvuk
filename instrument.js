@@ -538,7 +538,7 @@ function zameryay(){
   if(KADRY.length>PAMYAT_KADROV) KADRY.shift();
   // Разбор огибающей дорог и меняется медленно — раз в полсекунды.
   const t=performance.now();
-  if(t-ogib_kogda>500){ ogib_kogda=t; ogib_posl=zamer.ogibayushchaya(); }
+  if(t-ogib_kogda>500){ ogib_kogda=t; ogib_posl=zamer.krivye(); }
 }
 
 // МЕТКА. Человек слышит и жмёт; программа кладёт рядом двадцать секунд чисел
@@ -550,7 +550,7 @@ async function metka(kakaya){
     метка:kakaya, kogda:new Date().toISOString(),
     sostoyanie:sostoyanie(), semya:(report.build||{}).semya||null,
     imya:(report.build||{}).imya||null,
-    ogibayushchaya:ogib_posl||zamer.ogibayushchaya(),
+    krivye:ogib_posl||zamer.krivye(),
     kadry:KADRY.slice(-skolko),
   };
   try{
