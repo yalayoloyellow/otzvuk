@@ -12,6 +12,7 @@
 // ============================================================================
 import {vFonemy, vTseli} from './govor.js';
 import {Ekran, grani, CVETOV, STUPENEY, SLOEV, ZNAKI, POROG_GOR, KLASS_PANELI} from './ekran.js';
+import {Zamer} from './zamer.js';
 
 const $ = s => document.querySelector(s);
 const clamp = (v,a,b) => v<a?a:v>b?b:v;
@@ -204,6 +205,11 @@ const KOMANDY=[
   {kl:'Tab',       imya:'назад по сборкам', shift:1, deystvie:()=>nazad()},
   {kl:'Tab',       imya:'бросок костей', ctrl:1, deystvie:()=>brosok()},
   {kl:'Backquote', imya:'запись',      deystvie:()=>zapis()},
+  // МЕТКИ СЛУХА. Услышал плохое — ⌥x, услышал хорошее — ⌥z. Кладётся двадцать
+  // секунд чисел и полное состояние прибора. Нужны ОБЕ: по одним жалобам
+  // видно только то, чего не надо, а не то, чего надо.
+  {kl:'KeyX', imya:'метка: не нравится', alt:1, deystvie:()=>metka('ploho')},
+  {kl:'KeyZ', imya:'метка: нравится',    alt:1, deystvie:()=>metka('horosho')},
   // Стрелки ЛИСТАЮТ, а опасное сидит на сочетании с ctrl. Сохранение висело
   // на голой ↑ и стоило спокойствия: рука боялась листать. Мышь эту работу
   // тоже не взяла — тыкать в текстовую строку оказалось неудобно, — так что
@@ -504,6 +510,56 @@ function brosok(){
 
 
 // макро — то, что на панели; p — то, что уходит в движок
+// ЖИВОЙ ЗАМЕР. Тот же модуль, что и в стендах: если бы их было два, они
+// разошлись бы, и я сравнивал бы несравнимое.
+//
+// Смысл всей этой машинки один: научить машину слышать. Слуха у неё нет и не
+// будет, значит остаётся сложить рядом ПРИГОВОР ЧЕЛОВЕКА и ЧИСЛА той же
+// секунды — и накапливать эти пары, пока связь не станет видна.
+let slushatel=null, zamer=null, okno_zamera=null;
+const KADRY=[], PAMYAT_KADROV=8000;      // около пяти минут
+let ogib_posl=null, ogib_kogda=0;
+
+// Ходом замера правит ТАЙМЕР, а не кадры отрисовки: прибор играет и когда
+// окно ушло за другое, а requestAnimationFrame в спрятанном окне не идёт
+// вовсе — замер обрывался бы ровно тогда, когда человек слушает, отвернувшись.
+function zameryay(){
+  if(!slushatel||!zamer) return;
+  slushatel.getFloatTimeDomainData(okno_zamera);
+  // Внутреннее прибор знает сам — считать его тут нечем.
+  const o=report||{};
+  const k=zamer.kadr(okno_zamera, {
+    shina:+(o.shina||0).toFixed(4), pitch:+(o.pitch||0).toFixed(1),
+    duty:+(o.duty||0).toFixed(3), period:+(o.period||0).toFixed(4),
+    razbros:+(o.razbros||0).toFixed(3), lufs:+(o.lufs||0).toFixed(1),
+    lim:+(o.lim||0).toFixed(2), sryvy:o.sryvy||0,
+  });
+  KADRY.push(k);
+  if(KADRY.length>PAMYAT_KADROV) KADRY.shift();
+  // Разбор огибающей дорог и меняется медленно — раз в полсекунды.
+  const t=performance.now();
+  if(t-ogib_kogda>500){ ogib_kogda=t; ogib_posl=zamer.ogibayushchaya(); }
+}
+
+// МЕТКА. Человек слышит и жмёт; программа кладёт рядом двадцать секунд чисел
+// и полное состояние прибора. Отсюда и начнётся слух.
+async function metka(kakaya){
+  if(!KADRY.length) return;
+  const skolko=Math.min(KADRY.length, 460);       // около двадцати секунд
+  const telo={
+    метка:kakaya, kogda:new Date().toISOString(),
+    sostoyanie:sostoyanie(), semya:(report.build||{}).semya||null,
+    imya:(report.build||{}).imya||null,
+    ogibayushchaya:ogib_posl||zamer.ogibayushchaya(),
+    kadry:KADRY.slice(-skolko),
+  };
+  try{
+    const r=await fetch('/zamer',{method:'POST',body:JSON.stringify(telo)});
+    const d=await r.json();
+    skazhi('метка '+(d.file||'легла'));
+  }catch(e){ skazhi('метка не легла: '+e.message); }
+}
+
 const knobs={volt:.5, bak:.5, sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
              zhat:0, drive:.15, master:1, ist:0, ton:.35, temp:.5,
@@ -612,6 +668,16 @@ async function pusk(){
   node=new AudioWorkletNode(ctx,'chaos',{numberOfInputs:1,numberOfOutputs:1,
     outputChannelCount:[2]});
   node.connect(ctx.destination);
+  // ЖИВОЙ ЗАМЕР. Анализатор висит на выходе отводом и в звук не вмешивается:
+  // цепь на колонки идёт мимо него.
+  slushatel=ctx.createAnalyser();
+  slushatel.fftSize=2048; slushatel.smoothingTimeConstant=0;
+  node.connect(slushatel);
+  zamer=new Zamer(ctx.sampleRate, 2048, 1024);
+  okno_zamera=new Float32Array(2048);
+  setInterval(zameryay, 40);
+  window.dbg.zamer=()=>({kadrov:KADRY.length, posl:KADRY[KADRY.length-1]||null,
+                         ogib:ogib_posl});
   node.port.onmessage=e=>{
     const d=e.data;
     if(d && d.t==='rec'){ zapisPrishla(d); return; }

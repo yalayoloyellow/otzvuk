@@ -205,6 +205,29 @@ class Handler(SimpleHTTPRequestHandler):
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
 
+        # ЗАМЕР. Живой прибор шлёт сюда кадры описания звука вместе с
+        # меткой человека — «нравится» или «не нравится». Это единственный
+        # способ научить машину слышать: не описывать звук словами, а
+        # сложить рядом ЕГО приговор и ЧИСЛА той же секунды.
+        #
+        # Копим по одному файлу на метку: терять их нельзя, а склеивать в
+        # один общий значит рано или поздно его затереть.
+        if self.path.split("?")[0] == "/zamer":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                д = json.loads(self.rfile.read(n) or b"{}")
+                папка = os.path.join(STORE, "замеры")
+                os.makedirs(папка, exist_ok=True)
+                метка = "".join(c for c in str(д.get("метка") or "?")
+                                if c.isalnum() or c in "-_")[:24]
+                номер = len([f for f in os.listdir(папка) if f.endswith(".json")]) + 1
+                путь = os.path.join(папка, f"{номер:04d}-{метка}.json")
+                with open(путь, "w", encoding="utf-8") as f:
+                    json.dump(д, f, ensure_ascii=False)
+                return self._json(200, {"ok": True, "file": os.path.basename(путь)})
+            except (ValueError, OSError) as e:
+                return self._json(500, {"error": str(e)})
+
         if self.path.split("?")[0] == "/clap":
             from urllib.parse import parse_qs
             # WAV из браузера → эмбеддинг CLAP. Модель живёт в отдельном
