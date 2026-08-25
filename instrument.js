@@ -242,7 +242,7 @@ const KOMANDY=[
   {kl:'ArrowDown', imya:'удалить',     alt:1, deystvie:()=>udali()},
   // Гнездо там же: одно место, одна буква, вторая половина под shift.
   {kl:'KeyM',      imya:'микрофон',    alt:1, deystvie:()=>vklyuchiMikrofon()},
-  {kl:'KeyM',      imya:'вкладка',     alt:1, shift:1, deystvie:()=>vklyuchiVkladku()},
+  {kl:'KeyM',      imya:'система',     alt:1, shift:1, deystvie:()=>vklyuchiSistemu()},
 ];
 
 // ВЫБРАНО ПОКА НАЖАТО. Держишь букву — ручка твоя, отпустил — ничья. Ни
@@ -370,7 +370,7 @@ function skazhiTekst(){
 // независимых входа в один узел: комната плюс радио, голос поверх видео.
 // Переключателем это было ровно один заход и оказалось враньём про железо:
 // в гнездо втыкают что воткнётся, а смешивает их сумматор.
-const VHODY = {mik:null, tab:null};
+const VHODY = {mik:null, sist:null};
 function otsoedini(kakoy){
   const v = VHODY[kakoy]; if(!v) return;
   try{ v.uzel.disconnect(); }catch(e){}
@@ -386,7 +386,7 @@ function votkni(kakoy, potok){
   // нельзя: гнездо пустеет молча, а панель показывала бы «идёт».
   for(const d of potok.getAudioTracks())
     d.onended=()=>{ if(VHODY[kakoy] && VHODY[kakoy].potok===potok){
-      otsoedini(kakoy); skazhi(kakoy==='mik'?'микрофон отключился':'вкладка отключилась'); } };
+      otsoedini(kakoy); skazhi(kakoy==='mik'?'микрофон отключился':'система отключилась'); } };
 }
 const СЫРО={echoCancellation:false, noiseSuppression:false, autoGainControl:false};
 // СЫРОЙ СИГНАЛ ОБЯЗАТЕЛЕН. Петля замыкается через воздух, а эхоподавление,
@@ -400,34 +400,45 @@ async function vklyuchiMikrofon(){
     votkni('mik', potok); skazhi('микрофон подключён');
   }catch(e){ skazhi('микрофон не дали: '+e.name); }
 }
-// ЗВУК ВКЛАДКИ. Радио, видео, что угодно звучащее становится материалом.
+// ЗВУК ВСЕГО КОМПЬЮТЕРА.
 //
-// `suppressLocalAudioPlayback` — здесь главное: без него захваченное идёт и в
-// колонки, и в прибор, то есть слышно дважды — сырым и обработанным. С ним
-// исходный звук замолкает, и наружу выходит только то, что прошло схему.
+// ПОЧЕМУ НЕ ЧЕРЕЗ ЗАХВАТ ЭКРАНА, КАК БЫЛО. Прежде тут стоял getDisplayMedia с
+// systemAudio:'include', и назывался он «вкладкой» не случайно: на маке
+// браузер отдаёт звук ТОЛЬКО при выборе вкладки. Окно и экран отдают картинку
+// без звука — это ограничение самой системы, не наше. Флаг systemAudio
+// работает на Windows, у нас он молча ничего не значит.
 //
-// КАРТИНКУ ПРОСИМ, ХОТЯ ОНА НЕ НУЖНА: браузер не отдаёт захват без видео.
-// Отключить дорожку нельзя — с её концом кончается весь захват, — поэтому
-// зажимаем её до почтовой марки в кадр в секунду и никуда не показываем.
+// Единственный настоящий путь к звуку ВСЕГО компьютера — виртуальное
+// звуковое устройство: BlackHole (бесплатное, открытое) или Loopback. Ставится
+// один раз, дальше в «Настройке Audio MIDI» собирается устройство с несколькими
+// выходами — чтобы звук шёл и в колонки, и в него. После этого для браузера оно
+// обычный ВХОД, и прибор берёт его тем же кодом, что микрофон.
 //
-// `selfBrowserSurface:'exclude'` убирает из списка нашу же вкладку: выбрать
-// её значило бы замкнуть звук сам на себя мимо всякой схемы.
-async function vklyuchiVkladku(){
+// Оттого микрофон и система остаются двумя разными входами и работают разом:
+// это просто два устройства.
+const ВИРТУАЛЬНЫЕ = /blackhole|loopback|soundflower|virtual|многоканал|aggregate|совокуп/i;
+async function vklyuchiSistemu(){
   if(!ctx) return;
-  if(VHODY.tab){ otsoedini('tab'); skazhi('вкладка вынута'); return; }
-  if(!navigator.mediaDevices.getDisplayMedia){ skazhi('браузер не умеет захват'); return; }
+  if(VHODY.sist){ otsoedini('sist'); skazhi('система вынута'); return; }
   try{
-    const potok=await navigator.mediaDevices.getDisplayMedia({
-      video:{width:{max:160}, height:{max:120}, frameRate:{max:1}},
-      audio:{...СЫРО, suppressLocalAudioPlayback:true},
-      selfBrowserSurface:'exclude', systemAudio:'include'});
-    if(!potok.getAudioTracks().length){
-      for(const d of potok.getTracks()) d.stop();
-      skazhi('звука не дали — надо отметить «поделиться звуком»');
+    // Имена устройств браузер прячет, пока не дано разрешение хоть на один
+    // вход. Если имён нет — спрашиваем разрешение и смотрим снова.
+    let список=await navigator.mediaDevices.enumerateDevices();
+    if(!список.some(d=>d.kind==='audioinput' && d.label)){
+      const п=await navigator.mediaDevices.getUserMedia({audio:true});
+      for(const d of п.getTracks()) d.stop();
+      список=await navigator.mediaDevices.enumerateDevices();
+    }
+    const устр=список.filter(d=>d.kind==='audioinput' && ВИРТУАЛЬНЫЕ.test(d.label));
+    if(!устр.length){
+      skazhi('нет виртуального устройства — поставь BlackHole');
       return;
     }
-    votkni('tab', potok); skazhi('вкладка подключена');
-  }catch(e){ skazhi('вкладку не дали: '+e.name); }
+    const potok=await navigator.mediaDevices.getUserMedia({
+      audio:{deviceId:{exact:устр[0].deviceId}, ...СЫРО}});
+    votkni('sist', potok);
+    skazhi('система: '+устр[0].label.slice(0,24));
+  }catch(e){ skazhi('систему не дали: '+e.name); }
 }
 
 // ---- ЗАПИСЬ ----------------------------------------------------------------
@@ -1749,9 +1760,9 @@ function ruchki(){
   const ist=(k,imya,kl)=>`<span class="${VHODY[k]?'s4':'s1'}">${imya}</span>`+
                          `<span class="s1"> ${kl}</span>`;
   stroki.push(chelo('INPUT','',zg)+shkalaMesto(mk,shk,2)+
-    `<span class="s3"> ${idet?'идёт':(VHODY.mik||VHODY.tab)?'тихо':'нет'}</span>  `+
+    `<span class="s3"> ${idet?'идёт':(VHODY.mik||VHODY.sist)?'тихо':'нет'}</span>  `+
     ist('mik','мик','\u2325m')+`<span class="s1"> · </span>`+
-    ist('tab','вкладка','\u2325\u21e7m'));
+    ist('sist','система','\u2325\u21e7m'));
   stroki.push('');
 
   for(const [z,g] of GRUPPY){
