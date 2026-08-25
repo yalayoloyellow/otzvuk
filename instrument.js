@@ -427,14 +427,24 @@ const ВИРТУАЛЬНЫЕ = /blackhole|loopback|soundflower|virtual|мног�
 //
 // Лечится честно: прибор явно назначает СЕБЕ выходом физические колонки. Тогда
 // система пусть льёт в BlackHole всё что угодно — сам прибор туда не попадает.
+// ВМЕШИВАЕМСЯ ТОЛЬКО КОГДА НАДО. Если системный выход обычный — не трогаем
+// ничего: человек мог воткнуть наушники или внешнюю карту, и уводить его звук
+// на встроенные колонки было бы наглостью. А вот если выход виртуальный, у
+// прибора нет выбора: туда его пускать нельзя.
 async function svoyVyhod(){
   if(!ctx || !ctx.setSinkId) return false;
   try{
     const список=await navigator.mediaDevices.enumerateDevices();
-    const выходы=список.filter(d=>d.kind==='audiooutput' && !ВИРТУАЛЬНЫЕ.test(d.label));
-    // Встроенные колонки предпочтительнее прочего: наушники тоже подойдут, а
-    // вот второе виртуальное устройство — нет.
-    const цель=выходы.find(d=>/динамик|speaker|встроен|built/i.test(d.label)) || выходы[0];
+    const выходы=список.filter(d=>d.kind==='audiooutput');
+    const поумолч=выходы.find(d=>d.deviceId==='default');
+    // Имена скрыты до разрешения — тогда судить не по чему, и лучше не лезть.
+    if(!выходы.some(d=>d.label)) return false;
+    if(поумолч && !ВИРТУАЛЬНЫЕ.test(поумолч.label)) return false;
+    const живые=выходы.filter(d=>d.deviceId!=='default' && d.deviceId!=='communications'
+                              && !ВИРТУАЛЬНЫЕ.test(d.label));
+    const цель=живые.find(d=>/наушник|headphone/i.test(d.label))
+            || живые.find(d=>/динамик|speaker|встроен|built/i.test(d.label))
+            || живые[0];
     if(!цель) return false;
     await ctx.setSinkId(цель.deviceId);
     return цель.label;
@@ -804,6 +814,11 @@ async function pusk(){
     report=d; window.dbg.otchetov=(window.dbg.otchetov||0)+1; window.dbg.o=report;
   };
   await ctx.resume();
+  // ЕСЛИ СИСТЕМНЫЙ ВЫХОД ВИРТУАЛЬНЫЙ, прибор обязан уйти с него СРАЗУ, а не
+  // при подключении входа: иначе он с первой секунды играет сам себе в петлю,
+  // и человек не слышит ничего, даже не тронув вход.
+  const свой=await svoyVyhod();
+  if(свой) skazhi('выход в '+свой.slice(0,22));
   idet=true;
   // Сборка и ручки уходят одним сообщением — состояние прибора целиком.
   shli();
@@ -1685,6 +1700,24 @@ function ruchki(){
             : v<.62?r.konci[1] : v<.88?r.konci[1]+'+'+r.konci[2] : r.konci[2])
           : (v<.15?r.konci[0] : v>.85?r.konci[1] : r.konci.join('+')))
       : '';
+    // ВЗЯТАЯ РУЧКА СВЕТИТСЯ, ПОКА ДЕРЖИШЬ. Прежде тут была только вспышка —
+    // короткий всплеск на несколько кадров, — и она врала про устройство:
+    // «выбрано пока нажато» это СОСТОЯНИЕ, а мигание показывает событие.
+    // Держишь букву — строка горит; отпустил — погасла. Панель говорит ровно
+    // то, что делает рука.
+    //
+    // Вспышка при этом остаётся: ею отмечается то, что случилось само —
+    // пришёл пресет, сменилась сборка, — и туда рука не прикасалась.
+    const vzyata = derzhimRuchki.has(r.kl);
+    // У ВЗЯТОЙ ЯРКИЕ ИМЯ И КЛАВИША, А ШКАЛА ОСТАЁТСЯ ЖИВОЙ. Вспышка красила
+    // всю строку разом, шкалу в том числе, — и та превращалась в ровную
+    // полосу знаков. На мгновение это незаметно, а как состояние — потеря:
+    // ровно у той ручки, которую держишь, пропадала комета, то есть само
+    // показание. Горит подпись, шкала работает.
+    if(vzyata)
+      return `<span class="${zn.yark}">${vpole(r.imya,POLE_IMENI)}`+
+             `${vpole(r.podpis,POLE_KLAV)}</span>`+shkalaMesto(v,shk,zn.n)+
+             `<span class="${zn.yark}">${st}</span>`;
     if(r===poslednyaya && vspyshka>0)
       return `<span class="${zn.yark}">${vpole(r.imya,POLE_IMENI)}`+
              `${vpole(r.podpis,POLE_KLAV)}${shkala(v,shk)}${st}</span>`;
