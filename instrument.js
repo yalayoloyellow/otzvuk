@@ -129,7 +129,7 @@ const KNOBS=[
   // переключателя между ними, поэтому концы подписаны словами: на лампу
   // накала или прямо в шину питания.
   {k:'kuda', kl:'Quote', imya:'ROUTE',  zona:'golos', gr:'vmesh',
-   konci:['lamp','rail']},
+   konci:['lamp','nodes','rail']},
 
   // ---- ПОСТ ----
   {k:'zhat', kl:'KeyN', imya:'COMP',   zona:'post', gr:'post'},
@@ -1636,7 +1636,12 @@ function ruchki(){
     const st = r.stupeni
       ? ' '+r.stupeni[clamp(Math.round(v*(r.stupeni.length-1)),0,r.stupeni.length-1)]
       : r.konci
-      ? ' '+(v<.15?r.konci[0] : v>.85?r.konci[1] : r.konci.join('+'))
+      // Три точки на ходу вместо двух: подписываем ближайшую, а между ними —
+      // обе через плюс, чтобы было видно, что сигнал идёт в оба места разом.
+      ? ' '+(r.konci.length>2
+          ? (v<.12?r.konci[0] : v<.38?r.konci[0]+'+'+r.konci[1]
+            : v<.62?r.konci[1] : v<.88?r.konci[1]+'+'+r.konci[2] : r.konci[2])
+          : (v<.15?r.konci[0] : v>.85?r.konci[1] : r.konci.join('+')))
       : '';
     if(r===poslednyaya && vspyshka>0)
       return `<span class="${zn.yark}">${vpole(r.imya,POLE_IMENI)}`+
