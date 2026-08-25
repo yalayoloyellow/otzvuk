@@ -2482,7 +2482,7 @@ class Chaos extends AudioWorkletProcessor {
                // голос: глубина, точка ввода, слышен ли он сам по себе
                golos:0, kuda:0, naruzhu:0,
                // говорилка: чем воткнуто в гнездо, высота, скорость, повтор
-               ist:0, ton:.35, temp:.5, povtor:0, trakt:.3,
+               ton:.35, temp:.5, povtor:0, trakt:.3,
                // ПОСТ: не детали прибора, а слой поверх него.
                mix:0, zhat:0, drive:.15, master:1 };
     // Куда движок ЕДЕТ (панель) и где он СЕЙЧАС (схема) — две разные вещи.
@@ -2741,8 +2741,15 @@ class Chaos extends AudioWorkletProcessor {
       // круг замыкает воздух, и говорилке в нём делать нечего.
       const rech = this.govor.step(this.p.ton, this.p.temp, this.p.povtor > .5,
                                    this.p.trakt, this.pr.swing.period);
-      const dg = clamp(this.p.ist, 0, 1);
-      const vhod = mik * (1 - dg) + rech * dg;
+      // ТРИ ИСТОЧНИКА ЖИВУТ ПО ОДНОМУ ПРАВИЛУ: воткнут — звучит. Микрофон и
+      // система втыкаются клавишами, говорилка — набранным текстом; молчит
+      // она сама, пока текста нет. Ручки-переключателя между ними больше нет.
+      //
+      // Она называлась SOURCE и была плавным переходом «гнездо ↔ говорилка».
+      // Читалась она как громкость входа, а при неиспользуемой говорилке ею и
+      // была — крутишь вправо, и вход просто пропадает. Ручка, которая делает
+      // осмысленное лишь в одном случае из двух, честнее отсутствует.
+      const vhod = mik + rech;
       for (let k = 0; k < OVER; k++){
         const gls = this.golos.step(vhod, this.p.golos);
         y = this.svod.step(this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib,

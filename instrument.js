@@ -102,13 +102,6 @@ const KNOBS=[
   // ---- ГОЛОС · ИСТОЧНИК ----
   // SOURCE — не переключатель, а потенциометр между микрофоном и говорилкой:
   // на середине слышны оба.
-  // SOURCE — ЧТО ЗВУЧИТ НА ВХОДЕ, а XMOD — насколько глубоко оно лезет в
-  // схему. Две разные вещи, но на панели они читались одинаково: «источник» и
-  // «перекрёстная модуляция» обе звучат как «сколько источника». Концы теперь
-  // подписаны словами, как у ROUTE, и спутать нечем: jack это всё, что
-  // воткнуто в гнездо (микрофон, система, оба разом), talk — говорилка.
-  {k:'ist', kl:'KeyH', imya:'SOURCE', zona:'golos', gr:'ist',
-   konci:['jack','talk']},
   {k:'ton', kl:'KeyK', imya:'PITCH',  zona:'golos', gr:'ist'},
   // GENDER — длина тракта. Слово из вокодеров и формантных сдвигателей,
   // понятное без объяснения.
@@ -356,8 +349,8 @@ function skazhiTekst(){
   if(!stroka.tekst.trim()){ skazhi('говорилка молчит'); return; }
   // Сказанное некуда деть, если гнездо не переключено на говорилку и её
   // никуда не подмешивают. Молчать в такой момент было бы издевательством.
+  // Сказанное некуда деть, если его никуда не подмешивают.
   const podskazka=[];
-  if(knobs.ist < .02){ knobs.ist = 1; podskazka.push('SOURCE → говорилка'); }
   if(knobs.golos < .02 && knobs.naruzhu < .02) podskazka.push('подними XMOD или DRY');
   send();
   skazhi(`${f.filter(x=>x.f!=='pauza').length} фонем`+
@@ -677,7 +670,7 @@ async function metka(kakaya){
 
 const knobs={volt:.5, bak:.5, sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
-             zhat:0, drive:.15, master:1, ist:0, ton:.35, temp:.5,
+             zhat:0, drive:.15, master:1, ton:.35, temp:.5,
              trakt:.3, naruzhu:0, kuda:0};
 const switches={pit:0, set:0, gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0,
                 mix:0, povtor:0, sboy:0};
