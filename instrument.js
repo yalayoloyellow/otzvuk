@@ -205,11 +205,11 @@ const KOMANDY=[
   {kl:'Tab',       imya:'назад по сборкам', shift:1, deystvie:()=>nazad()},
   {kl:'Tab',       imya:'бросок костей', ctrl:1, deystvie:()=>brosok()},
   {kl:'Backquote', imya:'запись',      deystvie:()=>zapis()},
-  // МЕТКИ СЛУХА. Услышал плохое — ⌥x, услышал хорошее — ⌥z. Кладётся двадцать
-  // секунд чисел и полное состояние прибора. Нужны ОБЕ: по одним жалобам
-  // видно только то, чего не надо, а не то, чего надо.
-  {kl:'KeyX', imya:'метка: не нравится', alt:1, deystvie:()=>metka('ploho')},
-  {kl:'KeyZ', imya:'метка: нравится',    alt:1, deystvie:()=>metka('horosho')},
+  // ПОМЕТИТЬ ЯВЛЕНИЕ. Открывает строку, человек называет услышанное, и
+  // двадцать секунд чисел ложатся под этим именем. Одно и то же имя можно
+  // ставить сколько угодно раз — из повторов и выводится эталон.
+  {kl:'KeyP', imya:'пометить явление', alt:1, deystvie:()=>{
+    stroka.aktivna=true; stroka.pometka=true; stroka.tekst=''; }},
   // Стрелки ЛИСТАЮТ, а опасное сидит на сочетании с ctrl. Сохранение висело
   // на голой ↑ и стоило спокойствия: рука боялась листать. Мышь эту работу
   // тоже не взяла — тыкать в текстовую строку оказалось неудобно, — так что
@@ -318,7 +318,7 @@ function primenit(p){
 //
 // Разбор текста в фонемы и цели артикуляции живёт в govor.js: это работа со
 // ЯЗЫКОМ, и в ядре ей делать нечего. Туда уходит уже готовая цепочка целей.
-const stroka = {aktivna:false, tekst:''};
+const stroka = {aktivna:false, tekst:'', pometka:false};
 function skazhiTekst(){
   if(!node) return;
   const f = vFonemy(stroka.tekst);
@@ -541,13 +541,20 @@ function zameryay(){
   if(t-ogib_kogda>500){ ogib_kogda=t; ogib_posl=zamer.krivye(); }
 }
 
-// МЕТКА. Человек слышит и жмёт; программа кладёт рядом двадцать секунд чисел
-// и полное состояние прибора. Отсюда и начнётся слух.
+// ПОМЕТКА ЯВЛЕНИЯ. Не «нравится» и не «не нравится»: вкус тут ни при чём.
+// Человек называет то, что услышал — «захлёбывание», «ровное качание»,
+// «треск от удара», — и программа кладёт рядом двадцать секунд чисел и
+// полное состояние прибора.
+//
+// Из накопленного выводятся ЭТАЛОНЫ: у явления оказывается своя подпись в
+// величинах, и дальше его можно опознавать счётом, а не спором. Приговор
+// «хорошо или плохо» такой подписи не даёт — он говорит о человеке, а
+// явление говорит о приборе.
 async function metka(kakaya){
   if(!KADRY.length) return;
   const skolko=Math.min(KADRY.length, 460);       // около двадцати секунд
   const telo={
-    метка:kakaya, kogda:new Date().toISOString(),
+    явление:kakaya, источник:'окно', kogda:new Date().toISOString(),
     sostoyanie:sostoyanie(), semya:(report.build||{}).semya||null,
     imya:(report.build||{}).imya||null,
     krivye:ogib_posl||zamer.krivye(),
@@ -556,8 +563,8 @@ async function metka(kakaya){
   try{
     const r=await fetch('/zamer',{method:'POST',body:JSON.stringify(telo)});
     const d=await r.json();
-    skazhi('метка '+(d.file||'легла'));
-  }catch(e){ skazhi('метка не легла: '+e.message); }
+    skazhi('явление «'+kakaya+'» записано');
+  }catch(e){ skazhi('не записалось: '+e.message); }
 }
 
 const knobs={volt:.5, bak:.5, sway:.55, tone:.5, depth:.75, pulse:.2,
@@ -714,8 +721,17 @@ addEventListener('keydown',async e=>{
   // Пока строка открыта, клавиатура принадлежит ей целиком.
   if(stroka.aktivna){
     e.preventDefault();
-    if(c==='Enter'){ stroka.aktivna=false; skazhiTekst(); return; }
-    if(c==='Escape'){ stroka.aktivna=false; return; }
+    if(c==='Enter'){
+      stroka.aktivna=false;
+      // Строка служит двум делам, и путать их нельзя: обычно она говорит
+      // голосом, а в режиме пометки называет явление.
+      if(stroka.pometka){ stroka.pometka=false;
+                          const имя=stroka.tekst.trim(); stroka.tekst='';
+                          if(имя) metka(имя); else skazhi('без имени не помечаю');
+                          return; }
+      skazhiTekst(); return;
+    }
+    if(c==='Escape'){ stroka.aktivna=false; stroka.pometka=false; return; }
     if(c==='Backspace'){ stroka.tekst=stroka.tekst.slice(0,-1); return; }
     if(e.key && e.key.length===1 && !e.metaKey && !e.ctrlKey) stroka.tekst+=e.key;
     return;

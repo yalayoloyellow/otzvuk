@@ -349,6 +349,13 @@ function wav(x){
 const ПАПКА = process.env.OTZVUK_OUT || (homedir()+'/Documents/otzvuk/портреты');
 mkdirSync(ПАПКА, {recursive:true});
 
+// Чтение живой записи идёт мимо прогона: там нечего играть, там уже
+// измеренное.
+if (дов.includes('--запись')){
+  zapisVKartinku(дов[дов.indexOf('--запись')+1], имя === 'портрет' ? null : имя);
+  process.exit(0);
+}
+
 const A = прогон(прав), рA = разбери(A);
 let B = null, рB = null;
 if (естьПротив){ B = прогон({...прав, ...против}); рB = разбери(B); }
@@ -399,3 +406,137 @@ if (B){ свод(B, рB, Object.entries(против).map(([k,v])=>k+'='+v).join
     +B1.пикF[1].toFixed(2)+' Гц · верх '+B1.пикF[2].toFixed(2)+' Гц'); }
 console.log('\n  ' + ПАПКА+'/'+имя+'.png');
 console.log('  ' + ПАПКА+'/'+имя+'.wav' + (B?'  и  -против.wav':''));
+
+
+// ============================================================================
+//  ЧТЕНИЕ ЖИВОЙ ЗАПИСИ.
+//
+//  Единственный смысл всего этого — чтобы я понимал, что он слышит, и как
+//  устроено то, что мы правим. Не словарь явлений, не эталоны, не приговоры:
+//  он показывает пальцем на кусок звука, я смотрю на числа этого куска.
+//
+//  Записи кладёт окно по ⌥p: двадцать секунд кадров, обе кривые модуляции и
+//  полное состояние прибора. Отсчётов там нет — только описание, — поэтому
+//  спектрограмма рисуется по треть-октавным полосам, а не по корзинам.
+//
+//    node portret.mjs --запись <файл.json> [имя]
+// ============================================================================
+export function zapisVKartinku(путь, имя){
+  const з = JSON.parse(readFileSync(путь, 'utf8'));
+  const к = з.kadry || [];
+  if (!к.length){ console.log('в записи нет кадров'); return; }
+  const П = к[0].polosy ? к[0].polosy.length : 0;
+  const ВЫС = П*8;                       // полоса восемь точек высотой
+  const ВЫС_ЛИН = 78, ЗАЗ = 16;
+  const H = ВЫС + ЗАЗ + ВЫС_ЛИН + ЗАЗ + ВЫС_ЛИН + ЗАЗ + 130 + 30;
+  const h = холст(H);
+  // Растягиваем на всю ширину: кадров бывает и триста, и восемь тысяч, а
+  // картинка должна читаться одинаково.
+  const стб = СТОЛБ;
+  const проб = i => к[Math.min(к.length-1, Math.round(i*(к.length-1)/(стб-1)))];
+
+  // --- полосы во времени ---
+  let мкс = -999, мин = 999;
+  for (const кк of к) for (const v of (кк.polosy||[])){ if (v>мкс) мкс=v; if (v>-119 && v<мин) мин=v; }
+  const низ = Math.max(мин, мкс-72);
+  for (let x = 0; x < стб; x++){
+    const пл = проб(x).polosy || [];
+    for (let b = 0; b < П; b++){
+      const [r,g,bl] = жар((пл[b]-низ)/Math.max(1,мкс-низ));
+      for (let j = 0; j < 8; j++) точка(h, ЛЕВ+x, 8+(П-1-b)*8+j, r,g,bl);
+    }
+  }
+  for (const [b,подп] of [[0,'20'],[9,'160'],[18,'1k'],[27,'10k']])
+    надпись(h, подп, 6, 8+(П-1-b)*8+2, 95,105,120);
+
+  // --- громкость и высота ---
+  let y = 8 + ВЫС + ЗАЗ;
+  const линКр = (поле, цв, лог) => {
+    const зн = к.map(кк => кк[поле]).filter(v => typeof v === 'number' && isFinite(v));
+    if (!зн.length) return null;
+    let a = Math.min(...зн), b2 = Math.max(...зн);
+    if (b2-a < 1e-9) b2 = a+1;
+    let пред = null;
+    for (let x = 0; x < стб; x++){
+      const v = проб(x)[поле];
+      if (typeof v !== 'number' || !isFinite(v)) continue;
+      const yy = y + Math.round((1-(v-a)/(b2-a))*(ВЫС_ЛИН-1));
+      if (пред !== null) линия(h, ЛЕВ+x-1, пред, ЛЕВ+x, yy, ...цв);
+      пред = yy;
+    }
+    return [a, b2];
+  };
+  const гр = линКр('skz_dB', [120,220,140]);
+  const вы = линКр('hps_f0', [120,170,240]);
+  if (гр){ надпись(h, гр[1].toFixed(0), 6, y, 90,120,95);
+           надпись(h, гр[0].toFixed(0), 6, y+ВЫС_ЛИН-6, 90,120,95); }
+  if (вы){ надпись(h, вы[1].toFixed(0), ЛЕВ+СТОЛБ-30, y, 90,110,140);
+           надпись(h, вы[0].toFixed(0), ЛЕВ+СТОЛБ-30, y+ВЫС_ЛИН-6, 90,110,140); }
+
+  // --- шина и частота ячейки ---
+  y += ВЫС_ЛИН + ЗАЗ;
+  const ш = линКр('shina', [240,180,95]);
+  const пи = линКр('pitch', [240,110,110]);
+  if (ш){ надпись(h, ш[1].toFixed(2), 6, y, 130,110,80);
+          надпись(h, ш[0].toFixed(2), 6, y+ВЫС_ЛИН-6, 130,110,80); }
+
+  // --- кривые модуляции ---
+  y += ВЫС_ЛИН + ЗАЗ;
+  const кр = з.krivye || {};
+  for (const [к2, цв] of [[кр.medlennaya,[120,200,240]], [кр.bystraya,[160,240,150]]]){
+    if (!к2 || !к2.chastoty) continue;
+    const мк = Math.max(...к2.krivaya, 1e-9);
+    const кx = f => Math.round(Math.log(Math.max(.08,f)/.08)/Math.log(400/.08)*(СТОЛБ-1));
+    let пред = null;
+    for (let i = 0; i < к2.chastoty.length; i++){
+      const x = кx(к2.chastoty[i]);
+      const yy = y + Math.round((1-к2.krivaya[i]/мк)*129);
+      if (пред) линия(h, ЛЕВ+пред[0], пред[1], ЛЕВ+x, yy, ...цв);
+      пред = [x, yy];
+    }
+  }
+  {
+    const кx = f => Math.round(Math.log(f/.08)/Math.log(400/.08)*(СТОЛБ-1));
+    for (const f of [.1,1,10,100]){
+      const x = кx(f);
+      for (let j = 0; j < 130; j += 6) точка(h, ЛЕВ+x, y+j, 45,50,60);
+      надпись(h, f<1?'.1':''+f, ЛЕВ+x-3, y+133, 80,88,100);
+    }
+    надпись(h, 'Hz', 8, y+133, 80,88,100);
+  }
+  const вых = ПАПКА+'/'+(имя || путь.split('/').pop().replace('.json',''))+'.png';
+  writeFileSync(вых, png(h));
+
+  // --- числа ---
+  const мед = a => { const b2 = a.slice().sort((x,y2)=>x-y2); const n = b2.length;
+    return n ? (n%2 ? b2[(n-1)/2] : (b2[n/2-1]+b2[n/2])/2) : 0; };
+  const п = поле => мед(к.map(кк => кк[поле]).filter(v => typeof v === 'number' && isFinite(v)));
+  const ход = поле => { const зн = к.map(кк => кк[поле]).filter(v => typeof v === 'number' && isFinite(v));
+    return зн.length ? Math.max(...зн) - Math.min(...зн) : 0; };
+  console.log('ЗАПИСЬ · '+(з.явление || з.метка || '?')+' · '+(з.imya || '')+' · кадров '+к.length
+    +' · '+(к[к.length-1].t - к[0].t).toFixed(1)+' с');
+  console.log('  уровень      '+п('skz_dB').toFixed(1)+' дБ   (ход '+ход('skz_dB').toFixed(1)+')');
+  console.log('  пик к скз    '+п('pik_k_skz').toFixed(2));
+  console.log('  спектр       середина '+п('spektr_m1').toFixed(0)+' Гц, разброс '
+    +п('spektr_sigma').toFixed(0)+', скос '+п('spektr_skos').toFixed(2)
+    +', плоскостность '+п('ploskost').toFixed(4));
+  console.log('  высота       '+п('hps_f0').toFixed(1)+' Гц (ход '+ход('hps_f0').toFixed(0)
+    +'), острота оценки '+п('hps_ostrota').toFixed(1));
+  console.log('  прибор       шина '+п('shina').toFixed(3)+' (ход '+ход('shina').toFixed(3)
+    +'), ячейка '+п('pitch').toFixed(1)+' Гц, скважность '+п('duty').toFixed(3)
+    +', качели '+п('period').toFixed(3)+' с, срывов '+п('sryvy').toFixed(0));
+  for (const [чей, к2] of [['медленная', кр.medlennaya], ['быстрая', кр.bystraya]]){
+    if (!к2 || !к2.chastoty) continue;
+    let bi = 0;
+    for (let i = 1; i < к2.krivaya.length; i++) if (к2.krivaya[i] > к2.krivaya[bi]) bi = i;
+    const тчк = [];
+    for (let i = 0; i < к2.chastoty.length; i += 9)
+      тчк.push(к2.chastoty[i]+':'+к2.krivaya[i].toFixed(3));
+    console.log('  '+чей.padEnd(12)+'вершина '+к2.chastoty[bi]+' Гц глубиной '
+      +к2.krivaya[bi].toFixed(3)+'   шаг сетки '+к2.shag_Hz+' Гц');
+    console.log('               '+тчк.join('  '));
+  }
+  console.log('');
+  console.log('  '+вых);
+}
+
