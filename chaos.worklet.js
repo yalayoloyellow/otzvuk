@@ -170,6 +170,7 @@ class Build {
     // модель не изобразит, для него узлы надо СЛИВАТЬ в один, а не связывать.
     this.Rmetall = m(1.5e3, 6e3);      // Ом, окисел и мелкое пятно контакта
     this.Rruchka = m(30e6, 90e6);      // Ом, изолированная ручка
+    this.Rkorpus = m(18e3, 55e3);      // Ом, прижатая ладонь о корпус
     // БЛОК ПИТАНИЯ ИЗ РОЗЕТКИ — не «то же самое, только не садится». Он
     // отличается двумя вещами разом, и обе слышны:
     //   · держит шину намертво (доли ома против единиц и десятков у кроны) —
@@ -964,14 +965,14 @@ class Device {
     this.tokBylo = 0;
     this.Rzar = new Float64Array(3);        // щуп: живое сопротивление цепи заряда
     // КОНТАКТЫ ПЛОЩАДОК: своё сопротивление у каждой, своя влажность.
-    this.mokro = new Float64Array(9);       // 0 сухо, 1 вспотело
-    this.drozh = new Float64Array(9);       // своя дрожь контакта, спектр 1/f
+    this.mokro = new Float64Array(14);       // 0 сухо, 1 вспотело
+    this.drozh = new Float64Array(14);       // своя дрожь контакта, спектр 1/f
     this.xBylo = 0;                         // суммирующая точка прошлого отсчёта
     this.teloBylo = 0;                      // напряжение тела прошлого отсчёта
     this.nakal = 0;                         // напряжение цепи накала прошлого отсчёта
-    this.Rkozha = new Float64Array(9);      // живое сопротивление каждого контакта
-    this.Rtelo = new Float64Array(9);       // до тела БЕЗ этой же точки
-    this.Vtelo_ = new Float64Array(9);      // напряжение тела БЕЗ этой же точки
+    this.Rkozha = new Float64Array(14);      // живое сопротивление каждого контакта
+    this.Rtelo = new Float64Array(14);       // до тела БЕЗ этой же точки
+    this.Vtelo_ = new Float64Array(14);      // напряжение тела БЕЗ этой же точки
     this.din = new Speaker(this.sb);
     this.setka = new Setka();
 
@@ -1017,8 +1018,16 @@ class Device {
       // Путь тела на общий провод: ладонь на корпусе — или изолированная
       // ручка отвёртки, а это в полсотни раз больше. Оттого под металлом
       // одна площадка и не делает ничего: предмету некуда деть ток.
-      let Gt = 1 / (metall ? this.sb.Rruchka : this.sb.Rladon), It = 0;
-      for (let i = 1; i <= 8; i++){
+      // ЛАДОНЬ НА КОРПУСЕ — пробел. Тело и так слегка держится за общий
+      // провод (стоишь рядом, касаешься стола), но ПРИЖАТАЯ ладонь это
+      // совсем другой контакт: площадь в сотню раз больше. Оттого при
+      // зажатом пробеле каждое касание бьёт сильнее — телу есть куда деть
+      // ток. Под металлом ладони нет вовсе: держат за изолированную ручку.
+      const лад = pyat[13] || 0;
+      const Rзем = metall ? this.sb.Rruchka
+                 : this.sb.Rladon / (1 + лад * (this.sb.Rladon/this.sb.Rkorpus - 1));
+      let Gt = 1 / Rзем, It = 0;
+      for (let i = 1; i <= 12; i++){
         const zh = pyat[i]; if (zh < .002) { this.mokro[i] *= .9997; continue; }
         естьРука = true;
         // КОЖА ПОТЕЕТ, ПОКА ДЕРЖИШЬ. За секунду-другую сопротивление сползает
@@ -1057,7 +1066,7 @@ class Device {
       // БЕЗ НЕЁ САМОЙ, и сопротивление до него складывается последовательно
       // со своим переходным. Тогда одна точка честно не делает ничего (ей не
       // с чем меняться током), а две сваривает — что и есть суть.
-      for (let i = 1; i <= 8; i++){
+      for (let i = 1; i <= 12; i++){
         const g = this.Rkozha[i] ? 1/this.Rkozha[i] : 0;
         if (!g){ this.Rtelo[i] = 0; this.Vtelo_[i] = 0; continue; }
         const Gпр = Gt - g;
@@ -1086,7 +1095,7 @@ class Device {
     // Палец там меняет не тембр, а ВЕСЬ РИСУНОК: дыхание оседает или
     // подвисает, пока держишь.
     const u = this.swing.step(p.sway, p.drift, p.hit, Vdd, this.temp,
-      (естьРука && pyat[5] > .002) ? this.Rtelo[5] : 0, this.Vtelo_[5]);
+      (естьРука && pyat[7] > .002) ? this.Rtelo[7] : 0, this.Vtelo_[7]);
 
     // ХАРАКТЕР — подстроечник, задающий, в каких пределах ходит фоторезистор.
     // Нижняя точка держится в области треска на всём ходу: иначе рисунок
@@ -1168,8 +1177,8 @@ class Device {
     // рисунок разом, а не свой генератор. Палец делит цепь накала своим
     // сопротивлением, лампа тускнеет, все три узла уходят вверх по
     // сопротивлению вместе.
-    if (естьРука && pyat[6] > .002){
-      const Rp = this.Rkozha[6];
+    if (естьРука && pyat[10] > .002){
+      const Rp = this.Rkozha[10];
       yarkost *= Rp / (Rp + sb.Rnakal);
     }
     // Напряжение на цепи накала — для узла «тело» следующего отсчёта.
@@ -1479,11 +1488,16 @@ class Device {
   // К ЧЕМУ ПРИПАЯНА КАЖДАЯ ПЛОЩАДКА. Список один на весь файл: держать его
   // в двух местах значит рано или поздно развести их.
   точка(i, Vdd){
-    return i <= 3 ? this.cells[i - 1].V
-         : i === 4 ? this.cells[0].vyh
-         : i === 5 ? this.swing.medl.V
-         : i === 6 ? this.nakal
-         : i === 7 ? Vdd : 0;
+    switch (i){
+      case 1: case 2: case 3: return this.cells[i-1].V;      // узлы заряда
+      case 4: case 5: case 6: return this.cells[i-4].vyh;    // выходы
+      case 7:  return this.swing.medl.V;                     // узел качелей
+      case 8:  return this.swing.gul.V;                      // узел гула
+      case 9:  return this.xBylo;                            // суммирующая точка
+      case 10: return this.nakal;                            // накал лампы
+      case 11: return Vdd;                                   // шина
+      default: return 0;                                     // общий провод
+    }
   }
 
   snimok(){
@@ -2364,7 +2378,9 @@ class Chaos extends AudioWorkletProcessor {
     this.rec = false;
     // Полторы секунды с запасом: отдаём каждую секунду, блок не длиннее 128.
     this.recBuf = new Float32Array(SR * 2); this.recN = 0;
-    this.pl = new Float32Array(9);
+    // ДВЕНАДЦАТЬ ПЛОЩАДОК И ЛАДОНЬ. Цифровой ряд отдан им целиком: 1…0,
+    // минус, равно. Тринадцатым идёт пробел — ладонь на корпусе.
+    this.pl = new Float32Array(14);
     this.utechka = 0; this.navodka = 0;
     this.pik = 0; this.report = 0; this.okno = 0; this.sryvy = 0;
     this.osc = new Float32Array(256); this.oscDo = new Float32Array(256);
@@ -2411,7 +2427,7 @@ class Chaos extends AudioWorkletProcessor {
           }
         }
       }
-      else if (d.t === 'pads'){ for (let i = 0; i < 9; i++) this.pl[i] = d.v[i] || 0; }
+      else if (d.t === 'pads'){ for (let i = 0; i < 14; i++) this.pl[i] = d.v[i] || 0; }
       else if (d.t === 'seed') this.smena(d.v, d.p);
       // Разбор текста в фонемы и цели артикуляции делает панель: это работа
       // со ЯЗЫКОМ, и в ядре ей делать нечего. Сюда приходит готовая цепочка.
@@ -2506,7 +2522,7 @@ class Chaos extends AudioWorkletProcessor {
     // номиналом. Поэтому здесь одна величина — она расходится по узлам сама:
     // подгружает цепь заряда, сажает шину, добавляет наводку от руки.
     let u = 0;
-    for (let i = 1; i <= 8; i++) u += this.pl[i] * (.10 + i * .055);
+    for (let i = 1; i <= 12; i++) u += this.pl[i] * (.10 + i * .037);
     this.utechka += (u - this.utechka) * .01;
     this.navodka = this.navodka * .9993 + (Math.random() - .5) * this.utechka * .02;
 

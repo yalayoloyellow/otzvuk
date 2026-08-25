@@ -77,36 +77,36 @@ const KNOBS=[
   // ---- ПИТАНИЕ ----
   // VOLTS — напряжение питания. Середина хода это номинал сборки: вниз
   // голодание до срыва генерации, вверх перекорм.
-  {k:'volt',   m:['KeyL','Semicolon'], imya:'VOLTS', gr:'pit'},
+  {k:'volt', kl:'KeyZ', imya:'VOLTS', gr:'pit'},
   // TANK — ёмкость накопителя, то есть сколько прибор догорает после снятия
   // питания. Не размер батареи: та решает, сколько он проработает до посадки.
-  {k:'bak',    m:['KeyL','Semicolon'], imya:'TANK',  gr:'pit', shift:1},
+  {k:'bak', kl:'KeyX', imya:'TANK',  gr:'pit'},
 
   // ---- СХЕМА · ГЕНЕРАТОРЫ ----
-  {k:'range',  m:['KeyQ','KeyW'], imya:'TUNE',   gr:'gen'},   // общий строй прибора
-  {k:'spread', m:['KeyE','KeyR'], imya:'DETUNE', gr:'gen'},   // расстройка трёх генераторов
-  {k:'pulse',  m:['KeyT','KeyY'], imya:'WIDTH',  gr:'gen'},   // ширина импульса
+  {k:'range', kl:'KeyQ', imya:'TUNE',   gr:'gen'},   // общий строй прибора
+  {k:'spread', kl:'KeyW', imya:'DETUNE', gr:'gen'},   // расстройка трёх генераторов
+  {k:'pulse', kl:'KeyE', imya:'WIDTH',  gr:'gen'},   // ширина импульса
   // ---- СХЕМА · КАЧЕЛИ ----
-  {k:'sway',   m:['KeyA','KeyS'], imya:'RATE',   gr:'kach'},  // период медленного генератора
-  {k:'depth',  m:['KeyD','KeyF'], imya:'DEPTH',  gr:'kach'},  // глубина модуляции
-  {k:'tone',   m:['KeyG','KeyH'], imya:'TONE',   gr:'kach'},  // рабочая точка фоторезистора
+  {k:'sway', kl:'KeyA', imya:'RATE',   gr:'kach'},  // период медленного генератора
+  {k:'depth', kl:'KeyS', imya:'DEPTH',  gr:'kach'},  // глубина модуляции
+  {k:'tone', kl:'KeyD', imya:'TONE',   gr:'kach'},  // рабочая точка фоторезистора
   // BIAS — смещение в цепи медленного узла. Оно и есть ток смещения, снятый
   // с отвода подстроечника, так что имя тут не приблизительное, а точное.
-  {k:'hit',    m:['KeyU','KeyI'], imya:'BIAS',   gr:'kach'},
+  {k:'hit', kl:'KeyF', imya:'BIAS',   gr:'kach'},
   // SLOP — разболтанность периода. Слово с панелей MPC и Elektron, и значит
   // там ровно это же.
-  {k:'drift',  m:['KeyJ','KeyK'], imya:'SLOP',   gr:'kach'},
+  {k:'drift', kl:'KeyG', imya:'SLOP',   gr:'kach'},
   // ---- СХЕМА · СЕТКА ----
-  {k:'gryzn',  m:['KeyO','KeyP'], imya:'SEQ',    gr:'setka'}, // глубина вмешательства счётчика
+  {k:'gryzn', kl:'KeyR', imya:'SEQ',    gr:'setka'}, // глубина вмешательства счётчика
 
   // ---- ГОЛОС · ИСТОЧНИК ----
   // SOURCE — не переключатель, а потенциометр между микрофоном и говорилкой:
   // на середине слышны оба.
-  {k:'ist',    m:['Comma','Period'],         imya:'SOURCE', zona:'golos', gr:'ist'},
-  {k:'ton',    m:['KeyN','KeyM'],            imya:'PITCH',  zona:'golos', gr:'ist'},
+  {k:'ist', kl:'KeyH', imya:'SOURCE', zona:'golos', gr:'ist'},
+  {k:'ton', kl:'KeyK', imya:'PITCH',  zona:'golos', gr:'ist'},
   // GENDER — длина тракта. Слово из вокодеров и формантных сдвигателей,
   // понятное без объяснения.
-  {k:'trakt',  m:['KeyN','KeyM'],            imya:'GENDER', zona:'golos', gr:'ist', shift:1},
+  {k:'trakt', kl:'KeyL', imya:'GENDER', zona:'golos', gr:'ist'},
   // GAP — размер тишины МЕЖДУ произнесениями, в тактах прибора. Не скорость
   // речи: та привязана к качелям намертво и ручкой не задаётся. Пять жёстких
   // ступеней, промежуточных положений нет — каждое нажатие это шаг.
@@ -114,7 +114,7 @@ const KNOBS=[
   // Стоит вторым слоем при SEQ, хотя принадлежит голосу: цифровой ряд отдан
   // площадкам целиком, а второй слой всегда родственник основной величины —
   // и SEQ, и GAP про ВРЕМЯ, один про шаг счётчика, другой про паузу речи.
-  {k:'temp',   m:['KeyO','KeyP'], imya:'GAP', zona:'golos', gr:'ist', shift:1,
+  {k:'temp', kl:'KeyT', imya:'GAP', zona:'golos', gr:'ist',
    stupeni:['×0.25','×0.5','×1','×2','×3']},
   // GAP — размер тишины МЕЖДУ произнесениями, в тактах прибора. Не скорость
   // речи: та привязана к качелям намертво и ручкой не задаётся. Пять жёстких
@@ -123,23 +123,23 @@ const KNOBS=[
   // ---- ГОЛОС · ВМЕШАТЕЛЬСТВО ----
   // XMOD — перекрёстная модуляция: сигнал из гнезда ведёт параметры схемы.
   // Это НЕ громкость: громкость источника наружу — DRY.
-  {k:'golos',  m:['Comma','Period'],         imya:'XMOD',   zona:'golos', gr:'vmesh', shift:1},
-  {k:'naruzhu',m:['ArrowLeft','ArrowRight'], imya:'DRY',    zona:'golos', gr:'vmesh'},
+  {k:'golos', kl:'KeyJ', imya:'XMOD',   zona:'golos', gr:'vmesh'},
+  {k:'naruzhu', kl:'Semicolon', imya:'DRY',    zona:'golos', gr:'vmesh'},
   // ROUTE — куда входит сигнал. Не выбор одного из двух, а положение
   // переключателя между ними, поэтому концы подписаны словами: на лампу
   // накала или прямо в шину питания.
-  {k:'kuda',   m:['ArrowLeft','ArrowRight'], imya:'ROUTE',  zona:'golos', gr:'vmesh', shift:1,
+  {k:'kuda', kl:'Quote', imya:'ROUTE',  zona:'golos', gr:'vmesh',
    konci:['lamp','rail']},
 
   // ---- ПОСТ ----
-  {k:'zhat',   m:['BracketLeft','BracketRight'], imya:'COMP',   zona:'post', gr:'post'},
+  {k:'zhat', kl:'KeyN', imya:'COMP',   zona:'post', gr:'post'},
   // DRIVE — усиление на входе ограничителя: сначала громче, потом плотнее,
   // потом стена. Потолок при этом стоит намертво, и пик не вылезет ни при
   // каком положении.
-  {k:'drive',  m:['Minus','Equal'],               imya:'DRIVE',  zona:'post', gr:'post'},
+  {k:'drive', kl:'KeyM', imya:'DRIVE',  zona:'post', gr:'post'},
   // MASTER только ОСЛАБЛЯЕТ и стоит после ограничителя: громкость без
   // характера. Больше единицы ему нельзя — иначе он пробил бы потолок.
-  {k:'master', m:['Minus','Equal'],               imya:'MASTER', zona:'post', gr:'post', shift:1},
+  {k:'master', kl:'Comma', imya:'MASTER', zona:'post', gr:'post'},
 ];
 
 // ---- ТУМБЛЕРЫ --------------------------------------------------------------
@@ -153,12 +153,12 @@ const SWITCHES=[
   // страницу. У всякой коробки он есть, и это не удобство, а орган:
   // выключение не обрывает звук, а разряжает накопитель, и прибор оседает по
   // громкости и по высоте разом.
-  {k:'pit',  kl:'KeyB', imya:'POWER', gr:'pit'},
+  {k:'pit', kl:'KeyZ', shift:1, imya:'POWER', gr:'pit'},
   // MAINS — питание из розетки вместо кроны. Блок держит шину намертво и
   // несёт пульсацию выпрямителя на ста герцах; крона мягкая, но чистая.
-  {k:'set',  kl:'KeyB', imya:'MAINS', gr:'pit', shift:1},
+  {k:'set', kl:'KeyX', shift:1, imya:'MAINS', gr:'pit'},
   // SAG — снятие развязки питания: шина проседает, и логика слышит сама себя.
-  {k:'dirt', kl:'KeyV', imya:'SAG',   gr:'pit', shift:1},
+  {k:'dirt', kl:'KeyC', shift:1, imya:'SAG',   gr:'pit'},
   // METAL — пробел меняет не схему, а ТО, ЧЕМ её трогают: вместо пальца
   // отвёртка. Те же восемь площадок, другая физика.
   //
@@ -178,23 +178,23 @@ const SWITCHES=[
   // СОСТОЯНИЕ тот же механизм не имеет огибающей вовсе: есть две ступеньки,
   // вход и выход, и между ними стоячий режим. Комическая полоса 0.3–3 Гц,
   // из которой мы столько выбирались, при этом пуста по устройству.
-  {k:'sboy', kl:'Space', imya:'METAL', gr:'pit'},
+  {k:'sboy', kl:'KeyV', shift:1, imya:'METAL', gr:'pit'},
   // ---- СХЕМА ----
-  {k:'gen1', kl:'KeyZ', imya:'OSC 1', gr:'gen'},
-  {k:'gen2', kl:'KeyX', imya:'OSC 2', gr:'gen'},
-  {k:'gen3', kl:'KeyC', imya:'OSC 3', gr:'gen'},
+  {k:'gen1', kl:'KeyQ', shift:1, imya:'OSC 1', gr:'gen'},
+  {k:'gen2', kl:'KeyW', shift:1, imya:'OSC 2', gr:'gen'},
+  {k:'gen3', kl:'KeyE', shift:1, imya:'OSC 3', gr:'gen'},
   // SYNC — захват генераторов друг другом через настоящий резистор.
-  {k:'link', kl:'KeyV', imya:'SYNC',  gr:'gen'},
+  {k:'link', kl:'KeyR', shift:1, imya:'SYNC',  gr:'gen'},
   // ---- ГОЛОС ----
   // Микрофон слышит динамик, круг замыкает комната. Три положения: без
   // петли, лёгкая окраска помещением, самовозбуждение. Двухпозиционные
   // показывают лампочку, а у трёхпозиционного лампочкой не обойтись — там
   // положения подписаны словами.
-  {k:'petlya', kl:'Slash', imya:'FEEDBACK', podpis:['off','room','howl'],
+  {k:'petlya', kl:'KeyH', shift:1, imya:'FEEDBACK', podpis:['off','room','howl'],
    pol:3, mikro:1, zona:'golos', gr:'petlya'},
-  {k:'povtor', kl:'Quote', imya:'LOOP', zona:'golos', gr:'petlya'},
+  {k:'povtor', kl:'KeyJ', shift:1, imya:'LOOP', zona:'golos', gr:'petlya'},
   // ---- ПОСТ ----
-  {k:'mix', kl:'Backslash', imya:'MORPH', zona:'post', gr:'post'},
+  {k:'mix', kl:'KeyN', shift:1, imya:'MORPH', zona:'post', gr:'post'},
 ];
 
 // Второй страницы нет и быть не должно. Всё, чего нет на панели, — это
@@ -225,8 +225,12 @@ const KOMANDY=[
   // на голой ↑ и стоило спокойствия: рука боялась листать. Мышь эту работу
   // тоже не взяла — тыкать в текстовую строку оказалось неудобно, — так что
   // всё вернулось на клавиатуру, но так, чтобы ненароком не нажалось.
-  {kl:'ArrowUp',   imya:'листать',     deystvie:()=>listay(-1)},
-  {kl:'ArrowDown', imya:'',            deystvie:()=>listay(1)},
+  // ЛИСТАНИЕ УШЛО ПОД ⌥ И ПО ГОРИЗОНТАЛИ. Голая стрелка листала пресеты — и
+  // по невнимательности уводила прибор совсем не туда, а рука на стрелках
+  // теперь живёт постоянно: ими крутят ручки. Вертикальные ⌥-стрелки заняты
+  // сохранением и удалением, их трогать нельзя, значит листание — боковое.
+  {kl:'ArrowLeft',  imya:'листать', alt:1, deystvie:()=>listay(-1)},
+  {kl:'ArrowRight', imya:'',       alt:1, deystvie:()=>listay(1)},
   // ALT ДЕРЖИТ ВСЁ РЕДКОЕ И ОПАСНОЕ, и это правило, а не случайность: в самом
   // приборе он не занят ничем, ни одна игровая клавиша его не использует, и
   // ненароком его не зажмёшь.
@@ -241,15 +245,24 @@ const KOMANDY=[
   {kl:'KeyM',      imya:'вкладка',     alt:1, shift:1, deystvie:()=>vklyuchiVkladku()},
 ];
 
-// Пары, на которых висит по две величины: Shift выбирает вторую.
-const DVUSLOYNYE = new Set(KNOBS.filter(r=>r.shift).flatMap(r=>r.m));
+// ВЫБРАНО ПОКА НАЖАТО. Держишь букву — ручка твоя, отпустил — ничья. Ни
+// режима, ни памяти: рука в каждый миг показывает, что трогает.
+//
+// Прежде ручка занимала ПАРУ соседних клавиш, и двадцать одна ручка требовала
+// сорока двух — а буквенный блок даёт тридцать четыре. Помещалось только за
+// счёт второго слоя на Shift; когда Shift ушёл под тумблеры, пары держать
+// стало нечем. Одна клавиша на ручку укладывается с запасом в девять клавиш.
+//
+// И следствие, которого на парах не было: держишь ДВЕ буквы — обе ручки едут
+// от одной стрелки. Связанный жест пальцами не сделать.
+const derzhimRuchki = new Map();      // клавиша → ручка, пока нажата
 const IMYAKL={Comma:',', Period:'.', Slash:'/', Semicolon:';', Quote:"'", Space:'␣',
              Backslash:'\\', Backquote:'`', Minus:'-', Equal:'=',
              BracketLeft:'[', BracketRight:']',
              ArrowLeft:'←', ArrowRight:'→', ArrowUp:'↑', ArrowDown:'↓',
              Digit9:'9', Digit0:'0', Enter:'⏎'};
-for(const r of KNOBS)
-  r.podpis=(r.shift?'⇧':'')+r.m.map(c=>IMYAKL[c] || c.replace('Key','').toLowerCase()).join('');
+const znakKl = c => IMYAKL[c] || c.replace('Key','').toLowerCase();
+for(const r of KNOBS) r.podpis = znakKl(r.kl);
 
 // ---- ЭКЗЕМПЛЯР ПРИБОРА -----------------------------------------------------
 // Номиналы живут в ядре, в классе Сборка: там из семени выводятся допуски
@@ -625,6 +638,10 @@ let poslednyaya=null, vspyshka=0, vspyshkat=null, poslednieVkladki='';
 // половиной октав давал треть октавы за нажатие — отсюда «жёсткие пороги»
 // и ощущение цифры вместо аналога. Теперь базовый шаг мелкий, а при
 // удержании клавиши он разгоняется, как крутилка под пальцем.
+// РАЗГОН ЖИВЁТ НА СТРЕЛКЕ, А НЕ НА БУКВЕ. Буква только говорит, ЧТО крутим;
+// сколько накрутилось — дело стрелки, и она же разгоняется под пальцем. Если
+// разгон оставить на букве, короткий тык по стрелке при долго зажатой букве
+// улетал бы на пол-оборота.
 const derzhim=new Map();
 setInterval(()=>{
   const t=performance.now();
@@ -642,10 +659,16 @@ setInterval(()=>{
     const razgon=Math.min(derzhitsya-.28, 2.2);
     const skorost=(.12+razgon*.8)*(s.skor||1);
     const step=skorost/60;
-    knobs[s.klyuch]=clamp((knobs[s.klyuch]||0)+s.znak*step,0,1);
-    poslednyaya=s.ruchka; vspyshka=4;
+    // Стрелка ведёт ВСЕ ручки, которые сейчас держат: две буквы — два
+    // движения от одного пальца.
+    for(const r of derzhimRuchki.values()){
+      if(r.stupeni) continue;                 // ступенчатую разгонять нечем
+      knobs[r.k]=clamp((knobs[r.k]||0)+s.znak*step,0,1);
+      poslednyaya=r;
+    }
+    vspyshka=4;
   }
-  if(derzhim.size) send();
+  if(derzhim.size && derzhimRuchki.size) send();
 },1000/60);
 
 // Всё положение панели одним объектом. Многопозиционный переключатель
@@ -671,14 +694,19 @@ function shli(){
 // Площадки: какие сейчас прижаты и насколько притёрся контакт.
 // Объявление потерялось при удалении блока пресетов — площадки молча не
 // работали, хотя обработчик клавиш срабатывал.
+// Какая клавиша какую площадку держит. Цифровой ряд по порядку, пробел
+// тринадцатым — ладонь.
+const PLOSCHADKI = {Digit1:1, Digit2:2, Digit3:3, Digit4:4, Digit5:5, Digit6:6,
+                    Digit7:7, Digit8:8, Digit9:9, Digit0:10, Minus:11, Equal:12,
+                    Space:13};
 const ploschadki=new Map();
-const provodimost=new Float32Array(9);
+const provodimost=new Float32Array(14);
 
 // Проводимость ведётся плавно: контакт не идеальный ключ, он притирается
 // под пальцем и отпускает с задержкой.
 setInterval(()=>{
   let menyalos=false;
-  for(let i=1;i<=8;i++){
+  for(let i=1;i<=13;i++){
     const s=ploschadki.get(i);
     const cel=s ? Math.min(1,.45+(performance.now()-s.nazhata)/1400) : 0;
     const skor=s ? .16 : .07;
@@ -797,67 +825,78 @@ addEventListener('keydown',async e=>{
   // Дальше alt не пускаем: иначе он крутил бы ручки и щёлкал тумблерами
   // заодно с командой.
   if(e.altKey) return;
-  // Тумблер щёлкает от одного нажатия и держится сам — это не ручка,
-  // которую надо вести.
-  for(const t of SWITCHES){
-    if(c!==t.kl) continue;
-    // Тумблеры, делящие клавишу с ручкой, живут на shift.
-    if(!!t.shift !== !!e.shiftKey) continue;
+
+  // ---- ТУМБЛЕРЫ: только с Shift ------------------------------------------
+  //
+  // ПОРЯДОК НАЖАТИЯ РЕШАЕТ, и это не тонкость. Одна клавиша несёт два смысла:
+  // сама по себе она берёт ручку, с Shift — щёлкает тумблером. Развести их
+  // можно только тем, что Shift был зажат ДО буквы: если буква уже держится,
+  // а Shift пришёл после — это грубый шаг стрелкой, а не переключение.
+  if(e.shiftKey && !derzhimRuchki.has(c)){
+    for(const t of SWITCHES){
+      if(c!==t.kl) continue;
+      e.preventDefault();
+      if(e.repeat) return;
+      const pol=t.pol||2;
+      switches[t.k]=(switches[t.k]+1)%pol;
+      if(t.mikro && switches[t.k]) vklyuchiMikrofon();
+      vspyshkat=t; vspyshka=8; send();
+      return;
+    }
+  }
+
+  // ---- РУЧКА: взять и держать ---------------------------------------------
+  for(const r of KNOBS){
+    if(c!==r.kl) continue;
     e.preventDefault();
     if(e.repeat) return;
-    const pol=t.pol||2;
-    switches[t.k]=(switches[t.k]+1)%pol;
-    if(t.mikro && switches[t.k]) vklyuchiMikrofon();
-    vspyshkat=t; vspyshka=8; send();
+    derzhimRuchki.set(c, r);
+    poslednyaya=r; vspyshka=6;
+    // Голосу нужен источник: без микрофона ручка глубины крутится впустую.
+    if(r.k==='golos' && knobs.golos>0) vklyuchiMikrofon();
+    if(r.k==='ist' && knobs.ist<.98) vklyuchiMikrofon();
     return;
   }
 
-  for(const r of KNOBS){
-    const znak = c===r.m[0] ? -1 : c===r.m[1] ? 1 : 0;
-    if(!znak) continue;
-    // На парах со вторым слоем Shift ВЫБИРАЕТ величину, а не ускоряет ход.
-    if(DVUSLOYNYE.has(c) && !!r.shift !== e.shiftKey) continue;
+  // ---- СТРЕЛКИ: ведут то, что держишь -------------------------------------
+  //
+  // БЕЗ ЗАЖАТОЙ БУКВЫ СТРЕЛКИ НЕ ДЕЛАЮТ НИЧЕГО. Это подстраховка: голая
+  // стрелка, листающая пресеты, по невнимательности уводит прибор совсем не
+  // туда. Всё навигационное живёт под ⌥ и разбирается выше.
+  const strelka = c==='ArrowLeft' ? -1 : c==='ArrowRight' ? 1 : 0;
+  if(strelka){
+    if(!derzhimRuchki.size) return;
     e.preventDefault();
-    const bylo=derzhim.get(c);
-    if(bylo){ bylo.zhivo=performance.now(); return; }     // автоповтор — подтверждение
-    {
-      const t=performance.now();
-      // Модификаторы ускоряют вращение: cmd/ctrl втрое, shift вдесятеро.
-      // Пальцы на приборе крутят ручку с разной скоростью, и это ровно то же.
+    if(e.repeat){ const s2=derzhim.get(c); if(s2) s2.zhivo=performance.now(); return; }
+    const тек=performance.now();
+    derzhim.set(c,{znak:strelka, nachalo:тек, zhivo:тек,
+                   skor: e.shiftKey ? 10 : (e.metaKey||e.ctrlKey) ? 3 : 1});
+    // Модификаторы ускоряют ход: shift вдесятеро, cmd/ctrl втрое.
+    const skor = e.shiftKey ? 10 : (e.metaKey||e.ctrlKey) ? 3 : 1;
+    for(const r of derzhimRuchki.values()){
       // У СТУПЕНЧАТОЙ ручки промежуточных положений не бывает: нажатие
       // переставляет её на соседнюю ступень, и удержание ничего не разгоняет.
-      // Это переключатель с фиксацией, а не подстроечник.
       if(r.stupeni){
         const n=r.stupeni.length-1;
         const bylo=clamp(Math.round((knobs[r.k]||0)*n),0,n);
-        knobs[r.k]=clamp(bylo+znak,0,n)/n;
-        poslednyaya=r; vspyshka=6; send();
-        return;
+        knobs[r.k]=clamp(bylo+strelka,0,n)/n;
+      } else {
+        knobs[r.k]=clamp((knobs[r.k]||0)+strelka*.02*skor,0,1);
       }
-      const skor = DVUSLOYNYE.has(c) ? ((e.metaKey||e.ctrlKey) ? 3 : 1)
-                 : e.shiftKey ? 10 : (e.metaKey||e.ctrlKey) ? 3 : 1;
-      derzhim.set(c,{klyuch:r.k,znak,ruchka:r,nachalo:t,zhivo:t,skor});
-      knobs[r.k]=clamp((knobs[r.k]||0)+znak*.02*skor,0,1);
-      // Голосу нужен источник: без микрофона ручка глубины крутится
-      // впустую, и это ровно то, на что легко не заметить.
-      if(r.k==='golos' && knobs.golos>0) vklyuchiMikrofon();
-      // Микрофон нужен, пока SOURCE не уведён целиком в говорилку.
-      if(r.k==='ist' && knobs.ist<.98) vklyuchiMikrofon();
-      poslednyaya=r; vspyshka=6; send();
+      poslednyaya=r;
     }
+    vspyshka=6; send();
     return;
   }
+
   // ---- ПЛОЩАДКИ -----------------------------------------------------------
-  // Не пресеты. У Срапы были контактные площадки: палец замыкал участок цепи
-  // через сопротивление своего тела, и звук менялся ровно пока ты держишь.
-  // Прохождения тока через нас тут не будет, поэтому переосмысляем: цифра
-  // замыкает СВОЙ участок схемы, и «сопротивление контакта» живое — оно
-  // падает, пока держишь (контакт разогревается и притирается), и медленно
-  // восстанавливается после. Держать можно сколько угодно площадок разом.
-  const cifra=c.startsWith('Digit') ? +c.slice(5) : 0;
-  if(cifra>=1 && cifra<=8){
+  // Цифровой ряд отдан им целиком, двенадцать точек, и пробел тринадцатой:
+  // ладонь на корпусе. Держать можно сколько угодно разом — тело одно, и
+  // каждая новая точка это новая перемычка через него.
+  const пл = PLOSCHADKI[c] || 0;
+  if(пл){
     e.preventDefault();
-    if(!ploschadki.has(cifra)) ploschadki.set(cifra,{nazhata:performance.now()});
+    if(!ploschadki.has(пл)) ploschadki.set(пл,{nazhata:performance.now()});
     return;
   }
 });
@@ -868,10 +907,12 @@ addEventListener('keydown',async e=>{
 // прижатой навсегда. Это и было залипание, на которое жаловался yala.
 addEventListener('keyup',e=>{
   derzhim.delete(e.code);
-  if(e.code.startsWith('Digit')) ploschadki.delete(+e.code.slice(5));
+  derzhimRuchki.delete(e.code);
+  const п = PLOSCHADKI[e.code];
+  if(п) ploschadki.delete(п);
 });
-addEventListener('blur',()=>{ derzhim.clear(); ploschadki.clear(); });
-addEventListener('visibilitychange',()=>{ derzhim.clear(); ploschadki.clear(); });
+addEventListener('blur',()=>{ derzhim.clear(); derzhimRuchki.clear(); ploschadki.clear(); });
+addEventListener('visibilitychange',()=>{ derzhim.clear(); derzhimRuchki.clear(); ploschadki.clear(); });
 
 // ---- ЗАПАС ПО ВРЕМЕНИ ------------------------------------------------------
 // Звуковой поток идёт по своим часам. Если воркл не уложился в срок, браузер
@@ -1876,7 +1917,7 @@ function legenda(){
     if(!k.imya && kom.length) kom[kom.length-1]=kom[kom.length-1].replace(' ', ' '+kl+' ');
     else kom.push(`${kl} ${k.imya}`);
   }
-  kom.push('1\u20138 площадки', '\u2318 втрое', '\u21e7 вдесятеро');
+  kom.push('1\u20130 - = площадки', '\u2423 ладонь', '\u2318 втрое', '\u21e7 вдесятеро');
   // ЦВЕТ ОБЪЯСНЯЕТ СЕБЯ САМ. Строка «красное — работа поста, синее — голос»
   // стояла тут потому, что зон не было; теперь зелёные, синие и красные
   // ручки лежат отдельными блоками, и подпись под картиной повторяет то,
