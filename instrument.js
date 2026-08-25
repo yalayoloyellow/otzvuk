@@ -528,12 +528,14 @@ function zameryay(){
   slushatel.getFloatTimeDomainData(okno_zamera);
   // Внутреннее прибор знает сам — считать его тут нечем.
   const o=report||{};
-  const k=zamer.kadr(okno_zamera, {
-    shina:+(o.shina||0).toFixed(4), pitch:+(o.pitch||0).toFixed(1),
-    duty:+(o.duty||0).toFixed(3), period:+(o.period||0).toFixed(4),
-    razbros:+(o.razbros||0).toFixed(3), lufs:+(o.lufs||0).toFixed(1),
-    lim:+(o.lim||0).toFixed(2), sryvy:o.sryvy||0,
-  });
+  // ЩУП ИДЁТ В КАДР ЦЕЛИКОМ. Раньше сюда попадало восемь чисел из сотни, и
+  // по ним нельзя было понять, ПОЧЕМУ звук такой: видно было следствие и не
+  // видно причины. Теперь в кадре всё течение тока по ветвям, все живые
+  // сопротивления, цели, пороги и запас до срыва.
+  const k=zamer.kadr(okno_zamera, Object.assign({
+    lufs:+(o.lufs||0).toFixed(1), lim:+(o.lim||0).toFixed(2),
+    sryvy:o.sryvy||0, razbros:+(o.razbros||0).toFixed(3),
+  }, o.snimok||{}));
   KADRY.push(k);
   if(KADRY.length>PAMYAT_KADROV) KADRY.shift();
   // Разбор огибающей дорог и меняется медленно — раз в полсекунды.
