@@ -417,6 +417,29 @@ async function vklyuchiMikrofon(){
 // Оттого микрофон и система остаются двумя разными входами и работают разом:
 // это просто два устройства.
 const ВИРТУАЛЬНЫЕ = /blackhole|loopback|soundflower|virtual|многоканал|aggregate|совокуп/i;
+// СВОЙ ВЫХОД — МИМО ВИРТУАЛЬНОГО УСТРОЙСТВА, И ЭТО ОБЯЗАТЕЛЬНО.
+//
+// Чтобы отдать прибору звук всего компьютера, системный выход ставят на
+// устройство с двумя выходами: колонки плюс BlackHole. Но прибор — тоже
+// программа на этом компьютере, и его собственный звук пойдёт туда же, а
+// оттуда обратно во вход. Круг замкнётся не через воздух, как у микрофона, а
+// напрямую по проводу, и завоет он мгновенно.
+//
+// Лечится честно: прибор явно назначает СЕБЕ выходом физические колонки. Тогда
+// система пусть льёт в BlackHole всё что угодно — сам прибор туда не попадает.
+async function svoyVyhod(){
+  if(!ctx || !ctx.setSinkId) return false;
+  try{
+    const список=await navigator.mediaDevices.enumerateDevices();
+    const выходы=список.filter(d=>d.kind==='audiooutput' && !ВИРТУАЛЬНЫЕ.test(d.label));
+    // Встроенные колонки предпочтительнее прочего: наушники тоже подойдут, а
+    // вот второе виртуальное устройство — нет.
+    const цель=выходы.find(d=>/динамик|speaker|встроен|built/i.test(d.label)) || выходы[0];
+    if(!цель) return false;
+    await ctx.setSinkId(цель.deviceId);
+    return цель.label;
+  }catch(e){ return false; }
+}
 async function vklyuchiSistemu(){
   if(!ctx) return;
   if(VHODY.sist){ otsoedini('sist'); skazhi('система вынута'); return; }
@@ -437,7 +460,8 @@ async function vklyuchiSistemu(){
     const potok=await navigator.mediaDevices.getUserMedia({
       audio:{deviceId:{exact:устр[0].deviceId}, ...СЫРО}});
     votkni('sist', potok);
-    skazhi('система: '+устр[0].label.slice(0,24));
+    const свой=await svoyVyhod();
+    skazhi('система: '+устр[0].label.slice(0,20)+(свой?' · выход в '+свой.slice(0,14):''));
   }catch(e){ skazhi('систему не дали: '+e.name); }
 }
 
