@@ -1,6 +1,7 @@
-// FAULT — ДЕРЖИМАЯ НЕИСПРАВНОСТЬ. Плохая пайка на дорожке, по которой течёт
-// ток громкоговорителя; логика сидит на той же дорожке и получает на питание
-// копию собственного выхода.
+// BRIDGE — ОШИБОЧНАЯ ПЕРЕМЫЧКА. Выход одной микросхемы заходит резистором в
+// частотозадающий конденсатор соседней: 1→2, 2→3. Связь ОДНОСТОРОННЯЯ, петли
+// не образует, поэтому и предельного цикла — то есть ровного периодического
+// качания, которое ухо читает механикой, — взяться неоткуда.
 //
 // Стенд отвечает на два вопроса.
 //   1. Почему сопротивление именно такое: развёртка по омам.
@@ -26,7 +27,7 @@ function прогон(seed, R, сек = 4){
   const c = new K();
   c.port.onmessage({data:{t:'seed', v:seed}});
   c.port.onmessage({data:{t:'p', v:{...БАЗА, sboy: R === null ? 0 : 1}}});
-  if (R) c.pr.sb.Rdor = R;
+  if (R) c.pr.sb.Rmost = R;
   const n=128, L=new Float32Array(n), Rr=new Float32Array(n);
   const всего=Math.round(48000*сек/n), греть=Math.round(48000*1.2/n);
   const окно=Math.round(48000*.02/n);
@@ -39,7 +40,7 @@ function прогон(seed, R, сек = 4){
     if (++ш>=окно){ ог.push(Math.sqrt(kv/k)); kv=0;k=0;ш=0; }
   }
   const m=Vs/Vn;
-  return {ог, nan, Rdor:c.pr.sb.Rdor,
+  return {ог, nan, Rmost:c.pr.sb.Rmost,
           скз: Math.sqrt(ог.reduce((a,b)=>a+b*b,0)/ог.length),
           рябь: Math.sqrt(Math.max(0,Vk/Vn-m*m))/m*100};
 }
@@ -57,9 +58,9 @@ const свод = р => ({
   ком: полоса(р.ог,.3,3)/полоса(р.ог,5,20),
 });
 
-console.log('РАЗВЁРТКА ПО СОПРОТИВЛЕНИЮ ДОРОЖКИ (среднее по четырём сборкам)');
-console.log('    Ом   уровень   дыры   комедия   рябь питания');
-for (const R of [null, 5, 10, 25, 45, 70, 120]){
+console.log('РАЗВЁРТКА ПО СОПРОТИВЛЕНИЮ МОСТА (среднее по четырём сборкам)');
+console.log('   МОм   уровень   дыры   комедия   рябь питания');
+for (const R of [null, 22e6, 14e6, 8e6, 5e6, 3e6, 1.5e6]){
   let у=0,д=0,км=0,ряб=0;
   for (const s of СЕМЕНА.slice(0,4)){
     const эт=прогон(s,null), р=прогон(s,R);
@@ -79,7 +80,7 @@ for (const s of СЕМЕНА){
   р.эт=эт.скз; const c2=свод(р);
   const дб=20*Math.log10(Math.max(1e-9,р.скз)/Math.max(1e-9,эт.скз));
   if (р.nan || c2.дыр>2) плохо++;
-  console.log('  '+String(s).padStart(10)+'   '+р.Rdor.toFixed(0).padStart(4)+' Ом   '
+  console.log('  '+String(s).padStart(10)+'   '+(р.Rmost/1e6).toFixed(1).padStart(5)+' МОм '
     +((дб>=0?'+':'')+дб.toFixed(1)).padStart(5)+' дБ  '+c2.дыр.toFixed(1).padStart(5)+' %   '
     +String(р.nan).padStart(3)+'   '+р.рябь.toFixed(1).padStart(5)+' %');
 }
