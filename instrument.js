@@ -686,13 +686,35 @@ async function bystroPrishlo(d){
   }catch(e){ skazhi('щуп не лёг: '+e.message); }
 }
 
+// СЧЁТ ТЕМПА ВХОДА. Ядро шлёт тридцать секунд входа раз в двенадцать
+// секунд, работник считает и присылает число. Обратно в ядро оно уходит
+// потому, что на него целится ТАКТ.
+let rabotnikT = null, tempVhoda = 0, dolyaVhoda = 0, tempNomer = 0;
+function schitayTemp(pcm, sr){
+  if(!rabotnikT){
+    rabotnikT = new Worker('temp.rabotnik.js');
+    rabotnikT.onmessage = e => {
+      const d = e.data;
+      // Тишина на входе — не поломка, а ответ: держим прежнее число, пока
+      // не появится новое. Иначе показание мигало бы на каждой паузе.
+      if(!d.bpm) return;
+      tempVhoda = d.bpm; dolyaVhoda = d.shag;
+      if(node) node.port.postMessage({t:'temp', bpm: tempVhoda * tempMnozh,
+                                      shag: dolyaVhoda / tempMnozh});
+    };
+  }
+  rabotnikT.postMessage({pcm, sr, nomer: ++tempNomer}, [pcm.buffer]);
+}
+
 // ПОПРАВКА ТЕМПА РУКОЙ. Множитель уходит в прибор и там просто множит
 // измеренное: счёт остаётся счётом, а последнее слово за ухом.
 let tempMnozh = 1;
 function tempPravka(k){
   tempMnozh = clamp(tempMnozh * k, .25, 4);
-  if(node) node.port.postMessage({t:'tempMn', v:tempMnozh});
-  skazhi('темп входа ×'+(tempMnozh<1?'1/'+Math.round(1/tempMnozh):tempMnozh));
+  if(node && tempVhoda) node.port.postMessage({t:'temp', bpm: tempVhoda * tempMnozh,
+                                               shag: dolyaVhoda / tempMnozh});
+  skazhi(tempVhoda ? 'темп входа '+Math.round(tempVhoda*tempMnozh)
+                   : 'на входе темпа пока не слышно');
 }
 
 // ФАЙЛ ПО КРУГУ. Третий вход наравне с микрофоном и системой: воткнут —
@@ -903,6 +925,7 @@ async function pusk(){
     const d=e.data;
     if(d && d.t==='rec'){ zapisPrishla(d); return; }
     if(d && d.t==='быстро'){ bystroPrishlo(d); return; }
+    if(d && d.t==='pcm'){ schitayTemp(d.pcm, d.sr); return; }
     report=d; window.dbg.otchetov=(window.dbg.otchetov||0)+1; window.dbg.o=report;
   };
   await ctx.resume();
@@ -1901,9 +1924,17 @@ function ruchki(){
   // Это разные величины, и путать их нельзя: прибор может идти своим ходом,
   // может встать в чужой такт, а показывать надо оба, чтобы было видно, сошлись
   // они или нет.
-  const bv = report.bpmVhoda || 0, uv = report.uverVhoda || 0;
-  const вход = bv > 0 && uv > .15
-    ? `  <span class="s1">вход</span> <span class="${uv>.5?'s4':'s3'}">${Math.round(bv)}</span>`
+  // ТЕМП ВХОДА — ОДНО ЧИСЛО, И ОНО НЕ ДРОЖИТ. Считается оно раз в двенадцать
+  // секунд по тридцатисекундному окну, а не каждый кадр по бегущему следу.
+  // Прежнее показание пересчитывалось непрерывно и потому скакало — но
+  // главная беда была не в дрожании: самодельный счёт брал ОДИН трек из
+  // одиннадцати. Прыгало оно вокруг неверного числа.
+  //
+  // «Уверенности» здесь больше нет. Она была величиной, которую я же и
+  // сочинял, а показывалась как измеренная.
+  const bv = tempVhoda ? tempVhoda * tempMnozh : 0;
+  const вход = bv > 0
+    ? `  <span class="s1">вход</span> <span class="s4">${Math.round(bv)}</span>`
     : '';
   stroki.push(chelo('BPM','',zs)+
     shkalaMesto(bpm?clamp(Math.log2(bpm/8)/8,0,1):0,shk,0)+` `+
