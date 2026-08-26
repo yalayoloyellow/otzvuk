@@ -277,6 +277,15 @@ const KOMANDY=[
   {kl:'KeyM',      imya:'микрофон',    alt:1, deystvie:()=>vklyuchiMikrofon()},
   {kl:'KeyM',      imya:'система',     alt:1, shift:1, deystvie:()=>vklyuchiSistemu()},
   {kl:'KeyF',      imya:'дорожка',     alt:1, deystvie:()=>fayl()},
+  // ВДВОЕ / ВПОЛОВИНУ. У всякого определителя темпа есть неустранимая
+  // двусмысленность: сто семьдесят шесть и восемьдесят восемь объясняют один
+  // и тот же рисунок одинаково хорошо, и какой из них «темп» — решает ухо, а
+  // не счёт. Замер по семи темпам и трём видам материала: девятнадцать
+  // попаданий из двадцати одного, оба промаха — ровно вдвое.
+  //
+  // Спорить со счётом бесполезно, дешевле дать поправку рукой.
+  {kl:'BracketRight', imya:'темп вдвое',     alt:1, deystvie:()=>tempPravka(2)},
+  {kl:'BracketLeft',  imya:'темп вполовину', alt:1, deystvie:()=>tempPravka(.5)},
 ];
 
 // ВЫБРАНО ПОКА НАЖАТО. Держишь букву — ручка твоя, отпустил — ничья. Ни
@@ -675,6 +684,15 @@ async function bystroPrishlo(d){
     const j=await r.json();
     skazhi('быстрый щуп: '+(j.file||'лёг'));
   }catch(e){ skazhi('щуп не лёг: '+e.message); }
+}
+
+// ПОПРАВКА ТЕМПА РУКОЙ. Множитель уходит в прибор и там просто множит
+// измеренное: счёт остаётся счётом, а последнее слово за ухом.
+let tempMnozh = 1;
+function tempPravka(k){
+  tempMnozh = clamp(tempMnozh * k, .25, 4);
+  if(node) node.port.postMessage({t:'tempMn', v:tempMnozh});
+  skazhi('темп входа ×'+(tempMnozh<1?'1/'+Math.round(1/tempMnozh):tempMnozh));
 }
 
 // ФАЙЛ ПО КРУГУ. Третий вход наравне с микрофоном и системой: воткнут —
