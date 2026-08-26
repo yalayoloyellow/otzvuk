@@ -13,8 +13,8 @@ globalThis.AudioWorkletProcessor = class {
 new Function(readFileSync('./chaos.worklet.js','utf8'))();
 const SR = 48000, N = 128;
 const BAZA = {sway:.55, tone:.5, depth:.75, pulse:.2, hit:.35, spread:.15, drift:0,
-              range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, link:0, dirt:0,
-              petlya:0, kuda:0, naruzhu:0, mix:0};
+              range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, dirt:0,
+              petlya:0, kuda:0, mix:0};
 // комната: задержка 12 мс и затухание — путь от динамика до микрофона
 function progon(petlya, komnata, sek = 8){
   const c = new K();

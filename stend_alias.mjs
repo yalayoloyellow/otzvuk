@@ -55,7 +55,7 @@ globalThis.SYRN = 0;
 
 const BAZA = {sway:.55, tone:.5, depth:.75, pulse:.2, hit:.35, spread:.15,
               drift:0, range:.5, gryzn:.4, golos:0, gen1:1, gen2:1, gen3:1,
-              link:1, dirt:0, petlya:0, kuda:0, naruzhu:0,
+              dirt:0, petlya:0, kuda:0,
               zhat:0, drive:0, master:1, mix:0};
 
 const c = new K();

@@ -2832,7 +2832,16 @@ class Chaos extends AudioWorkletProcessor {
     // ДВА ПРИБОРА В ЦЕПИ. Первый работает сам по себе, его выход уходит
     // током в конденсаторы второго, а наружу идёт только второй — он и
     // подключён к колонкам. Ровно так стояли две коробки на столе.
-    this.p = { sway:.55, tone:.5, depth:.75,
+    // ПИТАНИЕ ЕСТЬ В УМОЛЧАНИЯХ. Тумблеры питания рождались на панели и
+    // приезжали сообщением, а в самих умолчаниях ядра их не было. Панели это
+    // безразлично — она шлёт всё явно. А вот стенды, собранные до появления
+    // тумблера POWER, мерили ОБЕСТОЧЕННЫЙ прибор: стенд потолка показывал
+    // худший пик 0.0255 и делал вывод «потолок держится» из тишины, стенд
+    // сжатия сравнивал крест-фактор остаточного шума. Ядро без панели —
+    // включённая коробка с батареей наполовину; выключенность задаётся
+    // явно, как и на панели.
+    this.p = { volt:.5, bak:.5, pit:1, set:0, sboy:0, derzhi:0,
+               sway:.55, tone:.5, depth:.75,
                pulse:.2, hit:.35, spread:.15, drift:0,
                gen1:1, gen2:1, gen3:0, dirt:0, range:.5,
                // ритм-секция: одна ручка — насколько глубоко ключ вмешивается
@@ -2877,6 +2886,7 @@ class Chaos extends AudioWorkletProcessor {
     this.grB = new Float32Array(SR * 4);   // кольцо своего выхода
     this.grW = 0; this.beatW = 0; this.posB = 0;
     this.grFade = 0; this.grPrev = 0;      // сшив на скачке чтения
+    this.grClose = 0;                      // последний прочитанный отсчёт
     // ОКРАС. Автоэквализация к профилю шума: восемь октавных полос, медленно
     // дотягиваемых к целевому наклону.
     // Полосы КАСКАДОМ ИЗ ТРЁХ однополюсников на срез: одиночный течёт юбками
@@ -2890,6 +2900,7 @@ class Chaos extends AudioWorkletProcessor {
     this.eqE = new Float32Array(8).fill(1e-6);  // энергия полос выхода
     this.eqG = new Float32Array(8).fill(1);     // довод петли
     this.eqTik = 0; this.eqInKv = 1e-6;
+    this.eqB = new Float32Array(8);        // полосы текущего отсчёта
     this.mikKv = 0; this.vyhKv = 0; this.vozvrat = .55; this.proshY = 0;
     this.mikPik = 0;
     this.semya = 1;
@@ -3190,7 +3201,7 @@ class Chaos extends AudioWorkletProcessor {
       this.grB[this.grW] = y;
       if (++this.metrF >= this.metrN){
         this.metrF = 0; this.beatW = this.grW; this.posB = 0;
-        this.grFade = 96; this.grPrev = this.grClose === undefined ? y : this.grClose;
+        this.grFade = 96; this.grPrev = this.grClose;
       }
       const chop = this.p.chop || 0, skru = clamp(this.p.skru || 0, 0, 1);
       if (chop > .02 || skru > .002){
@@ -3234,7 +3245,7 @@ class Chaos extends AudioWorkletProcessor {
       const okras = this.p.okras || 0;
       if (okras > .002){
         const лп = this.eqLp, мп = this.eqM, aк = this.eqA;
-        const пол = this.eqB || (this.eqB = new Float32Array(8));
+        const пол = this.eqB;
         let пред = 0;
         for (let k = 0; k < 7; k++){
           const о = k * 3;

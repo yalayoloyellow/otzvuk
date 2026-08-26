@@ -11,12 +11,17 @@ globalThis.AudioWorkletProcessor = class {
 };
 new Function(readFileSync('./chaos.worklet.js','utf8'))();
 const N = 128;
-const B = {sway:.55, tone:.5, depth:.75, pulse:.2, hit:.35, spread:.15, drift:0,
-           range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, link:0, dirt:0,
-           petlya:0, kuda:0, naruzhu:0, mix:0, zhat:0, master:.5};
+// ПИТАНИЕ ШЛЁТСЯ ЯВНО. У ядра в умолчаниях нет pit — тумблер приезжает с
+// панели, — и стенд без него мерил потолок ВЫКЛЮЧЕННОГО прибора: худший пик
+// 0.0255 по двенадцати сборкам, то есть тишина, и «потолок держится»
+// доказывалось вакуумом.
+const B = {volt:.5, bak:.5, pit:1, set:0, sboy:0, derzhi:0,
+           sway:.55, tone:.5, depth:.75, pulse:.2, hit:.35, spread:.15, drift:0,
+           range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, dirt:0,
+           petlya:0, kuda:0, mix:0, zhat:0, master:.5};
 const semena = [1626943591, 777, 1, 42, 99991, 3141592, 2861234501, 12345,
                 777777, 55555, 8675309, 20260820];
-const rezhimy = [['покой', {}], ['всё вверх', {zhat:1, master:1}],
+const rezhimy = [['покой', {}], ['всё вверх', {zhat:1, master:1, drive:1}],
                  ['гейт и мастер', {master:1, gryzn:.9}],
                  ['жать и гейт', {zhat:1, gryzn:.9, range:0}]];
 let hud = 0, gde = '', nan = 0;

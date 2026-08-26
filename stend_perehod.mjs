@@ -13,7 +13,7 @@ const M = new Function(readFileSync('./chaos.worklet.js','utf8') + '\nreturn {De
 
 const BAZA = {sway:.55, tone:.5, depth:.75, pulse:.2, hit:.35, spread:.15,
               drift:0, range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0,
-              link:0, dirt:0, petlya:0, kuda:0, naruzhu:0};
+              dirt:0, petlya:0, kuda:0};
 const SR = 48000, OV = 4;
 
 // огибающая по выходу прибора, шаг 5 мс

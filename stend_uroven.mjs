@@ -32,7 +32,7 @@ function progon(nastr, sek = 3, seed = 1626943591){
 
 const BAZA = {sway:.55, tone:.5, depth:.75, pulse:.2, hit:.35, spread:.15,
               drift:0, range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0,
-              link:0, dirt:0, petlya:0, kuda:0, naruzhu:0};
+              dirt:0, petlya:0, kuda:0};
 
 console.log('НАСТРОЙКА                         пик      скз');
 const varianty = [

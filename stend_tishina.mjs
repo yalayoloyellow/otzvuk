@@ -14,8 +14,8 @@ globalThis.AudioWorkletProcessor = class {
 new Function(readFileSync('./chaos.worklet.js','utf8'))();
 const N = 128, SR = 48000;
 const B = {sway:.55, tone:.5, depth:.75, pulse:.2, hit:.35, spread:.15, drift:0,
-           range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, link:0, dirt:0,
-           petlya:0, kuda:0, naruzhu:0, mix:0, zhat:0, drive:.15,
+           range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, dirt:0,
+           petlya:0, kuda:0, mix:0, zhat:0, drive:.15,
            ist:0, ton:.35, temp:.5, povtor:0, trakt:.3};
 function tiho(iz, semya, pl){
   const c = new K();

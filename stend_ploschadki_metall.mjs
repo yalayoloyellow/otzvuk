@@ -13,8 +13,7 @@ globalThis.registerProcessor=(n,k)=>K=k;
 globalThis.AudioWorkletProcessor=class{constructor(){this.port={postMessage(){},set onmessage(f){this._f=f},get onmessage(){return this._f}};}};
 new Function(readFileSync('/Users/yala/otzvuk/chaos.worklet.js','utf8'))();
 const Б={volt:.5,bak:.5,sway:.55,tone:.5,depth:.75,pulse:.2,hit:.35,spread:.15,drift:0,
- range:.5,gryzn:0,golos:0,gen1:1,gen2:1,gen3:1,link:0,dirt:0,petlya:0,kuda:0,
- naruzhu:0,zhat:0,drive:.15,master:1,pit:1,set:0,sboy:0};
+ range:.5,gryzn:0,golos:0,gen1:1,gen2:1,gen3:1,dirt:0,petlya:0,kuda:0,zhat:0,drive:.15,master:1,pit:1,set:0,sboy:0};
 const СЛУЧАИ=[['ничего',[]],['одна: узел 1',[1]],['узел1 + ладонь',[1,13]],
               ['узел1+узел2',[1,2]],['узел1+земля',[1,12]],['узел1+шина',[1,11]],
               ['выход1→узел2',[4,2]],['гул→узел3',[8,3]],['сумм.точка+узел1',[9,1]],

@@ -15,7 +15,7 @@ function progon(mix, shag){
   const c = new K();
   c.port.onmessage({data:{t:'seed', v:1626943591, p:{sway:.55, tone:.5, depth:.75,
     pulse:.2, hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0, gen1:1,
-    gen2:1, gen3:0, link:0, dirt:0, petlya:0, kuda:0, naruzhu:0, mix, zhat:0,
+    gen2:1, gen3:0, dirt:0, petlya:0, kuda:0, mix, zhat:0,
     master:.5}}});
   const L = new Float32Array(N), R = new Float32Array(N), m = new Float32Array(N);
   for (let b = 0; b < 60; b++) c.process([[m]], [[L, R]]);
