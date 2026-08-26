@@ -276,6 +276,7 @@ const KOMANDY=[
   // Гнездо там же: одно место, одна буква, вторая половина под shift.
   {kl:'KeyM',      imya:'микрофон',    alt:1, deystvie:()=>vklyuchiMikrofon()},
   {kl:'KeyM',      imya:'система',     alt:1, shift:1, deystvie:()=>vklyuchiSistemu()},
+  {kl:'KeyF',      imya:'дорожка',     alt:1, deystvie:()=>fayl()},
 ];
 
 // ВЫБРАНО ПОКА НАЖАТО. Держишь букву — ручка твоя, отпустил — ничья. Ни
@@ -403,11 +404,14 @@ function skazhiTekst(){
 // независимых входа в один узел: комната плюс радио, голос поверх видео.
 // Переключателем это было ровно один заход и оказалось враньём про железо:
 // в гнездо втыкают что воткнётся, а смешивает их сумматор.
-const VHODY = {mik:null, sist:null};
+const VHODY = {mik:null, sist:null, fayl:null};
 function otsoedini(kakoy){
   const v = VHODY[kakoy]; if(!v) return;
   try{ v.uzel.disconnect(); }catch(e){}
-  for(const d of v.potok.getTracks()) d.stop();
+  // У файла нет дорожек — есть источник, который надо остановить. У живых
+  // входов наоборот: узел один, а дорожек может быть несколько.
+  if(v.potok) for(const d of v.potok.getTracks()) d.stop();
+  else try{ v.uzel.stop(); }catch(e){}
   VHODY[kakoy] = null;
 }
 function votkni(kakoy, potok){
@@ -673,6 +677,40 @@ async function bystroPrishlo(d){
   }catch(e){ skazhi('щуп не лёг: '+e.message); }
 }
 
+// ФАЙЛ ПО КРУГУ. Третий вход наравне с микрофоном и системой: воткнут —
+// звучит, и так же делится прибором на целые.
+//
+// Зачем он, когда есть системный звук. Затем, что для работы нужна ОДНА И ТА
+// ЖЕ дорожка, крутящаяся без конца: чтобы поймать такт, поймать деление,
+// сравнить два положения ручки — материал должен быть тем же самым. Живой
+// системный звук для этого не годится, он всё время разный.
+//
+// Файл читается целиком в память и играет узлом-источником с петлёй. Это не
+// проигрыватель: ни перемотки, ни паузы — воткнул и вынул, как шнур.
+let imyaFayla='';
+async function vozmiFayl(f){
+  if(!ctx || !f) return;
+  try{
+    const buf = await ctx.decodeAudioData(await f.arrayBuffer());
+    otsoedini('fayl');
+    const ist = ctx.createBufferSource();
+    ist.buffer = buf; ist.loop = true;
+    ist.connect(node);
+    ist.start();
+    VHODY.fayl = {uzel:ist, potok:null};
+    imyaFayla = f.name.replace(/\.[^.]+$/,'').slice(0,22);
+    skazhi('дорожка: '+imyaFayla+' · '+buf.duration.toFixed(1)+' с');
+  }catch(e){ skazhi('дорожку не прочесть: '+e.name); }
+}
+function fayl(){
+  if(!ctx) return;
+  if(VHODY.fayl){ otsoedini('fayl'); imyaFayla=''; skazhi('дорожка вынута'); return; }
+  const вх=document.createElement('input');
+  вх.type='file'; вх.accept='audio/*';
+  вх.onchange=()=>{ if(вх.files && вх.files[0]) vozmiFayl(вх.files[0]); };
+  вх.click();
+}
+
 // ПОМЕТКА ЯВЛЕНИЯ. Не «нравится» и не «не нравится»: вкус тут ни при чём.
 // Человек называет то, что услышал — «захлёбывание», «ровное качание»,
 // «треск от удара», — и программа кладёт рядом двадцать секунд чисел и
@@ -838,6 +876,9 @@ async function pusk(){
   zamer=new Zamer(ctx.sampleRate, 2048, 1024);
   okno_zamera=new Float32Array(2048);
   setInterval(zameryay, 40);
+  // Щель для проверки дорожки без файлового окна: диалог руками не
+  // заполнить, а путь чтения проверить надо.
+  window.dbg.dorozhka=vozmiFayl;
   window.dbg.zamer=()=>({kadrov:KADRY.length, posl:KADRY[KADRY.length-1]||null,
                          ogib:ogib_posl});
   node.port.onmessage=e=>{
@@ -1906,6 +1947,11 @@ function ruchki(){
     `<span class="s3"> ${idet?'идёт':(VHODY.mik||VHODY.sist)?'тихо':'нет'}</span> `+
     ist('mik','мик','\u2325m')+`<span class="s1"> · </span>`+
     ist('sist','сист','\u2325\u21e7m'));
+  // ДОРОЖКА СВОЕЙ СТРОКОЙ. В строку INPUT она не влезает: та и так упирается
+  // в ширину панели, а имя файла бывает любой длины. Да и показать имя важнее,
+  // чем сэкономить строку — иначе не видно, что именно крутится.
+  stroki.push(chelo('TRACK','\u2325f',zg)+
+    `<span class="${VHODY.fayl?'s3':'s1'}">${vpole(imyaFayla||'\u2014',24)}</span>`);
   stroki.push('');
 
   for(const [z,g] of GRUPPY){

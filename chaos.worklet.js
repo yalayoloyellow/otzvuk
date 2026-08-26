@@ -796,6 +796,7 @@ class Swing {
     this.medl = new Cell(sb, sb.Cm, sb.vt[1], shum);
     this.gul  = new Cell(sb, sb.Cg, sb.vt[2], shum);
     this.u = .5; this.g = .5; this.period = 0;
+    this.tik = 0; this.bylo = 0; this.izmer = 0;
     this.sway = -1; this.hit = -1; this.vv = -1;
     this.K = 1; this.R0 = 12e3; this.k = 20;
   }
@@ -871,7 +872,24 @@ class Swing {
     }
     this.medl.step(Rд, Vdd, Rд * k, 0, 0, 1e12, Vdd, temp, Vсв, Rсв);
     this.u = this.medl.upr(Vdd);
-    this.period = K * Rд * this.sb.Cm;
+    // ПЕРИОД МЕРИТСЯ, А НЕ СЧИТАЕТСЯ ПО НОМИНАЛАМ.
+    //
+    // Здесь стояло K·R·C — оценка по сопротивлению и ёмкости. Пока качели шли
+    // сами, она годилась. Но такт ЗАХВАТЫВАЕТ узел внешним ритмом, и тогда
+    // формула показывает то, что было бы без захвата: прибор встал в чужой
+    // темп, а панель по-прежнему рапортует свой. Играть по такому показанию
+    // нельзя — оно врёт ровно тогда, когда нужно больше всего.
+    //
+    // Меряем по фронтам: сколько прошло между переходами через середину
+    // вверх. Оценка по номиналам остаётся запасной — пока фронтов мало.
+    this.tik += dt;
+    if (this.bylo <= .5 && this.u > .5){
+      if (this.tik > 1e-3 && this.tik < 30)
+        this.izmer = this.izmer ? this.izmer + (this.tik - this.izmer) * .25 : this.tik;
+      this.tik = 0;
+    }
+    this.bylo = this.u;
+    this.period = this.izmer || K * Rд * this.sb.Cm;
     return this.u;
   }
 }
