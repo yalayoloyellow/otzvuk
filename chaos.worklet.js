@@ -799,6 +799,7 @@ class Swing {
     this.tik = 0; this.bylo = 0; this.izmer = 0;
     this.sway = -1; this.hit = -1; this.vv = -1;
     this.uNiz = 1; this.uVer = 0;   // края собственного хода, для порога замера
+    this.front = 0;                // был ли фронт на этом отсчёте
     this.K = 1; this.R0 = 12e3; this.k = 20;
   }
   // hit — подстроечник смещения в цепи медленного узла. Постоянный ток
@@ -918,7 +919,9 @@ class Swing {
     // Совсем остановленный узел (ДЕРЖАТЬ) не должен давать фронтов от дрожи
     // последнего разряда: у стоячего края сходятся, и середина ложится на
     // сам сигнал.
+    this.front = 0;
     if (this.uVer - this.uNiz > .02 && this.bylo <= seredina && this.u > seredina){
+      this.front = 1;
       if (this.tik > 1e-3 && this.tik < 30)
         this.izmer = this.izmer ? this.izmer + (this.tik - this.izmer) * .25 : this.tik;
       this.tik = 0;
@@ -1114,6 +1117,9 @@ class Device {
   constructor(semya){
     this.sb = new Build(semya);
     this.shum = new Noise();
+    // Сцепка: где стоит фронт качелей внутри промежутка между ударами входа.
+    this.tOs = 0; this.osInt = 0; this.osVzv = 0;
+    this.scx = 0; this.scy = 0; this.scw = 0; this.scepka = 0;
     this.bat = new Battery(this.sb);
     this.swing = new Swing(this.sb, this.shum);
     this.opto = [];
@@ -1317,6 +1323,50 @@ class Device {
       clamp(Vdd * (.2 + (ogibS || 0) * .6), 0, Vdd),
       takt);
 
+    // СЦЕПКА — ЕДИНСТВЕННЫЙ ПРИЗНАК, ЧТО ЗАХВАТ СОСТОЯЛСЯ.
+    //
+    // Режим на панели этого не говорит, и это померено: на одной сборке
+    // свободный ход дал разброс 0.224, а крепкий захват на 2:1 — 0.264. Тот
+    // же «гуляет». Хуже: под захватом на 4:1 разброс вырос до 0.379, потому
+    // что период перескакивает между соседними кратными, хотя ФАЗА держится.
+    // Разброс мерит период, а захват живёт в фазе.
+    //
+    // Считается без всякого определения темпа. Берём два последних удара
+    // входа — вот и весь промежуток; смотрим, куда внутри него попадает
+    // фронт качелей. Стоит на месте — сцепка растёт, гуляет — падает.
+    // Дробная часть, а не обрезка: на делении 4:1 фронт приходит раз в
+    // четыре удара, и целые обороты отбрасывать обязательно.
+    //
+    // Среднее векторное, а не по числу: фаза лежит на круге, и у самого края
+    // 0.99 и 0.01 это соседи, а не разные концы.
+    const по = ogibS || 0;
+    this.tOs += dt;
+    // Вход замолчал — показание обязано погаснуть, а не замереть на
+    // последнем. Замершее число врёт тем сильнее, чем дольше висит.
+    if (this.tOs > 4 && this.osInt > 0){
+      this.osInt = 0; this.scx = 0; this.scy = 0; this.scw = 0; this.scepka = 0;
+    }
+    if (this.osVzv){ if (по < .15) this.osVzv = 0; }
+    else if (по > .38){
+      this.osVzv = 1;
+      if (this.tOs > .06 && this.tOs < 4) this.osInt = this.tOs;
+      this.tOs = 0;
+    }
+    if (this.swing.front && this.osInt > 0){
+      const x = this.tOs / this.osInt, φ = 2 * Math.PI * (x - Math.floor(x));
+      const a = .12;
+      this.scx += (Math.cos(φ) - this.scx) * a;
+      this.scy += (Math.sin(φ) - this.scy) * a;
+      // ПОПРАВКА НА НЕДОБРАННЫЙ ВЕС. Скользящее среднее с нуля занижает
+      // ответ, пока не набрало полный вес, а качели медленные: на периоде в
+      // две секунды за прогон набирается девять фронтов, и крепкий захват
+      // читался как половинчатый. Копим вес тем же ходом и делим на него —
+      // тогда ответ верен с первого фронта и не зависит от того, как долго
+      // прибор играет.
+      this.scw += (1 - this.scw) * a;
+      this.scepka = Math.min(1, Math.sqrt(this.scx * this.scx + this.scy * this.scy)
+                  / Math.max(this.scw, 1e-6));
+    }
     // ХАРАКТЕР — подстроечник, задающий, в каких пределах ходит фоторезистор.
     // Нижняя точка держится в области треска на всём ходу: иначе рисунок
     // пропадает и остаётся вой.
@@ -3089,7 +3139,7 @@ class Chaos extends AudioWorkletProcessor {
         lufs: this.grom.lufs,
         lim: this.predel.rabota < 1 ? -20 * Math.log10(this.predel.rabota) : 0,
         mik: this.mikPik, vozvrat: this.vozvrat,
-        razbros: pr.razbr, period: pr.swing.period,
+        razbros: pr.razbr, period: pr.swing.period, scepka: pr.scepka,
         pitch: pr.osn.f || 0, duty: pr.osn.skv,
         shina: pr.bat.Vl / sb.EMF,
         swing: pr.swing.u, drift: pr.swing.g,
