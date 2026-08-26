@@ -131,6 +131,20 @@ const KNOBS=[
   // отношения целые — потому что медленный узел единственное место прибора,
   // где захват держится: сцепка 0.74–1.00 против 0.01–0.30 в контроле.
   {k:'razved', kl:'KeyI', imya:'SPLAY', zona:'modul', gr:'mod'},
+  // SLIP — расфазировка слоёв: каждый уведён на свою долю процента, и на
+  // свободном ходу они медленно расходятся фазой друг относительно друга.
+  // Дрейф растёт с ручкой линейно: на упоре крайняя пара обгоняет соседа
+  // каждые три секунды, на четверти — каждые двенадцать (замер).
+  //
+  // SLIP и SYNC — антагонисты по самой схеме: тяга к чужому ритму
+  // замораживает взаимный дрейф. Задумывался тут увод «чуть мимо целого» с
+  // проскальзыванием на границе языка — замер это опроверг: язык при SYNC
+  // выше половины глотает весь увод, и честное имя органа — биение слоёв,
+  // а не проскальзывание.
+  {k:'slip', kl:'KeyO', imya:'SLIP', zona:'modul', gr:'mod'},
+  // TILT — слои расходятся характером: первый глубже в треск (ударный),
+  // третий поджат и поднят над треском (гул). Средний — прежний прибор.
+  {k:'tilt', kl:'KeyP', imya:'TILT', zona:'modul', gr:'mod'},
   {k:'ton', kl:'KeyK', imya:'PITCH',  zona:'golos', gr:'ist'},
   // GENDER — длина тракта. Слово из вокодеров и формантных сдвигателей,
   // понятное без объяснения.
@@ -232,7 +246,12 @@ const SWITCHES=[
   // HOLD — ключ рвёт цепь заряда медленного узла: качели замирают там, где
   // были. Без этого строй не слышен — он мелькает. Замер: разброс частоты
   // падает с половины до долей процента, в триста-девятьсот раз.
-  {k:'derzhi', kl:'KeyY', shift:1, imya:'HOLD', zona:'modul', gr:'mod'},
+  {k:'derzhi',  kl:'KeyY', shift:1, imya:'HOLD 1', zona:'modul', gr:'mod'},
+  // Удержание по слоям: заморозить гул, пока бит идёт, — или наоборот.
+  // «Третий держит гул» — из записанного замысла. Все три разом — прежний
+  // полный HOLD.
+  {k:'derzhi2', kl:'KeyU', shift:1, imya:'HOLD 2', zona:'modul', gr:'mod'},
+  {k:'derzhi3', kl:'KeyI', shift:1, imya:'HOLD 3', zona:'modul', gr:'mod'},
   {k:'petlya', kl:'KeyH', shift:1, imya:'FEEDBACK', podpis:['off','room','howl'],
    pol:3, mikro:1, zona:'golos', gr:'petlya'},
   {k:'povtor', kl:'KeyJ', shift:1, imya:'LOOP', zona:'golos', gr:'petlya'},
@@ -754,9 +773,9 @@ async function metka(kakaya){
 const knobs={volt:.5, bak:.5, sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
              zhat:0, drive:.15, master:1, ton:.35, temp:.5, gnut:0, takt:0,
-             trakt:.3, naruzhu:0, kuda:0, razved:0};
+             trakt:.3, naruzhu:0, kuda:0, razved:0, slip:0, tilt:0};
 const switches={pit:0, set:0, gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0,
-                mix:0, povtor:0, sboy:0, derzhi:0};
+                mix:0, povtor:0, sboy:0, derzhi:0, derzhi2:0, derzhi3:0};
 
 const p={};
 
