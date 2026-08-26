@@ -1952,6 +1952,82 @@ class Contacts {
 //     при таком он уже не втекает, а задаёт частоту сам, подменяя прибор.
 //   · СМЕЩЕНИЕ — своё смещение уже стоит у предела запирания, и добавка
 //     голоса либо не меняет ничего, либо глушит генератор совсем.
+// ТЕМП ВХОДА — ИЗМЕРЕННЫЙ, А НЕ ПОЙМАННЫЙ.
+//
+// Это разные вещи, и я их спутал. ЗАХВАТ — физика: медленный узел притягивается
+// к чужому ритму, но только если его собственный период уже рядом. Настроил
+// качели мимо — и захвата нет вовсе, сколько ни крути глубину. В железе так и
+// есть, у всякого входа синхронизации ограниченная область захвата.
+//
+// А человеку нужно другое: поставил трек — прибор ЗНАЕТ его темп. Это не
+// физика, это измерение, и делается оно отдельно: копим поток ударов и ищем в
+// нём период автокорреляцией. Дальше измеренный темп можно и показать, и
+// подсунуть захвату целью — тогда он перестаёт зависеть от того, куда
+// случайно стоит ручка RATE.
+class Temp {
+  constructor(){
+    // Сто отсчётов в секунду хватает: удары реже двухсот сорока в минуту.
+    this.ЧАС = 100;
+    this.n = 1024;                       // десять секунд памяти
+    this.b = new Float32Array(this.n); this.i = 0; this.zap = 0;
+    this.sch = 0; this.nak = 0; this.tik = 0;
+    this.bpm = 0; this.uver = 0;
+  }
+  step(udar){
+    this.nak += udar; this.sch++;
+    if (this.sch < FS / this.ЧАС) return;
+    this.b[this.i] = this.nak / this.sch; this.nak = 0; this.sch = 0;
+    this.i = (this.i + 1) % this.n;
+    if (this.zap < this.n) this.zap++;
+    // Считаем раз в полсекунды: чаще незачем, темп так быстро не меняется.
+    if (++this.tik < this.ЧАС / 2) return;
+    this.tik = 0;
+    if (this.zap < this.n * .6) return;
+    this.schitay();
+  }
+  schitay(){
+    const m = this.zap, b = this.b, n = this.n;
+    let sr = 0;
+    for (let j = 0; j < m; j++) sr += b[(this.i - m + j + n) % n];
+    sr /= m;
+    // Задержки от четверти секунды до полутора: 40…240 ударов в минуту.
+    const t1 = Math.round(this.ЧАС * .25), t2 = Math.round(this.ЧАС * 1.5);
+    let луч = 0, лучT = 0, сум = 0, шт = 0;
+    const кор = τ => {
+      let s = 0;
+      for (let j = 0; j + τ < m; j++){
+        const a = b[(this.i - m + j + n) % n] - sr;
+        const c = b[(this.i - m + j + τ + n) % n] - sr;
+        s += a * c;
+      }
+      return s / Math.max(1, m - τ);
+    };
+    const зн = new Float64Array(t2 + 1);
+    for (let τ = t1; τ <= t2; τ++){ зн[τ] = кор(τ); сум += зн[τ]; шт++; }
+    const срК = сум / Math.max(1, шт);
+    for (let τ = t1; τ <= t2; τ++) if (зн[τ] > луч){ луч = зн[τ]; лучT = τ; }
+    if (!лучT || луч <= 0){ this.uver = 0; return; }
+    // КРАТНАЯ ОШИБКА — главная беда всех определителей темпа: у ритма
+    // одинаково хорошо коррелирует и доля, и две доли, и четыре. Голый
+    // максимум сваливается в самую длинную: замер на ста шестидесяти давал
+    // восемьдесят, потому что два удара коррелируют не хуже одного.
+    //
+    // Правило: берём САМУЮ КОРОТКУЮ задержку, на которой согласие ещё
+    // держится. Человек считает по более частой доле, а не по редкой.
+    for (const k of [4, 3, 2]){
+      const д = Math.round(лучT / k);
+      if (д >= t1 && зн[д] > луч * .6){ лучT = д; break; }
+    }
+    // Уточняем параболой — сетка в сотую секунды груба для быстрых темпов.
+    const y0 = зн[лучT-1] || 0, y1 = зн[лучT], y2 = зн[лучT+1] || 0;
+    const d = y0 - 2*y1 + y2;
+    const сдв = Math.abs(d) > 1e-12 ? .5 * (y0 - y2) / d : 0;
+    const T = (лучT + Math.max(-.5, Math.min(.5, сдв))) / this.ЧАС;
+    this.bpm = 60 / T;
+    this.uver = Math.max(0, Math.min(1, (луч / Math.max(1e-9, срК) - 1) / 3));
+  }
+}
+
 class Golos {
   constructor(){ this.dc = 0; this.ogib = 0; this.ogibS = 0; this.medlS = 0; this.udar = 0; }
   step(vh, glub){
@@ -2667,6 +2743,7 @@ class Chaos extends AudioWorkletProcessor {
     // модулятор, а второй такой же поверх превращает всё в кашу.
     this.petlya = new Petlya();
     this.golos = new Golos();
+    this.temp2 = new Temp();
     this.govor = new Govorilka();
     this.zhmi = new Zhmi();
     this.predel = new Predel();
@@ -2921,6 +2998,7 @@ class Chaos extends AudioWorkletProcessor {
       for (let k = 0; k < OVER; k++){
         const gls = this.golos.step(vhod, this.p.golos);
         const ogibS = this.golos.udar;
+        this.temp2.step(ogibS);
         y = this.svod.step(this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib,
                                         petl, this.pl, shoroh, rkont, ogibS));
       }
@@ -3068,6 +3146,7 @@ class Chaos extends AudioWorkletProcessor {
         razbros: pr.razbr, period: pr.swing.period,
         pitch: pr.osn.f || 0, duty: pr.osn.skv,
         shina: pr.bat.Vl / sb.EMF,
+        bpmVhoda: this.temp2.bpm, uverVhoda: this.temp2.uver,
         swing: pr.swing.u, drift: pr.swing.g,
         // Имя и семя берутся с ЖИВОГО прибора, а не с того, что запрошен:
         // пока номиналы едут, играет ещё прежний, и подписывать экран новым
