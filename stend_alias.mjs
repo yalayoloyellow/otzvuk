@@ -29,12 +29,24 @@ globalThis.AudioWorkletProcessor = class {
 // --- снимаем сырой сигнал до сведения ---------------------------------------
 let SRC = readFileSync('./chaos.worklet.js', 'utf8');
 SRC = SRC.replace('const OVER = 4;', 'const OVER = ' + VERH + ';');
-const met = 'y = this.svod.step(this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib, petl));';
+// Якорь по ОДНОЙ строке начала вызова, а не по всему вызову: сигнатура
+// prа растёт, и полный якорь дважды молча устаревал.
+const met = 'y = this.svod.step(this.pr.step(';
 if (!SRC.includes(met)) throw new Error('не нашёл точку съёма сырого сигнала');
-SRC = SRC.replace(met,
-  'const syr = this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib, petl);\n' +
-  '        globalThis.SYR[globalThis.SYRN++] = syr;\n' +
-  '        y = this.svod.step(syr);');
+{
+  const i = SRC.indexOf(met);
+  // Конец вызова — закрывающая скобка со «;» той же вложенности.
+  let j = SRC.indexOf('(', i + met.length - 1), gl = 1;
+  j = i + met.length;
+  gl = 2;                                  // открыты svod.step( и pr.step(
+  while (gl > 0) { const c = SRC[j++]; if (c === '(') gl++; else if (c === ')') gl--; }
+  const vyzov = SRC.slice(i, j);           // y = this.svod.step(this.pr.step(...))
+  const vnutri = vyzov.slice(vyzov.indexOf('this.pr.step'), -1);
+  SRC = SRC.slice(0, i) +
+    'const syr = ' + vnutri + ';\n' +
+    '        globalThis.SYR[globalThis.SYRN++] = syr;\n' +
+    '        y = this.svod.step(syr)' + SRC.slice(j);
+}
 new Function(SRC)();
 
 const NSYR = SR * VERH * SEK;

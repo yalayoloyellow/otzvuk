@@ -164,9 +164,13 @@ const KNOBS=[
 
   // ---- ГОЛОС · ВМЕШАТЕЛЬСТВО ----
   // XMOD — перекрёстная модуляция: сигнал из гнезда ведёт параметры схемы.
-  // Это НЕ громкость: громкость источника наружу — DRY.
+  //
+  // DRY здесь стоял и вырезан. По замеру раздела 5 сухой путь — микшер:
+  // «вход стоит поверх, прибор не шелохнулся». Ручка существовала, чтобы
+  // прибор можно было НЕ слушать, и ни одной задачи, которую не решает
+  // лучше ROUTE, у неё не нашлось. Сухой сигнал у человека и так есть — в
+  // его же секвенсоре.
   {k:'golos', kl:'KeyJ', imya:'XMOD',   zona:'golos', gr:'vmesh'},
-  {k:'naruzhu', kl:'Semicolon', imya:'DRY',    zona:'golos', gr:'vmesh'},
   // ROUTE — куда входит сигнал. Не выбор одного из двух, а положение
   // переключателя между ними, поэтому концы подписаны словами: на лампу
   // накала или прямо в шину питания.
@@ -236,8 +240,11 @@ const SWITCHES=[
   {k:'gen1', kl:'KeyQ', shift:1, imya:'OSC 1', gr:'gen'},
   {k:'gen2', kl:'KeyW', shift:1, imya:'OSC 2', gr:'gen'},
   {k:'gen3', kl:'KeyE', shift:1, imya:'OSC 3', gr:'gen'},
-  // SYNC — захват генераторов друг другом через настоящий резистор.
-  {k:'link', kl:'KeyR', shift:1, imya:'SYNC',  gr:'gen'},
+  // Здесь стоял тумблер SYNC (link) — постоянная связь генераторов через
+  // резистор. Вырезан по замеру: сваривал двоих в унисон и глушил верх на
+  // треть — потеря многоголосия без приобретений. Аккорды из связи делает
+  // BEND; сетке связь остаётся импульсом на ударных шагах. Заодно ушёл бой
+  // имён: SYNC на панели было два, зелёный и розовый, и значили они разное.
   // ---- ГОЛОС ----
   // Микрофон слышит динамик, круг замыкает комната. Три положения: без
   // петли, лёгкая окраска помещением, самовозбуждение. Двухпозиционные
@@ -381,7 +388,7 @@ function primenit(p){
   if(!p) return;
   const karta = {качание:'sway', характер:'tone', размах:'depth', импульс:'pulse',
                  удар:'hit', развод:'spread', гуляние:'drift', диапазон:'range',
-                 ген2:'gen2', ген3:'gen3', связь:'link', грязь:'dirt'};
+                 ген2:'gen2', ген3:'gen3', грязь:'dirt'};
   const perevod = o => {
     const r={};
     for(const k in (o||{})) if(k in knobs || karta[k] in knobs ||
@@ -415,7 +422,7 @@ function skazhiTekst(){
   // никуда не подмешивают. Молчать в такой момент было бы издевательством.
   // Сказанное некуда деть, если его никуда не подмешивают.
   const podskazka=[];
-  if(knobs.golos < .02 && knobs.naruzhu < .02) podskazka.push('подними XMOD или DRY');
+  if(knobs.golos < .02) podskazka.push('подними XMOD');
   send();
   skazhi(`${f.filter(x=>x.f!=='pauza').length} фонем`+
          (podskazka.length ? ' · ' + podskazka.join(' · ') : ''));
@@ -773,8 +780,8 @@ async function metka(kakaya){
 const knobs={volt:.5, bak:.5, sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
              zhat:0, drive:.15, master:1, ton:.35, temp:.5, gnut:0, takt:0,
-             trakt:.3, naruzhu:0, kuda:0, razved:0, slip:0, tilt:0};
-const switches={pit:0, set:0, gen1:1, gen2:1, gen3:0, link:0, dirt:0, petlya:0,
+             trakt:.3, kuda:0, razved:0, slip:0, tilt:0};
+const switches={pit:0, set:0, gen1:1, gen2:1, gen3:0, dirt:0, petlya:0,
                 mix:0, povtor:0, sboy:0, derzhi:0, derzhi2:0, derzhi3:0};
 
 const p={};
@@ -1554,10 +1561,8 @@ function kartina(){
   }
   PUSTO=0;
   const oA=report.osc||new Float32Array(TOCHEK);
-  const oG=report.oscG||new Float32Array(TOCHEK);
   const oP=report.oscP, oX=report.oscX, oM=report.oscM;
   const A=podgotov(oA);
-  const G=podgotov(oG);
   const ks=1/A.mxo, ki=1/A.mxi;
 
   // ЧЕЙ ЭТО ОТСЧЁТ.
@@ -1585,11 +1590,9 @@ function kartina(){
   const obrS = oP && postSred>1e-6 ? 1/postSred : 0;
   for(let i=0;i<A.n;i++){
     VESP[i] = obrS ? Math.abs(oP[i]*obrS - 1) : 0;
-    // Голос — и он сам, и его ведение схемы. Слышимая доля меряется по
-    // слышимому, иначе еле слышный голос красил бы фигуру во всю силу.
-    const svoy = Math.abs(G.sgl[i])*ks;
-    const vedet = oX ? oX[i] : 0;
-    VESG[i] = svoy>vedet ? svoy : vedet;
+    // Голос — его ВЕДЕНИЕ схемы. Сухого пути больше нет (DRY вырезан),
+    // синим красится только вмешательство: где сигнал ведёт прибор.
+    VESG[i] = oX ? oX[i] : 0;
     // МОДУЛЯЦИЯ — четвёртый цвет. Приходит готовой долей от прибора: увод
     // меряется чужим током в заряде узла, удержание — стоящими качелями.
     VESM[i] = oM ? oM[i] : 0;

@@ -1579,7 +1579,14 @@ class Device {
     // Замкнута связь или нет — величина непрерывная: наполовину замкнутая
     // связь это вдвое больший резистор, и генераторы захватываются слабее.
     // Удар сетки замыкает её по-прежнему резко: там это ключ, а не ручка.
-    const zamk = Math.max(clamp(p.link, 0, 1), ritmSv > .12 ? 1 : 0);
+    // СВЯЗЬ МЕЖДУ УЗЛАМИ ПРИНАДЛЕЖИТ СЕТКЕ. Панельный тумблер, замыкавший её
+    // постоянно, вырезан по замеру: он сваривал два генератора в унисон
+    // (249/265 → 258/258 Гц) и глушил верх на треть (273 → 171 переходов в
+    // секунду) — то есть покупал потерю многоголосия, ничего не давая
+    // взамен. Аккорды из связи делает BEND, и делает правильно — ведёт
+    // самый быстрый. Сетке же связь нужна ИМПУЛЬСОМ: на ударном шаге узлы
+    // срываются в захват, и это часть барабанности.
+    const zamk = ritmSv > .12 ? 1 : 0;
     const Rsv = zamk > 1e-4 ? sb.Rsvyazi / (zamk * (1 + ritmSv * 2)) : 1e12;
     // Суммирующий узел: ток каждой ветви втекает в базу через свой резистор,
     // а базовый резистор тянет узел к нулю. Отсюда и общий уровень, и то,
@@ -2446,7 +2453,7 @@ class Petlya {
 const TUMBLERY = {gen1:1, gen2:1, gen3:1, mix:1, pit:1, sboy:1, derzhi:1,
                   derzhi2:1, derzhi3:1};
 // Коммутация: в обычном режиме мгновенна, под микшированием едет.
-const KOMMUTACIYA = {link:1, dirt:1, kuda:1};
+const KOMMUTACIYA = {dirt:1, kuda:1};
 
 // Сколько длится перевод между двумя приборами при смене пресета или сборки.
 // Это движение руки на кроссфейдере, а не техническая сглаживалка.
@@ -2827,13 +2834,13 @@ class Chaos extends AudioWorkletProcessor {
     // подключён к колонкам. Ровно так стояли две коробки на столе.
     this.p = { sway:.55, tone:.5, depth:.75,
                pulse:.2, hit:.35, spread:.15, drift:0,
-               gen1:1, gen2:1, gen3:0, link:0, dirt:0, range:.5,
+               gen1:1, gen2:1, gen3:0, dirt:0, range:.5,
                // ритм-секция: одна ручка — насколько глубоко ключ вмешивается
                gryzn:0,
                // микрофонная петля: усиление в круге
                petlya:0,
                // голос: глубина, точка ввода, слышен ли он сам по себе
-               golos:0, kuda:0, naruzhu:0,
+               golos:0, kuda:0,
                // говорилка: чем воткнуто в гнездо, высота, скорость, повтор
                ton:.35, temp:.5, povtor:0, trakt:.3, gnut:0, takt:0, razved:0,
                slip:0, tilt:0, derzhi2:0, derzhi3:0,
@@ -2859,7 +2866,7 @@ class Chaos extends AudioWorkletProcessor {
     this.predel = new Predel();
     this.grom = new Gromkost();
     this.zad = new Float32Array(this.predel.n);
-    this.zadG = new Float32Array(this.predel.n); this.zadi = 0;
+    this.zadi = 0;
     this.mikKv = 0; this.vyhKv = 0; this.vozvrat = .55; this.proshY = 0;
     this.mikPik = 0;
     this.semya = 1;
@@ -2872,7 +2879,6 @@ class Chaos extends AudioWorkletProcessor {
     this.utechka = 0; this.navodka = 0;
     this.pik = 0; this.report = 0; this.okno = 0; this.sryvy = 0;
     this.osc = new Float32Array(256); this.oscDo = new Float32Array(256);
-    this.oscG = new Float32Array(256);
     // Что делает ПОСТ и что делает ГОЛОС — по отсчётам, а не догадкой с
     // картины. Панель прежде выводила работу поста из разницы двух следов, и
     // это было неверно в самой основе: компрессор действует УРОВНЕМ, а следы
@@ -3142,12 +3148,6 @@ class Chaos extends AudioWorkletProcessor {
           this.быстро = null;
         }
       }
-      // ГОЛОС НАРУЖУ — сам источник, слышный поверх прибора. Он входит в
-      // тракт ДО поста: обработка одна на всех, и компрессору незачем знать,
-      // где тут прибор, а где микрофон с говорилкой. Прежде голос
-      // добавлялся ПОСЛЕ компрессора и проходил мимо него.
-      const golosVyh = this.p.naruzhu > .002 ? vhod * 1.4 * this.p.naruzhu : 0;
-      y += golosVyh;
 
       // ПОСТ. Запоминаем, что пришло на его вход: разница между этим и тем,
       // что выйдет наружу, и есть его работа — её видно на картине.
@@ -3157,8 +3157,6 @@ class Chaos extends AudioWorkletProcessor {
       // красным всё подряд, даже когда пост выключен.
       const yDo = this.zad[this.zadi];
       this.zad[this.zadi] = y;
-      const gDo = this.zadG[this.zadi];
-      this.zadG[this.zadi] = golosVyh;
       this.zadi = (this.zadi + 1) % this.zad.length;
       y = this.zhmi.step(y, this.p.zhat);
       if (++this.okno >= SR * .25){ this.okno = 0; this.pr.mera(); }
@@ -3206,11 +3204,6 @@ class Chaos extends AudioWorkletProcessor {
         this.osci = (this.osci + 1) & 255;
         this.osc[this.osci] = y;
         this.oscDo[this.osci] = yDo;
-        // Каким голос выходит НАРУЖУ — через ту же обработку, что и прибор.
-        // Считается по мгновенным множителям цепи, а не вторым прогоном:
-        // компрессор и ограничитель на каждом отсчёте просто множители.
-        this.oscG[this.osci] = gDo * this.zhmi.effekt * this.p.master
-                             * (.5 + this.p.drive * 7.5) * this.predel.g;
         // ТОЛЬКО ДИНАМИЧЕСКИЕ множители: сжатие и ограничение. DRIVE и
         // MASTER сюда не входят — они постоянны, а постоянное усиление это
         // громкость, а не изменение звука.
@@ -3264,7 +3257,7 @@ class Chaos extends AudioWorkletProcessor {
         shag: this.pr.setka.shag, udar: this.pr.setka.udar,
         risunok: this.pr.setka.risunok.slice(),
         osc: this.osc.slice(), oscDo: this.oscDo.slice(),
-        oscG: this.oscG.slice(), oscP: this.oscP.slice(),
+        oscP: this.oscP.slice(),
         oscX: this.oscX.slice(), oscM: this.oscM.slice(), sled: l,
         pl: Array.from(this.pl), utechka: this.utechka,
         snimok: pr.snimok(),
