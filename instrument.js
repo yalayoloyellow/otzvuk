@@ -189,6 +189,19 @@ const KNOBS=[
    stupeni:['lamp','lamp+nodes','nodes','nodes+rail','rail']},
 
   // ---- ПОСТ ----
+  // ---- ПОСТ · ГРОСБИТ И ОКРАС ----
+  // Резак по ГРУБОМУ РУЧНОМУ метроному: темп топается клавишей b, сетка ни
+  // под что не подстраивается — так решено нарочно, это и есть Gross Beat.
+  // CHOP — запинка: доля начинается вживую и повторяет своё начало; ручка
+  // ходит по ряду делений 1/2 → 1/4 → 1/8 → 1/16.
+  {k:'chop', kl:'KeyC', imya:'CHOP', zona:'post', gr:'post'},
+  // SCREW — chopped and screwed: чтение отстаёт до половинной скорости,
+  // высота падает как у кассеты, сброс на каждой доле держит такт.
+  {k:'skru', kl:'KeyV', imya:'SCREW', zona:'post', gr:'post'},
+  // COLOR — автоэквализация к профилю шума (⇧b выбирает профиль): восемь
+  // октавных полос медленно дотягиваются к лесенке белого, розового или
+  // коричневого. У розового энергия всех октав РАВНА — отсюда и цель.
+  {k:'okras', kl:'Period', imya:'COLOR', zona:'post', gr:'post'},
   {k:'zhat', kl:'KeyN', imya:'COMP',   zona:'post', gr:'post'},
   // DRIVE — усиление на входе ограничителя: сначала громче, потом плотнее,
   // потом стена. Потолок при этом стоит намертво, и пик не вылезет ни при
@@ -263,6 +276,8 @@ const SWITCHES=[
    pol:3, mikro:1, zona:'golos', gr:'petlya'},
   {k:'povtor', kl:'KeyJ', shift:1, imya:'LOOP', zona:'golos', gr:'petlya'},
   // ---- ПОСТ ----
+  {k:'profil', kl:'KeyB', shift:1, imya:'PROFILE', podpis:['white','pink','brown'],
+   pol:3, mikro:1, zona:'post', gr:'post'},
   {k:'mix', kl:'KeyN', shift:1, imya:'MORPH', zona:'post', gr:'post'},
 ];
 
@@ -283,6 +298,9 @@ const KOMANDY=[
   {kl:'Tab',       imya:'назад по сборкам', shift:1, deystvie:()=>nazad()},
   {kl:'Tab',       imya:'бросок костей', ctrl:1, deystvie:()=>brosok()},
   {kl:'Backquote', imya:'запись',      deystvie:()=>zapis()},
+  // ТАКТ РУКОЙ. Метроном гросбита: топаешь b в долю — интервалы между
+  // нажатиями дают темп. Пауза больше трёх секунд начинает счёт заново.
+  {kl:'KeyB',      imya:'такт рукой',  deystvie:()=>tapMetr()},
   // ПОМЕТИТЬ ЯВЛЕНИЕ. Открывает строку, человек называет услышанное, и
   // двадцать секунд чисел ложатся под этим именем. Одно и то же имя можно
   // ставить сколько угодно раз — из повторов и выводится эталон.
@@ -714,6 +732,22 @@ async function bystroPrishlo(d){
 }
 
 
+// ТАКТ РУКОЙ — грубый метроном гросбита. Медиана последних интервалов,
+// никакой магии: он и должен быть топорным.
+let tapy=[], metrBpm=0;
+function tapMetr(){
+  const t=performance.now();
+  if(tapy.length && t-tapy[tapy.length-1]>3000) tapy=[];
+  tapy.push(t); if(tapy.length>6) tapy.shift();
+  if(tapy.length<2){ skazhi('такт: ещё раз в долю'); return; }
+  const инт=[]; for(let i=1;i<tapy.length;i++) инт.push(tapy[i]-tapy[i-1]);
+  инт.sort((a,b)=>a-b);
+  const T=инт[инт.length>>1];
+  metrBpm=Math.round(clamp(60000/T, 40, 300));
+  if(node) node.port.postMessage({t:'metr', v:metrBpm});
+  skazhi('метроном '+metrBpm);
+}
+
 // ФАЙЛ ПО КРУГУ. Третий вход наравне с микрофоном и системой: воткнут —
 // звучит, и так же делится прибором на целые.
 //
@@ -780,9 +814,9 @@ async function metka(kakaya){
 const knobs={volt:.5, bak:.5, sway:.55, tone:.5, depth:.75, pulse:.2,
              hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
              zhat:0, drive:.15, master:1, ton:.35, temp:.5, gnut:0, takt:0,
-             trakt:.3, kuda:0, razved:0, slip:0, tilt:0};
+             trakt:.3, kuda:0, razved:0, slip:0, tilt:0, chop:0, skru:0, okras:0};
 const switches={pit:0, set:0, gen1:1, gen2:1, gen3:0, dirt:0, petlya:0,
-                mix:0, povtor:0, sboy:0, derzhi:0, derzhi2:0, derzhi3:0};
+                mix:0, povtor:0, sboy:0, derzhi:0, derzhi2:0, derzhi3:0, profil:0};
 
 const p={};
 
@@ -2004,7 +2038,10 @@ function ruchki(){
 
   for(const [z,g] of GRUPPY){
     const zn=ZONY[z];
-    for(const r of KNOBS) if((r.zona||'shema')===z && r.gr===g) stroki.push(ruchka(r,zn));
+    for(const r of KNOBS) if((r.zona||'shema')===z && r.gr===g)
+      // Метроном живёт на строке CHOP: ему больше негде, а резаку он и нужен.
+      stroki.push(ruchka(r,zn)+
+        (r.k==='chop'&&metrBpm ? `  <span class="k1">${metrBpm}</span>` : ''));
     for(const t of SWITCHES) if((t.zona||'shema')===z && t.gr===g)
       // ROOM — сколько из вышедшего комната вернула в микрофон. Стоял он у
       // INPUT и удлинял строку вдвое, а место ему тут: без петли это число
