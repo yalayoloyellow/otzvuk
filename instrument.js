@@ -277,16 +277,7 @@ const KOMANDY=[
   {kl:'KeyM',      imya:'микрофон',    alt:1, deystvie:()=>vklyuchiMikrofon()},
   {kl:'KeyM',      imya:'система',     alt:1, shift:1, deystvie:()=>vklyuchiSistemu()},
   {kl:'KeyF',      imya:'дорожка',     alt:1, deystvie:()=>fayl()},
-  // ВДВОЕ / ВПОЛОВИНУ. У всякого определителя темпа есть неустранимая
-  // двусмысленность: сто семьдесят шесть и восемьдесят восемь объясняют один
-  // и тот же рисунок одинаково хорошо, и какой из них «темп» — решает ухо, а
-  // не счёт. Замер по семи темпам и трём видам материала: девятнадцать
-  // попаданий из двадцати одного, оба промаха — ровно вдвое.
-  //
-  // Спорить со счётом бесполезно, дешевле дать поправку рукой.
-  {kl:'BracketRight', imya:'темп вдвое',     alt:1, deystvie:()=>tempPravka(2)},
-  {kl:'BracketLeft',  imya:'темп вполовину', alt:1, deystvie:()=>tempPravka(.5)},
-];
+  ];
 
 // ВЫБРАНО ПОКА НАЖАТО. Держишь букву — ручка твоя, отпустил — ничья. Ни
 // режима, ни памяти: рука в каждый миг показывает, что трогает.
@@ -686,36 +677,6 @@ async function bystroPrishlo(d){
   }catch(e){ skazhi('щуп не лёг: '+e.message); }
 }
 
-// СЧЁТ ТЕМПА ВХОДА. Ядро шлёт тридцать секунд входа раз в двенадцать
-// секунд, работник считает и присылает число. Обратно в ядро оно уходит
-// потому, что на него целится ТАКТ.
-let rabotnikT = null, tempVhoda = 0, dolyaVhoda = 0, tempNomer = 0;
-function schitayTemp(pcm, sr){
-  if(!rabotnikT){
-    rabotnikT = new Worker('temp.rabotnik.js');
-    rabotnikT.onmessage = e => {
-      const d = e.data;
-      // Тишина на входе — не поломка, а ответ: держим прежнее число, пока
-      // не появится новое. Иначе показание мигало бы на каждой паузе.
-      if(!d.bpm) return;
-      tempVhoda = d.bpm; dolyaVhoda = d.shag;
-      if(node) node.port.postMessage({t:'temp', bpm: tempVhoda * tempMnozh,
-                                      shag: dolyaVhoda / tempMnozh});
-    };
-  }
-  rabotnikT.postMessage({pcm, sr, nomer: ++tempNomer}, [pcm.buffer]);
-}
-
-// ПОПРАВКА ТЕМПА РУКОЙ. Множитель уходит в прибор и там просто множит
-// измеренное: счёт остаётся счётом, а последнее слово за ухом.
-let tempMnozh = 1;
-function tempPravka(k){
-  tempMnozh = clamp(tempMnozh * k, .25, 4);
-  if(node && tempVhoda) node.port.postMessage({t:'temp', bpm: tempVhoda * tempMnozh,
-                                               shag: dolyaVhoda / tempMnozh});
-  skazhi(tempVhoda ? 'темп входа '+Math.round(tempVhoda*tempMnozh)
-                   : 'на входе темпа пока не слышно');
-}
 
 // ФАЙЛ ПО КРУГУ. Третий вход наравне с микрофоном и системой: воткнут —
 // звучит, и так же делится прибором на целые.
@@ -925,7 +886,6 @@ async function pusk(){
     const d=e.data;
     if(d && d.t==='rec'){ zapisPrishla(d); return; }
     if(d && d.t==='быстро'){ bystroPrishlo(d); return; }
-    if(d && d.t==='pcm'){ schitayTemp(d.pcm, d.sr); return; }
     report=d; window.dbg.otchetov=(window.dbg.otchetov||0)+1; window.dbg.o=report;
   };
   await ctx.resume();
@@ -1917,29 +1877,11 @@ function ruchki(){
   // Ход ручки не тронут нарочно: он переопределил бы все пресеты.
   const bpm = per>0 ? 240/per : 0;
   const vtemp = bpm>=40 && bpm<=200;
-  // ТЕМП ВХОДА — ОТДЕЛЬНОЕ ЧИСЛО, И ЭТО ПРИНЦИПИАЛЬНО.
-  //
-  // Слева — темп САМОГО ПРИБОРА, померенный по фронтам качелей. Справа —
-  // темп того, что играет на входе, померенный автокорреляцией потока ударов.
-  // Это разные величины, и путать их нельзя: прибор может идти своим ходом,
-  // может встать в чужой такт, а показывать надо оба, чтобы было видно, сошлись
-  // они или нет.
-  // ТЕМП ВХОДА — ОДНО ЧИСЛО, И ОНО НЕ ДРОЖИТ. Считается оно раз в двенадцать
-  // секунд по тридцатисекундному окну, а не каждый кадр по бегущему следу.
-  // Прежнее показание пересчитывалось непрерывно и потому скакало — но
-  // главная беда была не в дрожании: самодельный счёт брал ОДИН трек из
-  // одиннадцати. Прыгало оно вокруг неверного числа.
-  //
-  // «Уверенности» здесь больше нет. Она была величиной, которую я же и
-  // сочинял, а показывалась как измеренная.
-  const bv = tempVhoda ? tempVhoda * tempMnozh : 0;
-  const вход = bv > 0
-    ? `  <span class="s1">вход</span> <span class="s4">${Math.round(bv)}</span>`
-    : '';
+
   stroki.push(chelo('BPM','',zs)+
     shkalaMesto(bpm?clamp(Math.log2(bpm/8)/8,0,1):0,shk,0)+` `+
     (bpm ? `<span class="${vtemp?'z4':'z1'}">${Math.round(bpm)}</span>` : '—')+
-    `  <span class="z2">${rezhim}</span>`+вход);
+    `  <span class="z2">${rezhim}</span>`);
   // Сетка ритма: где удары и где сейчас счётчик. Имя то же, что у ручки, и
   // это НАРОЧНО: строка показывает рисунок счётчика, ручка задаёт, насколько
   // глубоко он лезет в схему. Один предмет, два органа — разводить их именами
