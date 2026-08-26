@@ -1118,6 +1118,8 @@ const MUTY=new Float32Array(TOCHEK), CVET=new Uint8Array(TOCHEK);
 let postSred=1;
 // Веса вмешательства по отсчётам и гистограмма для отсечки.
 const VESP=new Float32Array(TOCHEK), VESG=new Float32Array(TOCHEK);
+// Вес модуляции — четвёртый цвет картины.
+const VESM=new Float32Array(TOCHEK);
 // Точки траектории и длины разрывов: считаются первым проходом, рисуются
 // вторым.
 const TX=new Int16Array(TOCHEK), TY=new Int16Array(TOCHEK), TDL=new Float32Array(TOCHEK);
@@ -1473,7 +1475,7 @@ function kartina(){
   PUSTO=0;
   const oA=report.osc||new Float32Array(TOCHEK);
   const oG=report.oscG||new Float32Array(TOCHEK);
-  const oP=report.oscP, oX=report.oscX;
+  const oP=report.oscP, oX=report.oscX, oM=report.oscM;
   const A=podgotov(oA);
   const G=podgotov(oG);
   const ks=1/A.mxo, ki=1/A.mxi;
@@ -1508,6 +1510,9 @@ function kartina(){
     const svoy = Math.abs(G.sgl[i])*ks;
     const vedet = oX ? oX[i] : 0;
     VESG[i] = svoy>vedet ? svoy : vedet;
+    // МОДУЛЯЦИЯ — четвёртый цвет. Приходит готовой долей от прибора: увод
+    // меряется чужим током в заряде узла, удержание — стоящими качелями.
+    VESM[i] = oM ? oM[i] : 0;
   }
   // ЗЕЛЁНОЕ — ГЛАВНОЕ, И ЭТО ПРАВИЛО, А НЕ ПОРОГ.
   //
@@ -1534,12 +1539,17 @@ function kartina(){
   // Дробить её след в крапину значит показывать зернистость измерения, а не
   // явление. Сглаживание по семи соседям возвращает следу его настоящую
   // длину.
-  sgladi(VESP, A.n); sgladi(VESG, A.n);
+  sgladi(VESP, A.n); sgladi(VESG, A.n); sgladi(VESM, A.n);
   const porK = otsechka(VESP, A.n, .30, .085);
   const porG = otsechka(VESG, A.n, .26, .24);
+  const porM = otsechka(VESM, A.n, .30, .12);
   for(let i=0;i<A.n;i++){
-    const wp=VESP[i], wg=VESG[i];
-    CVET[i] = (wg>porG && wg*1.4>=wp) ? 2 : wp>porK ? 1 : 0;
+    const wp=VESP[i], wg=VESG[i], wm=VESM[i];
+    // Кто сильнее вмешался, тот и красит. Порядок при равенстве: голос,
+    // модуляция, пост — от самого «чужого» звуку к самому своему.
+    CVET[i] = (wg>porG && wg*1.4>=wp && wg*1.4>=wm) ? 2
+            : (wm>porM && wm*1.2>=wp) ? 3
+            : wp>porK ? 1 : 0;
   }
   // И добиваем одиночек: отрезок короче трёх отсчётов всё равно прочитается
   // крапиной, а не цветом. Отдаём его соседям.

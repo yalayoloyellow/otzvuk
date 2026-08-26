@@ -1035,6 +1035,7 @@ class Device {
     }
     this.osn = this.cells[0];
     this.tokBylo = 0;
+    this.gnutDolya = 0;
     this.Rzar = new Float64Array(3);        // щуп: живое сопротивление цепи заряда
     // КОНТАКТЫ ПЛОЩАДОК: своё сопротивление у каждой, своя влажность.
     this.mokro = new Float64Array(14);       // 0 сухо, 1 вспотело
@@ -1461,6 +1462,13 @@ class Device {
       if (gnut > .002 && i < 2){
         const вед = this.cells[2];
         const Rг = sb.Rgnut[i] / gnut;
+        // СКОЛЬКО УВОДА В ЭТОМ МГНОВЕНИИ. Мера — доля тока, пришедшего от
+        // ведущего, в общем токе заряда узла. Не глубина ручки: ручка стоит
+        // на месте, а тянет ведущий по-разному в зависимости от того, где он
+        // сам сейчас находится. Красить надо то, что происходит, а не то,
+        // что выставлено.
+        this.gnutDolya = Math.min(1, Math.abs(вед.vyh - uzel.V) / Rг
+                                     / Math.max(1e-12, Math.abs(Vdd - uzel.V) / R + 1e-12));
         if (Rvh > 0){
           const gп = 1 / Rvh, gг = 1 / Rг;
           Vvh = (gп * Vvh + gг * вед.vyh) / (gп + gг);
@@ -2586,6 +2594,7 @@ class Chaos extends AudioWorkletProcessor {
     // то есть шум рисования.
     this.oscP = new Float32Array(256);   // мгновенное усиление поста
     this.oscX = new Float32Array(256);   // насколько голос ведёт схему
+    this.oscM = new Float32Array(256);   // насколько модуляция ведёт схему
     this.osci = 0; this.oscsh = 0;
     this.sled = new Float32Array(200); this.sli = 0; this.prore = 0;
 
@@ -2920,7 +2929,13 @@ class Chaos extends AudioWorkletProcessor {
         this.oscP[this.osci] = this.zhmi.effekt * this.predel.g;
         // Голос ведёт схему через накал или шину: его огибающая, умноженная
         // на глубину. Слышен он при этом или нет — отдельный вопрос.
-        this.oscX[this.osci] = (this.golos.ogib || 0) * (this.p.golos || 0); }
+        this.oscX[this.osci] = (this.golos.ogib || 0) * (this.p.golos || 0);
+        // МОДУЛЯЦИЯ В КАРТИНЕ. Увод меряется долей чужого тока в заряде узла,
+        // удержание — тем, что качели стоят. Второе постоянно, пока ключ
+        // разомкнут, поэтому оно даёт ровную подложку, а увод поверх неё
+        // дышит: видно и то, что прибор держат, и то, где его тянут.
+        this.oscM[this.osci] = Math.min(1, (this.pr.gnutDolya || 0)
+                                          + ((this.p.derzhi || 0) > .5 ? .55 : 0)); }
       if (++this.prore >= SR / 100){ this.prore = 0;
         this.sled[this.sli] = this.pr.swing.u;
         this.sli = (this.sli + 1) % 200; }
@@ -2960,7 +2975,7 @@ class Chaos extends AudioWorkletProcessor {
         risunok: this.pr.setka.risunok.slice(),
         osc: this.osc.slice(), oscDo: this.oscDo.slice(),
         oscG: this.oscG.slice(), oscP: this.oscP.slice(),
-        oscX: this.oscX.slice(), sled: l,
+        oscX: this.oscX.slice(), oscM: this.oscM.slice(), sled: l,
         pl: Array.from(this.pl), utechka: this.utechka,
         snimok: pr.snimok(),
         // Номиналы уходят ОДИН РАЗ на сборку: они впаяны, и слать восемьдесят
