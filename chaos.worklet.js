@@ -3034,8 +3034,7 @@ class Chaos extends AudioWorkletProcessor {
     // Узорная голова: смещение чтения от письма и его движение.
     this.uzO = 0;        // насколько чтение позади письма, отсчётов
     this.uzRate = 1;     // наклон кривой чтения на текущем шаге
-    this.uzSlewN = 0;    // сколько отсчётов ещё едет слив к цели
-    this.uzSlewV = 0;    // скорость слива, отсчётов на отсчёт
+    this.uzRateT = 1;    // куда едет скорость
     this.uzShag = -1;    // номер полушага 0..15
     this.uzTakt = 0;     // номер доли в цикле узора 0..7
     this.uzAkt = 0;      // активен ли узор на этом шаге
@@ -3373,27 +3372,27 @@ class Chaos extends AudioWorkletProcessor {
       if (шаг !== this.uzShag){
         this.uzShag = шаг;
         const з = this.pr.sb.uzor[шаг & 15];
-        const был = this.uzAkt;
         this.uzAkt = uzor > .002 && з.op !== 0 && з.pri < uzor ? з.op : 0;
+        // ПЛЁНКА, А НЕ ТЕЛЕПОРТ. Первая редакция «скользила» ПОЗИЦИЕЙ к цели
+        // — голова неслась по кольцу в восемь раз быстрее письма, и чтение
+        // на восьмикратной скорости давало чирп на три октавы вверх: те
+        // самые «писки, нахуй не нужные». У плёнки плавно меняется
+        // СКОРОСТЬ (и она ограничена), а позицию меняют подъёмом иглы —
+        // прыжком со сшивом. Скорость едет к цели одним полюсом; глубину
+        // сглаживания задаёт зерно, ноль — жёсткие ступеньки, тоже характер.
+        this.uzRateT = this.uzAkt === 2 ? .5
+                     : this.uzAkt === 3 ? -1
+                     : this.uzAkt === 4 ? 0 : 1;
         if (this.uzAkt === 1){
-          // Повтор: ступенька назад на 1..4 полудоли.
-          const цель = (1 + ((з.arg * 3.999) | 0)) * полшага;
-          const слив = Math.round(this.pr.sb.uzorGlide * полшага * .6);
-          if (слив > 32){ this.uzSlewN = слив; this.uzSlewV = (цель - this.uzO) / слив; }
-          else { this.uzO = цель; this.grFade = 96; this.grPrev = this.grClose; }
-          this.uzRate = 1;
+          // Повтор: подъём иглы — прыжок назад на 1..4 полудоли, сшив.
+          this.uzO = (1 + ((з.arg * 3.999) | 0)) * полшага;
+          this.grFade = 96; this.grPrev = this.grClose;
+          this.uzRateT = 1;
         }
-        else if (this.uzAkt === 2) this.uzRate = .5;     // полускорость
-        else if (this.uzAkt === 3) this.uzRate = -1;     // разворот
-        else if (this.uzAkt === 4) this.uzRate = 0;      // стоп
-        else {
-          this.uzRate = 1;
-          // Возврат к живому: скольжение догоняет письмо — глисс вверх.
-          if (был && this.uzO > 1){
-            const слив = Math.round(this.pr.sb.uzorGlide * полшага * .6);
-            if (слив > 32){ this.uzSlewN = слив; this.uzSlewV = -this.uzO / слив; }
-            else { this.uzO = 0; this.grFade = 96; this.grPrev = this.grClose; }
-          }
+        // Заземлённый шаг начала такта возвращает иглу к письму: узор
+        // привязан к тактам и не уплывает накопленным смещением.
+        if (з.op === 0 && (шаг & 7) === 0 && this.uzO > 1){
+          this.uzO = 0; this.grFade = 96; this.grPrev = this.grClose;
         }
       }
       if (uzor > .002){
@@ -3402,17 +3401,21 @@ class Chaos extends AudioWorkletProcessor {
         // плёночное глиссандо. CHOP при поднятом узоре не действует: узор
         // сам содержит повторы, и две запинки друг по другу — каша.
         const дл = this.grB.length;
-        if (this.uzSlewN > 0){
-          this.uzO += this.uzSlewV;
-          if (--this.uzSlewN <= 0) this.uzSlewV = 0;
-        } else {
-          this.uzO += 1 - this.uzRate * (1 - skru * .5);
-        }
+        // Скорость едет к цели одним полюсом; постоянная — от зерна
+        // скольжения: ноль зерна — почти мгновенно (жёсткие ступени).
+        const кСк = 1 - Math.exp(-1 / (32 + this.pr.sb.uzorGlide * полшага * .45));
+        this.uzRate += (this.uzRateT - this.uzRate) * кСк;
+        const скор = this.uzRate * (1 - skru * .5);
+        this.uzO += 1 - скор;
         if (this.uzO < 0) this.uzO = 0;
         if (this.uzO > дл - 2) this.uzO = дл - 2;
         const и = this.grW - this.uzO + дл;
         const ц = Math.floor(и), др = и - ц;
         let чит = this.grB[ц % дл] * (1 - др) + this.grB[(ц + 1) % дл] * др;
+        // ГОЛОВКА ИНДУКЦИОННАЯ: нет скорости — нет сигнала. Тейп-стоп
+        // глохнет по-настоящему, а не держит постоянку на выходе.
+        const г = Math.abs(скор) / .15;
+        if (г < 1) чит *= г;
         if (this.grFade > 0){
           const т = this.grFade / 96;
           чит = чит * (1 - т) + this.grPrev * т;
