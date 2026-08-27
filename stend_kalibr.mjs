@@ -15,9 +15,8 @@ const N = 128;
 // панели, — и стенд без него мерил потолок ВЫКЛЮЧЕННОГО прибора: худший пик
 // 0.0255 по двенадцати сборкам, то есть тишина, и «потолок держится»
 // доказывалось вакуумом.
-const B = {volt:.5, bak:.5, pit:1, set:0, sboy:0, derzhi:0,
-           sway:.55, tone:.5, depth:.75, pulse:.2, hit:.35, spread:.15, drift:0,
-           range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, dirt:0,
+const B = {pit:1, set:0, sboy:0, derzhi:0,
+           sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, dirt:0,
            petlya:0, kuda:0, mix:0, zhat:0, master:.5};
 const semena = [1626943591, 777, 1, 42, 99991, 3141592, 2861234501, 12345,
                 777777, 55555, 8675309, 20260820];

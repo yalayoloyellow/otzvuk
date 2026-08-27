@@ -12,11 +12,9 @@ import {readFileSync} from 'fs';
 globalThis.sampleRate=48000;
 globalThis.AudioWorkletProcessor=class{constructor(){this.port={postMessage(){},set onmessage(f){this._f=f},get onmessage(){return this._f}};}};
 const НАБОРЫ=[
- ['спокойный', {volt:.5,bak:.5,sway:.55,tone:.5,depth:.75,pulse:.2,hit:.35,spread:.15,
-  drift:.2,range:.5,gryzn:.3,golos:.6,gen1:1,gen2:1,gen3:1,dirt:.2,petlya:0,
+ ['спокойный', {sway:.55,tone:.5,depth:.75,range:.5,gryzn:.3,golos:.6,gen1:1,gen2:1,gen3:1,dirt:.2,petlya:0,
   kuda:0,zhat:0,drive:.15,master:1,pit:1,set:0,sboy:0,gnut:0,derzhi:0,takt:.5,razved:0}],
- ['крайний',   {volt:.5,bak:.5,sway:.7,tone:.3,depth:1,pulse:.5,hit:.6,spread:.8,
-  drift:.5,range:.3,gryzn:.6,golos:1,gen1:1,gen2:1,gen3:1,dirt:.5,petlya:0,
+ ['крайний',   {sway:.7,tone:.3,depth:1,range:.3,gryzn:.6,golos:1,gen1:1,gen2:1,gen3:1,dirt:.5,petlya:0,
   kuda:.5,zhat:.4,drive:.5,master:1,pit:0,set:1,sboy:0,gnut:.4,derzhi:0,takt:.8,razved:0}],
 ];
 function мера(код,П,сек=4){

@@ -71,31 +71,20 @@ let report={pik:0,rms:0,lyap:0,vraschenie:0,shina:1,osc:new Float32Array(256),
 //     скобки      пост
 //
 // Второй слой (Shift) держит парную величину там, где пар не хватило: он
-// всегда родственник основной — GENDER при PITCH, ROUTE при DRY, MASTER при
-// DRIVE, TANK при VOLTS, XMOD при SOURCE.
+// всегда родственник основной — GENDER при PITCH, MASTER при DRIVE.
 const KNOBS=[
-  // ---- ПИТАНИЕ ----
-  // VOLTS — напряжение питания. Середина хода это номинал сборки: вниз
-  // голодание до срыва генерации, вверх перекорм.
-  {k:'volt', kl:'KeyZ', imya:'VOLTS', gr:'pit'},
-  // TANK — ёмкость накопителя, то есть сколько прибор догорает после снятия
-  // питания. Не размер батареи: та решает, сколько он проработает до посадки.
-  {k:'bak', kl:'KeyX', imya:'TANK',  gr:'pit'},
-
   // ---- СХЕМА · ГЕНЕРАТОРЫ ----
+  // ШЕСТЬ РУЧЕК ПЕРЕЕХАЛИ В СЕМЯ — VOLTS, TANK, DETUNE, WIDTH, BIAS, SLOP.
+  // Решение хозяина: «ручка остаётся, только если её крутят во время игры;
+  // характер живёт в семени и ищется через Tab и кость». Эти шесть
+  // выставлялись раз и забывались — теперь их выставляет сборка, у каждой
+  // коробки свои, и панель стала пультом жестов, а не стендом настройки.
+  // Клавиши z x w e f g свободны под будущие органы.
   {k:'range', kl:'KeyQ', imya:'TUNE',   gr:'gen'},   // общий строй прибора
-  {k:'spread', kl:'KeyW', imya:'DETUNE', gr:'gen'},   // расстройка трёх генераторов
-  {k:'pulse', kl:'KeyE', imya:'WIDTH',  gr:'gen'},   // ширина импульса
   // ---- СХЕМА · КАЧЕЛИ ----
   {k:'sway', kl:'KeyA', imya:'RATE',   gr:'kach'},  // период медленного генератора
   {k:'depth', kl:'KeyS', imya:'DEPTH',  gr:'kach'},  // глубина модуляции
   {k:'tone', kl:'KeyD', imya:'TONE',   gr:'kach'},  // рабочая точка фоторезистора
-  // BIAS — смещение в цепи медленного узла. Оно и есть ток смещения, снятый
-  // с отвода подстроечника, так что имя тут не приблизительное, а точное.
-  {k:'hit', kl:'KeyF', imya:'BIAS',   gr:'kach'},
-  // SLOP — разболтанность периода. Слово с панелей MPC и Elektron, и значит
-  // там ровно это же.
-  {k:'drift', kl:'KeyG', imya:'SLOP',   gr:'kach'},
   // ---- СХЕМА · СЕТКА ----
   {k:'gryzn', kl:'KeyR', imya:'SEQ',    gr:'setka'}, // глубина вмешательства счётчика
 
@@ -404,8 +393,7 @@ async function zagruzispisok(){
 // с одним прибором или с двумя. Берём первый прибор — он и есть весь прибор.
 function primenit(p){
   if(!p) return;
-  const karta = {качание:'sway', характер:'tone', размах:'depth', импульс:'pulse',
-                 удар:'hit', развод:'spread', гуляние:'drift', диапазон:'range',
+  const karta = {качание:'sway', характер:'tone', размах:'depth', диапазон:'range',
                  ген2:'gen2', ген3:'gen3', грязь:'dirt'};
   const perevod = o => {
     const r={};
@@ -811,8 +799,7 @@ async function metka(kakaya){
   }catch(e){ skazhi('не записалось: '+e.message); }
 }
 
-const knobs={volt:.5, bak:.5, sway:.55, tone:.5, depth:.75, pulse:.2,
-             hit:.35, spread:.15, drift:0, range:.5, gryzn:0, golos:0,
+const knobs={sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0,
              zhat:0, drive:.15, master:1, ton:.35, temp:.5, gnut:0, takt:0,
              trakt:.3, kuda:0, razved:0, slip:0, tilt:0, chop:0, skru:0, okras:0};
 const switches={pit:0, set:0, gen1:1, gen2:1, gen3:0, dirt:0, petlya:0,

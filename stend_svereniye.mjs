@@ -95,15 +95,14 @@ function svojstva(x){
   return {rms, pik, krest: pik/rms, pol: polosy(spektr(x))};
 }
 
-const BAZA = {sway:.55, tone:.5, depth:.75, pulse:.2, hit:.35, spread:.15,
-              drift:0, range:.5, gryzn:.4, golos:0, gen1:1, gen2:1, gen3:1,
+const BAZA = {sway:.55, tone:.5, depth:.75, range:.5, gryzn:.4, golos:0, gen1:1, gen2:1, gen3:1,
               dirt:0, petlya:0, kuda:0,
               zhat:0, drive:0, master:1, mix:0};
 const REZHIMY = [
   ['покой',          {}],
   ['гейт+грязь',     {gryzn:1, dirt:1}],
   ['низ',            {range:0, depth:1}],
-  ['верх',           {range:1, pulse:.7}],
+  ['верх',           {range:1}],
   ['пост',           {zhat:1, drive:.7}],
 ];
 const SEMENA = [1626943591, 777, 42];

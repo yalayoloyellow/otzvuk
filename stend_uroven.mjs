@@ -30,8 +30,7 @@ function progon(nastr, sek = 3, seed = 1626943591){
   return {pik, rms: Math.sqrt(kv / cnt)};
 }
 
-const BAZA = {sway:.55, tone:.5, depth:.75, pulse:.2, hit:.35, spread:.15,
-              drift:0, range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0,
+const BAZA = {sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0,
               dirt:0, petlya:0, kuda:0};
 
 console.log('НАСТРОЙКА                         пик      скз');
@@ -42,7 +41,7 @@ const varianty = [
   ['низ диапазона (рокот)',   {range:0}],
   ['верх диапазона (писк)',   {range:1}],
   ['размах в ноль',           {depth:0}],
-  ['удар на полную',          {hit:1, gryzn:.8}],
+  ['удар на полную',          {gryzn:.8}],
   ['грязь снята',             {dirt:1}],
 ];
 const ur = {};

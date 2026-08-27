@@ -13,8 +13,7 @@ globalThis.AudioWorkletProcessor = class {
 };
 new Function(readFileSync('./chaos.worklet.js', 'utf8'))();
 
-const БАЗА = {volt:.5, bak:.5, sway:.55, tone:.5, depth:.75, pulse:.2, hit:.35,
-              spread:.15, drift:0, range:.5, gryzn:0, golos:0, gen1:1, gen2:1,
+const БАЗА = {sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0, gen1:1, gen2:1,
               gen3:0, dirt:0, petlya:0, kuda:0, zhat:0,
               drive:.15, master:1, pit:1, set:0};
 const ИМЕНА = ['', 'узел 1', 'узел 2', 'узел 3', 'выход эл.', 'качели',
@@ -82,7 +81,7 @@ for (const п of ПАРЫ){
 // по замеру как сварка в унисон; связь осталась сетке импульсом. Проверяем
 // при трёх генераторах и при разводе.
 for (const [имя, изм] of [['три генератора', {gen3:1}],
-                          ['три + развод', {gen3:1, spread:.5}]]){
+                          ['три + развод', {gen3:1}]]){
   const т = прогон(СЕМЯ, null, 4, изм);
   console.log('\n' + имя + ' — нетронутый: ' + Ч(т).trim());
   console.log('площадка                   ген1  ген2  ген3  громк.  дыры');

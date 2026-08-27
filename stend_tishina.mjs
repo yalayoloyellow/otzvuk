@@ -13,8 +13,7 @@ globalThis.AudioWorkletProcessor = class {
 };
 new Function(readFileSync('./chaos.worklet.js','utf8'))();
 const N = 128, SR = 48000;
-const B = {sway:.55, tone:.5, depth:.75, pulse:.2, hit:.35, spread:.15, drift:0,
-           range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, dirt:0,
+const B = {sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, dirt:0,
            petlya:0, kuda:0, mix:0, zhat:0, drive:.15,
            ist:0, ton:.35, temp:.5, povtor:0, trakt:.3};
 function tiho(iz, semya, pl){
@@ -34,18 +33,18 @@ function tiho(iz, semya, pl){
 console.log('ПОИСК ПО РУЧКАМ, один генератор (как на снимке yala)');
 console.log('настройка                        скз      частота ген1');
 const nabor = [
-  ['как на снимке', {gen2:0, gen3:0, range:.14, pulse:.14, gryzn:.3, sway:.42}],
-  ['импульс в ноль', {gen2:0, gen3:0, pulse:0}],
-  ['импульс на полную', {gen2:0, gen3:0, pulse:1}],
+  ['как на снимке', {gen2:0, gen3:0, range:.14, gryzn:.3, sway:.42}],
+  ['импульс в ноль', {gen2:0, gen3:0}],
+  ['импульс на полную', {gen2:0, gen3:0}],
   ['диапазон в ноль', {gen2:0, gen3:0, range:0}],
   ['диапазон на полную', {gen2:0, gen3:0, range:1}],
   ['характер в ноль', {gen2:0, gen3:0, tone:0}],
   ['размах в ноль', {gen2:0, gen3:0, depth:0}],
-  ['удар на полную', {gen2:0, gen3:0, hit:1}],
+  ['удар на полную', {gen2:0, gen3:0}],
   ['гейт на полную', {gen2:0, gen3:0, gryzn:1}],
   ['грязь снята', {gen2:0, gen3:0, dirt:1}],
-  ['всё в ноль', {gen2:0, gen3:0, pulse:0, range:0, tone:0, depth:0, hit:0}],
-  ['всё на полную', {gen2:0, gen3:0, pulse:1, range:1, tone:1, depth:1, hit:1}],
+  ['всё в ноль', {gen2:0, gen3:0, range:0, tone:0, depth:0}],
+  ['всё на полную', {gen2:0, gen3:0, range:1, tone:1, depth:1}],
 ];
 let bed = [];
 for (const [imya, iz] of nabor){
@@ -58,7 +57,7 @@ for (const [imya, iz] of nabor){
 console.log('\nПЛОЩАДКИ: палец поднимает управляющее напряжение выше питания');
 for (const p of [0, .5, 1, 2, 3]){
   const pl = new Array(9).fill(0); for (let i=1;i<=8;i++) pl[i]=p/8;
-  const r = tiho({gen2:0, gen3:0, pulse:.14, range:.14}, 1626943591, pl);
+  const r = tiho({gen2:0, gen3:0, range:.14}, 1626943591, pl);
   console.log('  прижато', p.toFixed(1), ' скз', r.rms.toFixed(5),
     ' частота', Math.round(r.f), r.rms < .004 ? '  ← ТИШИНА' : '');
 }
