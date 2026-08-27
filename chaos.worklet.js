@@ -3123,6 +3123,15 @@ class Chaos extends AudioWorkletProcessor {
     this.uzCikl = 0;     // номер цикла во фразе 0..3; третий — филл
     this.uzAkt = 0;      // активен ли узор на этом шаге
     this.grClose = 0;                      // последний прочитанный отсчёт
+    // ПОЧТОВЫЕ БУФЕРЫ ОТЧЁТА. Каждый отчёт нарезал шесть свежих массивов —
+    // сто восемьдесят в секунду; сборщик мусора приходил за ними в звуковом
+    // потоке, и его паузы (до десятков миллисекунд в браузере) слышались
+    // дропаутами. postMessage клонирует синхронно — буферы можно
+    // переиспользовать, мусора от них ноль.
+    this.почта = { osc: new Float32Array(256), oscDo: new Float32Array(256),
+                   oscP: new Float32Array(256), oscX: new Float32Array(256),
+                   oscM: new Float32Array(256), sled: new Float32Array(200) };
+    this.snimokTik = 0;
     // ОКРАС. Автоэквализация к профилю шума: восемь октавных полос, медленно
     // дотягиваемых к целевому наклону.
     // Полосы КАСКАДОМ ИЗ ТРЁХ однополюсников на срез: одиночный течёт юбками
@@ -3726,8 +3735,11 @@ class Chaos extends AudioWorkletProcessor {
     this.report += n;
     if (this.report >= SR / 30){
       this.report = 0;
-      const l = new Float32Array(200);
+      const l = this.почта.sled;
       for (let i = 0; i < 200; i++) l[i] = this.sled[(this.sli + i) % 200];
+      this.почта.osc.set(this.osc); this.почта.oscDo.set(this.oscDo);
+      this.почта.oscP.set(this.oscP); this.почта.oscX.set(this.oscX);
+      this.почта.oscM.set(this.oscM);
       const pr = this.pr, sb = pr.sb;
       this.port.postMessage({
         pik: this.pik, sryvy: this.sryvy,
@@ -3746,11 +3758,14 @@ class Chaos extends AudioWorkletProcessor {
         budet: this.vedenie ? { imya: this.vedenie.imya, semya: this.vedenie.semya } : null,
         shag: this.pr.setka.shag, udar: this.pr.setka.udar,
         risunok: this.pr.setka.risunok.slice(),
-        osc: this.osc.slice(), oscDo: this.oscDo.slice(),
-        oscP: this.oscP.slice(),
-        oscX: this.oscX.slice(), oscM: this.oscM.slice(), sled: l,
+        osc: this.почта.osc, oscDo: this.почта.oscDo,
+        oscP: this.почта.oscP,
+        oscX: this.почта.oscX, oscM: this.почта.oscM, sled: l,
         pl: Array.from(this.pl), utechka: this.utechka,
-        snimok: pr.snimok(),
+        // Снимок — самый жирный мусорогон отчёта: сотня полей, и каждое
+        // toFixed рождает строку. Раз в два отчёта достаточно: панель и
+        // замер терпят пропуск, а мусора вдвое меньше.
+        snimok: (this.snimokTik ^= 1) ? pr.snimok() : undefined,
         // Номиналы уходят ОДИН РАЗ на сборку: они впаяны, и слать восемьдесят
         // семь неизменных чисел двадцать раз в секунду незачем.
         nominaly: this.номДано === sb.semya ? undefined
