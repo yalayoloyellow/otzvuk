@@ -719,8 +719,9 @@ async function bystroPrishlo(d){
 
 // ТАКТ РУКОЙ — грубый метроном гросбита. Медиана последних интервалов,
 // никакой магии: он и должен быть топорным.
-let tapy=[], metrBpm=0;
+let tapy=[], metrBpm=0, bZazhat=false;
 function tapMetr(){
+  bZazhat=true;
   const t=performance.now();
   if(tapy.length && t-tapy[tapy.length-1]>3000) tapy=[];
   tapy.push(t); if(tapy.length>6) tapy.shift();
@@ -1055,6 +1056,17 @@ addEventListener('keydown',async e=>{
   // стрелка, листающая пресеты, по невнимательности уводит прибор совсем не
   // туда. Всё навигационное живёт под ⌥ и разбирается выше.
   const strelka = c==='ArrowLeft' ? -1 : c==='ArrowRight' ? 1 : 0;
+  // ТЕМП ПРАВИТСЯ КАК РУЧКА: держишь b — стрелки ведут число, ⇧ десятками.
+  // Топ, за которым пошла стрелка, был началом удержания, а не ударом в
+  // долю — он выкидывается из счёта, иначе правка сбивала бы набивку.
+  if(strelka && bZazhat){
+    e.preventDefault();
+    if(tapy.length){ tapy.pop(); }
+    metrBpm=Math.round(clamp((metrBpm||120)+strelka*(e.shiftKey?10:1), 40, 300));
+    if(node) node.port.postMessage({t:'metr', v:metrBpm});
+    skazhi('метроном '+metrBpm);
+    return;
+  }
   if(strelka){
     if(!derzhimRuchki.size) return;
     e.preventDefault();
@@ -1097,6 +1109,7 @@ addEventListener('keydown',async e=>{
 // перестали отпускаться вовсе: ручка уезжала до упора, площадка оставалась
 // прижатой навсегда. Это и было залипание, на которое жаловался yala.
 addEventListener('keyup',e=>{
+  if(e.code==='KeyB') bZazhat=false;
   derzhim.delete(e.code);
   derzhimRuchki.delete(e.code);
   // Последняя буква отпущена — вести больше нечего, и держать стрелки незачем.
