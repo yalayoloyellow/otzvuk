@@ -3088,7 +3088,7 @@ class Chaos extends AudioWorkletProcessor {
                // говорилка: чем воткнуто в гнездо, высота, скорость, повтор
                ton:.35, temp:.5, povtor:0, trakt:.3, gnut:0, takt:0, razved:0,
                slip:0, tilt:0, derzhi2:0, derzhi3:0,
-               chop:0, skru:0, uzor:0, cut:0, krik:0, okras:0, profil:0,
+               chop:0, skru:0, uzor:0, kolazh:0, cut:0, krik:0, okras:0, profil:0,
                // ПОСТ: не детали прибора, а слой поверх него.
                mix:0, zhat:0, drive:.15, master:1 };
     // Куда движок ЕДЕТ (панель) и где он СЕЙЧАС (схема) — две разные вещи.
@@ -3158,7 +3158,24 @@ class Chaos extends AudioWorkletProcessor {
     // рычит и поёт; на упоре SCREAM фильтр самовозбуждается — воет чистым
     // тоном, источник исчезает. Стоит ПОСЛЕ фразы и резака, ПЕРЕД окрасом:
     // жуёт всё, что к нему пришло — живой прибор, петлю, запинку.
-    this.fLp = 0; this.fBp = 0;
+    this.fLp = 0; this.fBp = 0; this.fLp2 = 0; this.fBp2 = 0;
+    // САУНД-КОЛЛАЖ — заказ хозяина дословно: «рисунок абсолютно рандомен,
+    // но идёт по какому-то паттерну, который постепенно меняется — звук
+    // очень странно фрагментируется, нарезается авангардно, фрагменты
+    // меняются местами». Таблица из восьми фрагментов: длина неровная
+    // (50–600 мс, авангард не ходит по сетке), смещение — до двух с
+    // половиной секунд в прошлое, четверть фрагментов задом наперёд.
+    // Играется по кругу — это и есть «паттерн»; раз в три прохода один
+    // фрагмент перерисовывается — «постепенно меняется». Живой случай, не
+    // зерно: коллаж и не должен повторяться от запуска к запуску.
+    this.kolTab = [];
+    for (let i = 0; i < 8; i++) this.kolTab.push({
+      дл: Math.round(SR * .05 * Math.pow(12, Math.random())),
+      смещ: Math.round(SR * (.1 + Math.random() * 2.4)),
+      rev: Math.random() < .25 ? 1 : 0 });
+    this.kolIdx = 0; this.kolOst = 1; this.kolProh = 0;
+    this.kolAkt = 0; this.kolO = 0;
+    this.kolFade = 0; this.kolO2 = 0; this.kolPrev = 0;
     // ОКРАС. Автоэквализация к профилю шума: восемь октавных полос, медленно
     // дотягиваемых к целевому наклону.
     // Полосы КАСКАДОМ ИЗ ТРЁХ однополюсников на срез: одиночный течёт юбками
@@ -3497,6 +3514,18 @@ class Chaos extends AudioWorkletProcessor {
       // а не из мёртвого.
       if (this.frSost === 2){
         if (this.frI < this.frB.length) this.frB[this.frI++] = y;
+      } else if (this.frSost === 5){
+        // Дозапись продолжения хвоста; по её концу — вплавка начала и петля.
+        this.frB[this.frI++] = y;
+        if (--this.frDozap <= 0){
+          const К = this.frI - this.frN;
+          for (let j = 0; j < К; j++){
+            const т = j / К;
+            this.frB[j] = this.frB[j] * т + this.frB[this.frN + j] * (1 - т);
+          }
+          this.frI = 0; this.frSost = 3;
+          this.frFade = 96; this.frPrev = y;
+        }
       } else if (this.frSost === 3 || this.frSost === 4){
         const ч = this.frB[this.frI];
         this.frI = (this.frI + 1) % this.frN;
@@ -3527,10 +3556,18 @@ class Chaos extends AudioWorkletProcessor {
           if (this.frSost === 1 || this.frSost === 4){
             this.frSost = 2; this.frI = 0; this.frN = 0; this.frDopis = 0;
           } else if (this.frSost === 2 && (this.frDopis || this.frI >= this.frB.length - this.metrN * 4)){
-            // Фраза готова: целых тактов, играет с начала, прибор замолкает.
-            this.frN = Math.max(this.frI, 1); this.frI = 0; this.frSost = 3;
+            // Фраза почти готова: длина зафиксирована целыми тактами, но швом
+            // заниматься рано — сперва ДОЗАПИСЬ. Первая вплавка мешала хвост
+            // с началом и делала клик только хуже (×13 против ×5.6): за
+            // хвостом всё равно играло начало, скачок лишь переехал. Для
+            // честного шва нужно ПРОДОЛЖЕНИЕ хвоста: пишем ещё тридцать
+            // миллисекунд сверх границы — прибор ещё играет, захват вперёд
+            // не нарушен, — и вплавляем их в начало петли. Тогда за
+            // последним сэмплом следует его точное продолжение.
+            this.frN = Math.max(this.frI, 1);
             this.frTaktov = Math.round(this.frN / (this.metrN * 4));
-            this.frFade = 96; this.frPrev = y;
+            this.frDozap = Math.min(1440, this.frN >> 2, this.frB.length - this.frN - 1);
+            this.frSost = 5;
           }
         }
         // Фраза A-A-A-B: три цикла — основной узор, четвёртый — филл.
@@ -3673,21 +3710,83 @@ class Chaos extends AudioWorkletProcessor {
       } else { this.posB = this.metrF; this.grClose = y; this.grFade = 0; this.uzO = 0; }
       if (++this.grW >= this.grB.length) this.grW = 0;
 
+      // КОЛЛАЖ. Фрагмент за фрагментом по таблице; активный читает кольцо
+      // со своим смещением (и бывает задом наперёд), неактивный пропускает
+      // текущий звук как есть. Ручка — доля активных фрагментов: внизу
+      // редкие странные вставки, на упоре сплошная перестановка. Скачки
+      // сшиваются второй головой, как в узоре.
+      const kol = this.p.kolazh || 0;
+      if (kol > .002){
+        if (--this.kolOst <= 0){
+          this.kolIdx = (this.kolIdx + 1) & 7;
+          if (this.kolIdx === 0 && (++this.kolProh % 3) === 0){
+            const м = (Math.random() * 7.999) | 0;
+            this.kolTab[м] = {
+              дл: Math.round(SR * .05 * Math.pow(12, Math.random())),
+              смещ: Math.round(SR * (.1 + Math.random() * 2.4)),
+              rev: Math.random() < .25 ? 1 : 0 };
+          }
+          const слот = this.kolTab[this.kolIdx];
+          this.kolOst = слот.дл;
+          const был = this.kolAkt;
+          this.kolAkt = Math.random() < kol ? 1 : 0;
+          if (this.kolAkt){
+            this.kolO2 = был ? this.kolO : 0;
+            this.kolFade = 288; this.kolPrev = был;
+            this.kolO = слот.смещ; this.kolRev = слот.rev;
+          } else if (был){
+            this.kolO2 = this.kolO; this.kolFade = 288; this.kolPrev = 1;
+          }
+        }
+        const дл = this.grB.length;
+        let ч = y;
+        if (this.kolAkt){
+          this.kolO += this.kolRev ? 2 : 0;
+          if (this.kolO > дл - 2) this.kolO = дл - 2;
+          if (this.kolO < 1) this.kolO = 1;
+          ч = this.grB[(this.grW - Math.floor(this.kolO) + дл) % дл];
+        }
+        if (this.kolFade > 0){
+          let ч2 = y;
+          if (this.kolPrev){
+            this.kolO2 += this.kolRev ? 2 : 0;
+            if (this.kolO2 > дл - 2) this.kolO2 = дл - 2;
+            ч2 = this.grB[(this.grW - Math.floor(this.kolO2) + дл) % дл];
+          }
+          const т = this.kolFade / 288;
+          ч = ч * (1 - т) + ч2 * т;
+          this.kolFade--;
+        }
+        y = ч;
+      }
+
       // ВУЛКАНО. Chamberlin с tanh в петле: bp насыщается КАК СОСТОЯНИЕ —
       // это и есть «характер», рык вместо стекла. CUT в нуле — обход;
       // вправо частота падает от восьми тысяч к сорока пяти герцам,
       // логарифмически. SCREAM ведёт затухание от тупого к самовозбуждению.
       const cut = this.p.cut || 0;
       if (cut > .002){
+        // «Прикол не понял, оч слабые» — и справедливо: один каскад на
+        // тёмном треске закрывает мало, а tanh душил резонанс до шёпота.
+        // Теперь: предусиление растёт с КРИКОМ (насыщению есть что жевать —
+        // рык настоящий), каскада ДВА (24 дБ — закрытие слышно сразу), и
+        // резонанс второго мягче, чтобы вой остался чистым тоном.
+        const кр = clamp(this.p.krik || 0, 0, 1);
         const fc = 8000 * Math.pow(45 / 8000, cut);
         const f = 2 * Math.sin(Math.PI * Math.min(fc, SR * .22) / SR);
-        const q = 1.35 * Math.pow(.012 / 1.35, clamp(this.p.krik || 0, 0, 1));
-        const hp = y - this.fLp - q * this.fBp;
+        const q = 1.35 * Math.pow(.012 / 1.35, кр);
+        const х = y * (1 + кр * 2.5);
+        const hp = х - this.fLp - q * this.fBp;
         this.fBp += f * hp;
         this.fBp = Math.tanh(this.fBp * 1.9) / 1.9;
         this.fLp += f * this.fBp;
         this.fLp = Math.tanh(this.fLp * 1.4) / 1.4;
-        y = this.fLp;
+        const q2 = Math.max(q, .5);
+        const hp2 = this.fLp - this.fLp2 - q2 * this.fBp2;
+        this.fBp2 += f * hp2;
+        this.fBp2 = Math.tanh(this.fBp2 * 1.9) / 1.9;
+        this.fLp2 += f * this.fBp2;
+        y = this.fLp2 / (1 + кр * 1.1);
       }
 
       // ОКРАС — автоэквализация к профилю шума. Восемь октавных полос;
