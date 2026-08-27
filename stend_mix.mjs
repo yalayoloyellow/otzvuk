@@ -10,8 +10,7 @@ globalThis.AudioWorkletProcessor = class {
 };
 new Function(readFileSync('./chaos.worklet.js','utf8'))();
 const SR = 48000, N = 128;
-const BAZA = {sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, dirt:0,
-              petlya:0, kuda:0, mix:0};
+const BAZA = {sway:.55, depth:.75, gryzn:0, golos:0, petlya:0, kuda:0, mix:0};
 
 function progon(mix, novoe){
   const c = new K();
@@ -59,8 +58,8 @@ function razbor(imya, r){
     ' разрыв', r.razr.toExponential(1), '(фон', r.razrFon.toExponential(1)+')',
     ' срывов', r.sryvy);
 }
-const drugoy = {seed: 2861234501, p:{sway:.78, tone:.72, range:.35, depth:.5}};
-const taZhe  = {seed: 1626943591, p:{sway:.78, tone:.72, range:.35, depth:.5}};
+const drugoy = {seed: 2861234501, p:{sway:.78, depth:.5}};
+const taZhe  = {seed: 1626943591, p:{sway:.78, depth:.5}};
 console.log('ДРУГАЯ СБОРКА — перевод между двумя приборами');
 razbor('  без микширования', progon(0, drugoy));
 razbor('  с микшированием',  progon(1, drugoy));

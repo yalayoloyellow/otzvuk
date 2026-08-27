@@ -11,8 +11,7 @@ globalThis.AudioWorkletProcessor = class {
 };
 const M = new Function(readFileSync('./chaos.worklet.js','utf8') + '\nreturn {Device};')();
 
-const BAZA = {sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0,
-              dirt:0, petlya:0, kuda:0};
+const BAZA = {sway:.55, depth:.75, gryzn:0, golos:0, petlya:0, kuda:0};
 const SR = 48000, OV = 4;
 
 // огибающая по выходу прибора, шаг 5 мс
@@ -55,5 +54,5 @@ function razbor(imya, izm){
 console.log('ТУМБЛЕРЫ ГЕНЕРАТОРОВ');
 razbor('ген3 включаю', {gen3:1});
 razbor('ген2 выключаю', {gen2:0});
-razbor('ген2 выкл + ген3 вкл', {gen2:0, gen3:1});
+razbor('ген2 выкл + ген3 вкл', {gen3:1});
 console.log('\nвзаимодействие ветвей: приход третьей ветви должен ПРИСАДИТЬ первые две');

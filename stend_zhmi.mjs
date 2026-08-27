@@ -11,8 +11,7 @@ globalThis.AudioWorkletProcessor = class {
 };
 new Function(readFileSync('./chaos.worklet.js','utf8'))();
 const N = 128;
-const B = {sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, dirt:0,
-           petlya:0, kuda:0, mix:0, zhat:0, master:.5};
+const B = {sway:.55, depth:.75, gryzn:0, golos:0, petlya:0, kuda:0, mix:0, zhat:0, master:.5};
 function zam(semya, z){
   const c = new K();
   c.port.onmessage({data:{t:'seed', v:semya, p:{...B, zhat:z}}});

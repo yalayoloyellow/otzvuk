@@ -28,8 +28,7 @@ globalThis.AudioWorkletProcessor = class {
 };
 new Function(readFileSync('./chaos.worklet.js', 'utf8'))();
 
-const БАЗА = {sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0, gen1:1, gen2:1,
-              gen3:0, dirt:0, petlya:0, kuda:0, zhat:0,
+const БАЗА = {sway:.55, depth:.75, gryzn:0, golos:0, petlya:0, kuda:0, zhat:0,
               drive:.15, master:1, pit:1, set:0};
 
 const КОЖА = 2e6;          // два пальца: две кожи по мегаому последовательно
@@ -101,8 +100,8 @@ const ВАРИАНТЫ = [
   ['по умолчанию',            {}],
   ['размах в ноль',           {depth:0}],
   ['размах на полную',        {depth:1}],
-  ['характер вниз',           {tone:0}],
-  ['характер вверх',          {tone:1}],
+  // Строки «характер вниз/вверх» убраны: TONE переехал в зерно, ручки нет,
+  // и стенд крутил бы мёртвый параметр, печатая умолчание под двумя именами.
   ['качели медленно',         {sway:0}],
   ['качели быстро',           {sway:1}],
   ['качели быстро, размах 1', {sway:1, depth:1}],

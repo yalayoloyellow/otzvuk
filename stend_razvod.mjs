@@ -10,9 +10,29 @@ import {readFileSync} from 'fs';
 globalThis.sampleRate=48000; let K=null;
 globalThis.registerProcessor=(n,k)=>K=k;
 globalThis.AudioWorkletProcessor=class{constructor(){this.port={postMessage(){},set onmessage(f){this._f=f},get onmessage(){return this._f}};}};
-new Function(readFileSync('./chaos.worklet.js','utf8'))();
-const БАЗА={sway:.55,tone:.5,depth:.75,range:.5,gryzn:0,golos:.6,gen1:1,gen2:1,gen3:1,dirt:0,petlya:0,
- kuda:0,zhat:0,drive:.15,master:1,pit:1,set:0,sboy:0,gnut:0,derzhi:0,
+
+// ЗАКОЛ КОНСТИТУЦИИ. Стенд механизма обязан мерить МЕХАНИЗМ, а не экземпляр:
+// после переезда ручек в зерно у каждого семени своё гуляние и своя
+// асимметрия, и сквозь них захват не виден. Подмена сохраняет розыгрыш
+// (поток семени не сдвигается — скобочный трюк), но приколачивает значение.
+function ядроСКонституцией(подмены){
+  let ИСХ = readFileSync('./chaos.worklet.js','utf8');
+  for(const [что, чем] of подмены){
+    if(!ИСХ.includes(что)) throw new Error('якорь конституции устарел: '+что);
+    ИСХ = ИСХ.replace(что, чем);
+  }
+  let ЯК=null; globalThis.registerProcessor=(n,k)=>ЯК=k;
+  new Function(ИСХ)();
+  return ЯК;
+}
+const БЕЗ_ГУЛЯНИЯ = [
+  ["this.zDrift  = m(0, .50);", "this.zDrift  = (m(0, .50), 0);"],
+  ["this.zHit    = m(.15, .65);", "this.zHit    = (m(.15, .65), .35);"],
+  ["this.nGen = жр < .22 ? 2 : жр < .72 ? 3 : 4;", "this.nGen = (жр, 3);"],
+];
+let K2 = ядроСКонституцией(БЕЗ_ГУЛЯНИЯ); K = K2;
+const БАЗА={sway:.55,depth:.75,gryzn:0,golos:.6,petlya:0,
+ kuda:0,zhat:0,drive:.15,master:1,pit:1,sboy:0,gnut:0,derzhi:0,
  takt:0,razved:0};
 const BPM=110, доля=60/BPM;
 function прогон(sway, takt, razved, сек=20){

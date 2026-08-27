@@ -12,8 +12,8 @@ globalThis.sampleRate=48000; let K=null;
 globalThis.registerProcessor=(n,k)=>K=k;
 globalThis.AudioWorkletProcessor=class{constructor(){this.port={postMessage(){},set onmessage(f){this._f=f},get onmessage(){return this._f}};}};
 new Function(readFileSync('./chaos.worklet.js','utf8'))();
-const БАЗА={sway:.55,tone:.5,depth:.75,range:.5,gryzn:0,golos:0,gen1:1,gen2:1,gen3:1,dirt:0,petlya:0,
- kuda:0,zhat:0,drive:.15,master:1,pit:1,set:0,sboy:0,ist:0};
+const БАЗА={sway:.55,depth:.75,gryzn:0,golos:0,petlya:0,
+ kuda:0,zhat:0,drive:.15,master:1,pit:1,sboy:0,ist:0};
 const N=8192;
 function прогон(правки, seed, fвх){
   const c=new K(); c.port.onmessage({data:{t:'seed',v:seed}});
@@ -74,7 +74,7 @@ for(const seed of [1626943591,139297718,770901]){
 console.log('ЧТО ПЕРЕСТУПАЕТ ДЕЛЕНИЯ в положении «узлы»');
 console.log('   TUNE     частоты трёх ячеек        деления входа');
 for(const t of [.15,.3,.45,.5,.6,.75,.9]){
-  const р=прогон({golos:.25, kuda:.5, range:t}, 1626943591, FIN);
+  const р=прогон({golos:.25, kuda:.5}, 1626943591, FIN);
   console.log('   '+t.toFixed(2).padStart(5)+'   '+р.f.map(v=>v.toFixed(0).padStart(6)).join('')
     +'        '+р.f.map(v=>бл(v/FIN)).join(' · '));
 }

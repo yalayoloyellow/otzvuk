@@ -17,8 +17,8 @@ globalThis.sampleRate=48000; let K=null;
 globalThis.registerProcessor=(n,k)=>K=k;
 globalThis.AudioWorkletProcessor=class{constructor(){this.port={postMessage(){},set onmessage(f){this._f=f},get onmessage(){return this._f}};}};
 new Function(readFileSync('./chaos.worklet.js','utf8'))();
-const БАЗА={sway:.55,tone:.5,depth:.75,range:.5,gryzn:0,golos:0,gen1:1,gen2:1,gen3:1,dirt:0,petlya:0,
- kuda:.5,zhat:0,drive:.15,master:1,pit:1,set:0,sboy:0,gnut:0,derzhi:0,takt:0};
+const БАЗА={sway:.55,depth:.75,gryzn:0,golos:0,petlya:0,
+ kuda:.5,zhat:0,drive:.15,master:1,pit:1,sboy:0,gnut:0,derzhi:0,takt:0};
 const ВХ=900;
 function прогон(seed, golos, сек=2){
   const c=new K(); c.port.onmessage({data:{t:'seed',v:seed}});

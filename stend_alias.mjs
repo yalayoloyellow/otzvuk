@@ -53,8 +53,7 @@ const NSYR = SR * VERH * SEK;
 globalThis.SYR = new Float64Array(NSYR + SR * VERH);
 globalThis.SYRN = 0;
 
-const BAZA = {sway:.55, tone:.5, depth:.75, range:.5, gryzn:.4, golos:0, gen1:1, gen2:1, gen3:1,
-              dirt:0, petlya:0, kuda:0,
+const BAZA = {sway:.55, depth:.75, gryzn:.4, golos:0, petlya:0, kuda:0,
               zhat:0, drive:0, master:1, mix:0};
 
 const c = new K();

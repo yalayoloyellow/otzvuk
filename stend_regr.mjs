@@ -12,10 +12,10 @@ import {readFileSync} from 'fs';
 globalThis.sampleRate=48000;
 globalThis.AudioWorkletProcessor=class{constructor(){this.port={postMessage(){},set onmessage(f){this._f=f},get onmessage(){return this._f}};}};
 const НАБОРЫ=[
- ['спокойный', {sway:.55,tone:.5,depth:.75,range:.5,gryzn:.3,golos:.6,gen1:1,gen2:1,gen3:1,dirt:.2,petlya:0,
-  kuda:0,zhat:0,drive:.15,master:1,pit:1,set:0,sboy:0,gnut:0,derzhi:0,takt:.5,razved:0}],
- ['крайний',   {sway:.7,tone:.3,depth:1,range:.3,gryzn:.6,golos:1,gen1:1,gen2:1,gen3:1,dirt:.5,petlya:0,
-  kuda:.5,zhat:.4,drive:.5,master:1,pit:0,set:1,sboy:0,gnut:.4,derzhi:0,takt:.8,razved:0}],
+ ['спокойный', {sway:.55,depth:.75,gryzn:.3,golos:.6,petlya:0,
+  kuda:0,zhat:0,drive:.15,master:1,pit:1,sboy:0,gnut:0,derzhi:0,takt:.5,razved:0}],
+ ['крайний',   {sway:.7,depth:1,gryzn:.6,golos:1,petlya:0,
+  kuda:.5,zhat:.4,drive:.5,master:1,pit:0,sboy:0,gnut:.4,derzhi:0,takt:.8,razved:0}],
 ];
 function мера(код,П,сек=4){
   let K=null; globalThis.registerProcessor=(n,k)=>K=k;

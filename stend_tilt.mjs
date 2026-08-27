@@ -13,13 +13,33 @@ import {readFileSync} from 'fs';
 globalThis.sampleRate=48000; let K=null;
 globalThis.registerProcessor=(n,k)=>K=k;
 globalThis.AudioWorkletProcessor=class{constructor(){this.port={postMessage(){},set onmessage(f){this._f=f},get onmessage(){return this._f}};}};
-new Function(readFileSync('./chaos.worklet.js','utf8'))();
-const БАЗА={sway:.55,tone:.5,depth:.75,range:.5,gryzn:0,golos:0,gen1:1,gen2:1,gen3:1,dirt:0,petlya:0,
- kuda:0,zhat:0,drive:.15,master:1,pit:1,set:0,sboy:0,gnut:0,derzhi:0,
- takt:0,razved:0,slip:0,tilt:0,derzhi2:0,derzhi3:0};
+// TILT переехал в зерно — стенд крутит его ЗАКОЛОМ КОНСТИТУЦИИ: подмена
+// сохраняет розыгрыш (поток семени не сдвигается), но приколачивает
+// значение. Гуляние и счёт голосов приколочены тоже: мерим лампы, а не
+// экземпляр.
+function ядроСКонституцией(подмены){
+  let ИСХ = readFileSync('./chaos.worklet.js','utf8');
+  for(const [что, чем] of подмены){
+    if(!ИСХ.includes(что)) throw new Error('якорь конституции устарел: '+что);
+    ИСХ = ИСХ.replace(что, чем);
+  }
+  let ЯК=null; globalThis.registerProcessor=(n,k)=>ЯК=k;
+  new Function(ИСХ)();
+  return ЯК;
+}
+function ядроТильта(t){
+  return ядроСКонституцией([
+    ["this.zTilt  = m(0, .80);", "this.zTilt  = (m(0, .80), "+t+");"],
+    ["this.zDrift  = m(0, .50);", "this.zDrift  = (m(0, .50), 0);"],
+    ["this.nGen = жр < .22 ? 2 : жр < .72 ? 3 : 4;", "this.nGen = (жр, 3);"],
+  ]);
+}
+const БАЗА={sway:.55,depth:.75,gryzn:0,golos:0,petlya:0,
+ kuda:0,zhat:0,drive:.15,master:1,pit:1,sboy:0,gnut:0,derzhi:0,
+ takt:0,razved:0,slip:0,derzhi2:0,derzhi3:0};
 function прогон(tilt, сек=14){
-  const c=new K(); c.port.onmessage({data:{t:'seed',v:7}});
-  c.port.onmessage({data:{t:'p',v:{...БАЗА, tilt}}});
+  const c=new (ядроТильта(tilt))(); c.port.onmessage({data:{t:'seed',v:7}});
+  c.port.onmessage({data:{t:'p',v:БАЗА}});
   const n=1,L=new Float32Array(n),R=new Float32Array(n),вх=new Float32Array(n);
   const окна=[[],[],[]], сч=[0,0,0], было=[0,0,0];
   const окно=4800; let вОкне=0;

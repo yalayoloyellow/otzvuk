@@ -74,17 +74,17 @@ let report={pik:0,rms:0,lyap:0,vraschenie:0,shina:1,osc:new Float32Array(256),
 // всегда родственник основной — GENDER при PITCH, MASTER при DRIVE.
 const KNOBS=[
   // ---- СХЕМА · ГЕНЕРАТОРЫ ----
-  // ШЕСТЬ РУЧЕК ПЕРЕЕХАЛИ В СЕМЯ — VOLTS, TANK, DETUNE, WIDTH, BIAS, SLOP.
+  // В СЕМЯ ПЕРЕЕХАЛИ: VOLTS, TANK, DETUNE, WIDTH, BIAS, SLOP, TUNE, TONE,
+  // TILT, MAINS, SAG и тумблеры OSC — счёт голосов теперь конституция
+  // коробки, бывают двух-, трёх- и четырёхголосые.
   // Решение хозяина: «ручка остаётся, только если её крутят во время игры;
   // характер живёт в семени и ищется через Tab и кость». Эти шесть
   // выставлялись раз и забывались — теперь их выставляет сборка, у каждой
   // коробки свои, и панель стала пультом жестов, а не стендом настройки.
   // Клавиши z x w e f g свободны под будущие органы.
-  {k:'range', kl:'KeyQ', imya:'TUNE',   gr:'gen'},   // общий строй прибора
   // ---- СХЕМА · КАЧЕЛИ ----
   {k:'sway', kl:'KeyA', imya:'RATE',   gr:'kach'},  // период медленного генератора
   {k:'depth', kl:'KeyS', imya:'DEPTH',  gr:'kach'},  // глубина модуляции
-  {k:'tone', kl:'KeyD', imya:'TONE',   gr:'kach'},  // рабочая точка фоторезистора
   // ---- СХЕМА · СЕТКА ----
   {k:'gryzn', kl:'KeyR', imya:'SEQ',    gr:'setka'}, // глубина вмешательства счётчика
 
@@ -131,9 +131,6 @@ const KNOBS=[
   // выше половины глотает весь увод, и честное имя органа — биение слоёв,
   // а не проскальзывание.
   {k:'slip', kl:'KeyO', imya:'SLIP', zona:'modul', gr:'mod'},
-  // TILT — слои расходятся характером: первый глубже в треск (ударный),
-  // третий поджат и поднят над треском (гул). Средний — прежний прибор.
-  {k:'tilt', kl:'KeyP', imya:'TILT', zona:'modul', gr:'mod'},
   {k:'ton', kl:'KeyK', imya:'PITCH',  zona:'golos', gr:'ist'},
   // GENDER — длина тракта. Слово из вокодеров и формантных сдвигателей,
   // понятное без объяснения.
@@ -215,9 +212,7 @@ const SWITCHES=[
   {k:'pit', kl:'KeyZ', shift:1, imya:'POWER', gr:'pit'},
   // MAINS — питание из розетки вместо кроны. Блок держит шину намертво и
   // несёт пульсацию выпрямителя на ста герцах; крона мягкая, но чистая.
-  {k:'set', kl:'KeyX', shift:1, imya:'MAINS', gr:'pit'},
   // SAG — снятие развязки питания: шина проседает, и логика слышит сама себя.
-  {k:'dirt', kl:'KeyC', shift:1, imya:'SAG',   gr:'pit'},
   // METAL — пробел меняет не схему, а ТО, ЧЕМ её трогают: вместо пальца
   // отвёртка. Те же восемь площадок, другая физика.
   //
@@ -239,9 +234,6 @@ const SWITCHES=[
   // из которой мы столько выбирались, при этом пуста по устройству.
   {k:'sboy', kl:'KeyV', shift:1, imya:'METAL', gr:'pit'},
   // ---- СХЕМА ----
-  {k:'gen1', kl:'KeyQ', shift:1, imya:'OSC 1', gr:'gen'},
-  {k:'gen2', kl:'KeyW', shift:1, imya:'OSC 2', gr:'gen'},
-  {k:'gen3', kl:'KeyE', shift:1, imya:'OSC 3', gr:'gen'},
   // Здесь стоял тумблер SYNC (link) — постоянная связь генераторов через
   // резистор. Вырезан по замеру: сваривал двоих в унисон и глушил верх на
   // треть — потеря многоголосия без приобретений. Аккорды из связи делает
@@ -393,8 +385,7 @@ async function zagruzispisok(){
 // с одним прибором или с двумя. Берём первый прибор — он и есть весь прибор.
 function primenit(p){
   if(!p) return;
-  const karta = {качание:'sway', характер:'tone', размах:'depth', диапазон:'range',
-                 ген2:'gen2', ген3:'gen3', грязь:'dirt'};
+  const karta = {качание:'sway', размах:'depth'};
   const perevod = o => {
     const r={};
     for(const k in (o||{})) if(k in knobs || karta[k] in knobs ||
@@ -799,10 +790,10 @@ async function metka(kakaya){
   }catch(e){ skazhi('не записалось: '+e.message); }
 }
 
-const knobs={sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0,
+const knobs={sway:.55, depth:.75, gryzn:0, golos:0,
              zhat:0, drive:.15, master:1, ton:.35, temp:.5, gnut:0, takt:0,
-             trakt:.3, kuda:0, razved:0, slip:0, tilt:0, chop:0, skru:0, okras:0};
-const switches={pit:0, set:0, gen1:1, gen2:1, gen3:0, dirt:0, petlya:0,
+             trakt:.3, kuda:0, razved:0, slip:0, chop:0, skru:0, okras:0};
+const switches={pit:0, petlya:0,
                 mix:0, povtor:0, sboy:0, derzhi:0, derzhi2:0, derzhi3:0, profil:0};
 
 const p={};
@@ -1917,7 +1908,7 @@ function ruchki(){
   // VOLTS и TANK из списка ушли вместе с ручками — они теперь зерно сборки.
   // Оставшийся список — только живые органы: имя, которого нет в таблицах,
   // роняло сборку строк, и панель пустела целиком.
-  for(const imya of ['POWER','MAINS','SAG','METAL']){
+  for(const imya of ['POWER','METAL']){
     const r=KNOBS.find(x=>x.imya===imya), t=SWITCHES.find(x=>x.imya===imya);
     stroki.push(r ? ruchka(r,zs) : tumbler(t,zs));
   }

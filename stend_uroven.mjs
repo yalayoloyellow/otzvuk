@@ -30,8 +30,7 @@ function progon(nastr, sek = 3, seed = 1626943591){
   return {pik, rms: Math.sqrt(kv / cnt)};
 }
 
-const BAZA = {sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0,
-              dirt:0, petlya:0, kuda:0};
+const BAZA = {sway:.55, depth:.75, gryzn:0, golos:0, petlya:0, kuda:0};
 
 console.log('НАСТРОЙКА                         пик      скз');
 const varianty = [

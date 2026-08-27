@@ -13,9 +13,8 @@ new Function(readFileSync('./chaos.worklet.js','utf8'))();
 const N = 128, SR = 48000;
 function progon(mix, shag){
   const c = new K();
-  c.port.onmessage({data:{t:'seed', v:1626943591, p:{sway:.55, tone:.5, depth:.75,
-    range:.5, gryzn:0, golos:0, gen1:1,
-    gen2:1, gen3:0, dirt:0, petlya:0, kuda:0, mix, zhat:0,
+  c.port.onmessage({data:{t:'seed', v:1626943591, p:{sway:.55, depth:.75,
+    gryzn:0, golos:0, petlya:0, kuda:0, mix, zhat:0,
     master:.5}}});
   const L = new Float32Array(N), R = new Float32Array(N), m = new Float32Array(N);
   for (let b = 0; b < 60; b++) c.process([[m]], [[L, R]]);

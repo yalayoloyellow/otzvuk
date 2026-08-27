@@ -15,14 +15,13 @@ const N = 128;
 // панели, — и стенд без него мерил потолок ВЫКЛЮЧЕННОГО прибора: худший пик
 // 0.0255 по двенадцати сборкам, то есть тишина, и «потолок держится»
 // доказывалось вакуумом.
-const B = {pit:1, set:0, sboy:0, derzhi:0,
-           sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, dirt:0,
-           petlya:0, kuda:0, mix:0, zhat:0, master:.5};
+const B = {pit:1, sboy:0, derzhi:0,
+           sway:.55, depth:.75, gryzn:0, golos:0, petlya:0, kuda:0, mix:0, zhat:0, master:.5};
 const semena = [1626943591, 777, 1, 42, 99991, 3141592, 2861234501, 12345,
                 777777, 55555, 8675309, 20260820];
 const rezhimy = [['покой', {}], ['всё вверх', {zhat:1, master:1, drive:1}],
                  ['гейт и мастер', {master:1, gryzn:.9}],
-                 ['жать и гейт', {zhat:1, gryzn:.9, range:0}]];
+                 ['жать и гейт', {zhat:1, gryzn:.9}]];
 let hud = 0, gde = '', nan = 0;
 console.log('режим              худший пик по двенадцати сборкам');
 for (const [imya, izm] of rezhimy){

@@ -85,8 +85,7 @@ console.log('\n3. БАЛАНС ТОКА ПИТАНИЯ — ЛОГИКА ОТДЕ
 console.log('   Капсюль жрёт десятки миллиампер, логика — микроамперы. Складывать');
 console.log('   их в одну сверку нельзя: расхождение логики тонет целиком.');
 {
-  const БАЗА = {sway:.55,tone:.5,depth:.75,range:.5,gryzn:0,golos:0,gen1:1,gen2:1,gen3:1,dirt:0,
-                petlya:0,kuda:0,zhat:0,drive:.15,master:1,pit:1,set:0,sboy:0};
+  const БАЗА = {sway:.55,depth:.75,gryzn:0,golos:0,petlya:0,kuda:0,zhat:0,drive:.15,master:1,pit:1,sboy:0};
   const c = new K();
   c.port.onmessage({data:{t:'seed', v:1626943591}});
   c.port.onmessage({data:{t:'p', v:БАЗА}});
@@ -124,8 +123,7 @@ console.log('   их в одну сверку нельзя: расхождени
 
 console.log('\n4. СХОДИМОСТЬ ПО ШАГУ — что изменится, если считать вдвое чаще');
 {
-  const БАЗА = {sway:.55,tone:.5,depth:.75,range:.5,gryzn:0,golos:0,gen1:1,gen2:1,gen3:1,dirt:0,
-                petlya:0,kuda:0,zhat:0,drive:.15,master:1,pit:1,set:0,sboy:0};
+  const БАЗА = {sway:.55,depth:.75,gryzn:0,golos:0,petlya:0,kuda:0,zhat:0,drive:.15,master:1,pit:1,sboy:0};
   const прогон = (over) => {
     let K2 = null;
     globalThis.registerProcessor = (n,k) => K2 = k;

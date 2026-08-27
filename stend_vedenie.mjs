@@ -14,8 +14,7 @@ const SRC = readFileSync('./chaos.worklet.js','utf8');
 new Function(SRC)();
 const M = new Function(SRC + '\nreturn {Build};')();
 const SR = 48000, N = 128;
-const BAZA = {sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0, dirt:0,
-              petlya:0, kuda:0, mix:1, zhat:0, master:.5};
+const BAZA = {sway:.55, depth:.75, gryzn:0, golos:0, petlya:0, kuda:0, mix:1, zhat:0, master:.5};
 const A = 1626943591, B = 777;
 
 const c = new K();

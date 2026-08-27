@@ -40,18 +40,17 @@ function zahod(g){
   return Number(process.hrtime.bigint() - t0) / 1e6 / g.blokov;
 }
 
-const BAZA = {sway:.55, tone:.5, depth:.75, range:.5, gryzn:0, golos:0, gen1:1, gen2:1, gen3:0,
-              dirt:0, petlya:0, kuda:0};
+const BAZA = {sway:.55, depth:.75, gryzn:0, golos:0, petlya:0, kuda:0};
 
 const REZHIMY = [
   ['покой (два генератора)',    {}],
   ['все три генератора',        {gen3:1}],
-  ['три + связь + грязь',       {gen3:1, dirt:1}],
-  ['верх диапазона (писк)',     {gen3:1, range:1}],
-  ['гейт на полную',            {gen3:1, gryzn:1}],
-  ['голос наружу',              {gen3:1, ist:1, golos:.5}],
-  ['пост на полную',            {gen3:1, zhat:1, drive:.8}],
-  ['всё разом',                 {gen3:1, dirt:1, gryzn:1, zhat:1,
+  ['три + связь + грязь',       {dirt:1}],
+  ['верх диапазона (писк)',     {gen3:1}],
+  ['гейт на полную',            {gryzn:1}],
+  ['голос наружу',              {ist:1, golos:.5}],
+  ['пост на полную',            {zhat:1, drive:.8}],
+  ['всё разом',                 {gryzn:1, zhat:1,
                                  drive:.8, ist:1, golos:.5}],
 ];
 
