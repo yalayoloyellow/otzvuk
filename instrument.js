@@ -193,6 +193,13 @@ const KNOBS=[
   // COLOR — автоэквализация к профилю шума (⇧b выбирает профиль): восемь
   // октавных полос медленно дотягиваются к лесенке белого, розового или
   // коричневого. У розового энергия всех октав РАВНА — отсюда и цель.
+  // ВУЛКАНО. CUT — фильтр с характером: насыщение внутри петли резонанса,
+  // в нуле обход, вправо закрывается от восьми тысяч к сорока пяти герцам.
+  // SCREAM — от тупого затухания к самовозбуждению: на упоре фильтр воет
+  // чистым тоном, и высоту воя ведёт CUT. Стоит после фразы и резака —
+  // жуёт всё, что к нему пришло.
+  {k:'cut',  kl:'KeyD', imya:'CUT',    zona:'post', gr:'post'},
+  {k:'krik', kl:'KeyF', imya:'SCREAM', zona:'post', gr:'post'},
   {k:'okras', kl:'Period', imya:'COLOR', zona:'post', gr:'post'},
   {k:'zhat', kl:'KeyN', imya:'COMP',   zona:'post', gr:'post'},
   // DRIVE — усиление на входе ограничителя: сначала громче, потом плотнее,
@@ -288,6 +295,11 @@ const KOMANDY=[
   // ТАКТ РУКОЙ. Метроном гросбита: топаешь b в долю — интервалы между
   // нажатиями дают темп. Пауза больше трёх секунд начинает счёт заново.
   {kl:'KeyB',      imya:'такт рукой',  deystvie:()=>tapMetr()},
+  // ФРАЗА — педаль лупера. Держишь g — со следующего такта пишется фраза,
+  // отпустил — доигрывается до целого такта и крутится ВМЕСТО прибора.
+  // Короткое нажатие на играющей петле — сброс к живому. Захват только
+  // вперёд: не поймал — значит лох, как и всюду в приборе.
+  {kl:'KeyG',      imya:'фраза',       deystvie:()=>{ if(node) node.port.postMessage({t:'fraza', v:1}); }},
   // ПОМЕТИТЬ ЯВЛЕНИЕ. Открывает строку, человек называет услышанное, и
   // двадцать секунд чисел ложатся под этим именем. Одно и то же имя можно
   // ставить сколько угодно раз — из повторов и выводится эталон.
@@ -799,7 +811,8 @@ async function metka(kakaya){
 
 const knobs={sway:.55, depth:.75, gryzn:0, golos:0,
              zhat:0, drive:.15, master:1, ton:.35, temp:.5, gnut:0, takt:0,
-             trakt:.3, kuda:0, razved:0, slip:0, uzor:0, chop:0, skru:0, okras:0};
+             trakt:.3, kuda:0, razved:0, slip:0, uzor:0, chop:0, skru:0,
+             cut:0, krik:0, okras:0};
 const switches={pit:0, petlya:0,
                 mix:0, povtor:0, sboy:0, derzhi:0, derzhi2:0, derzhi3:0, profil:0};
 
@@ -1110,6 +1123,7 @@ addEventListener('keydown',async e=>{
 // прижатой навсегда. Это и было залипание, на которое жаловался yala.
 addEventListener('keyup',e=>{
   if(e.code==='KeyB') bZazhat=false;
+  if(e.code==='KeyG' && node) node.port.postMessage({t:'fraza', v:0});
   derzhim.delete(e.code);
   derzhimRuchki.delete(e.code);
   // Последняя буква отпущена — вести больше нечего, и держать стрелки незачем.
@@ -2051,7 +2065,10 @@ function ruchki(){
       // было немым — не найти, чем оно правится. b — топать в долю,
       // b со стрелками — вести число, ⇧ десятками.
       stroki.push(ruchka(r,zn)+
-        (r.k==='chop' ? `  <span class="k1">b</span> <span class="${metrBpm?'k3':'k1'}">${metrBpm||120}</span>` : ''));
+        (r.k==='chop' ? `  <span class="k1">b</span> <span class="${metrBpm?'k3':'k1'}">${metrBpm||120}</span>` : '')+
+        (r.k==='uzor' ? (()=>{ const f=report.fraza||0;
+          return `  <span class="k1">g</span> <span class="${f===3?'k4':f?'k3':'k1'}">${
+            f===0?'·':f===1?'ждёт':f===2?'зап':(report.frTaktov||1)+'т'}</span>`; })() : ''));
     for(const t of SWITCHES) if((t.zona||'shema')===z && t.gr===g)
       // ROOM — сколько из вышедшего комната вернула в микрофон. Стоял он у
       // INPUT и удлинял строку вдвое, а место ему тут: без петли это число

@@ -3088,7 +3088,7 @@ class Chaos extends AudioWorkletProcessor {
                // говорилка: чем воткнуто в гнездо, высота, скорость, повтор
                ton:.35, temp:.5, povtor:0, trakt:.3, gnut:0, takt:0, razved:0,
                slip:0, tilt:0, derzhi2:0, derzhi3:0,
-               chop:0, skru:0, uzor:0, okras:0, profil:0,
+               chop:0, skru:0, uzor:0, cut:0, krik:0, okras:0, profil:0,
                // ПОСТ: не детали прибора, а слой поверх него.
                mix:0, zhat:0, drive:.15, master:1 };
     // Куда движок ЕДЕТ (панель) и где он СЕЙЧАС (схема) — две разные вещи.
@@ -3141,6 +3141,24 @@ class Chaos extends AudioWorkletProcessor {
                    oscM: new Float32Array(256), sled: new Float32Array(200) };
     this.snimokTik = 0;
     this.progrev = 0;                     // маска броска включения при Tab
+    // ФРАЗА — мемфисский семплер механикой педали. Решения хозяина: фраза
+    // вырезается ИЗ ПРИБОРА, захват только вперёд («не поймал — лох»),
+    // петля ЗАМЕЩАЕТ прибор, пока крутится. Дальше её жуёт вся красная
+    // зона: узор, запинка, скрю, окрас — семплер не нуждается в своих
+    // ручках, тракт уже стоит.
+    this.frB = new Float32Array(SR * 16);  // до четырёх тактов при 60 в минуту
+    this.frSost = 0;      // 0 пусто · 1 армирован · 2 пишем · 3 играет
+    this.frN = 0;         // длина фразы, отсчётов
+    this.frI = 0;         // голова записи/чтения
+    this.frTaktov = 0;    // длина в тактах — для панели
+    this.frDopis = 0;     // отпущен в середине такта — дописываем до границы
+    this.frFade = 0; this.frPrev = 0;
+    // ВУЛКАНО — фильтр с характером. Не учебный биквад: насыщение стоит
+    // ВНУТРИ петли резонанса, оттого высокий резонанс не звенит стеклом, а
+    // рычит и поёт; на упоре SCREAM фильтр самовозбуждается — воет чистым
+    // тоном, источник исчезает. Стоит ПОСЛЕ фразы и резака, ПЕРЕД окрасом:
+    // жуёт всё, что к нему пришло — живой прибор, петлю, запинку.
+    this.fLp = 0; this.fBp = 0;
     // ОКРАС. Автоэквализация к профилю шума: восемь октавных полос, медленно
     // дотягиваемых к целевому наклону.
     // Полосы КАСКАДОМ ИЗ ТРЁХ однополюсников на срез: одиночный течёт юбками
@@ -3207,6 +3225,19 @@ class Chaos extends AudioWorkletProcessor {
               this.kont.kruti(Math.abs(v - this.cel[k]));
             this.cel[k] = v;
             if (this.dvizh.indexOf(k) < 0) this.dvizh.push(k);
+          }
+        }
+      }
+      else if (d.t === 'fraza'){
+        if (d.v){
+          if (this.frSost === 0) this.frSost = 1;          // ждём границы такта
+          else if (this.frSost === 3) this.frSost = 4;     // решится на отпускании
+        } else {
+          if (this.frSost === 1) this.frSost = 0;          // отпустил до старта
+          else if (this.frSost === 2) this.frDopis = 1;    // дописать до границы
+          else if (this.frSost === 4){
+            // Короткое нажатие на играющей петле — сброс к живому прибору.
+            this.frSost = 0; this.frFade = 96; this.frPrev = this.frB[this.frI % this.frN];
           }
         }
       }
@@ -3459,6 +3490,23 @@ class Chaos extends AudioWorkletProcessor {
         y *= к * к;
         this.progrev--;
       }
+      // ФРАЗА: запись и замещение. Пишем сырой прибор; когда петля крутится,
+      // она встаёт НА МЕСТО прибора до всей красной зоны — узор, запинка,
+      // скрю и окрас жуют её, как жевали живой звук. Прибор продолжает
+      // считаться: при сбросе педали он возвращается из живого состояния,
+      // а не из мёртвого.
+      if (this.frSost === 2){
+        if (this.frI < this.frB.length) this.frB[this.frI++] = y;
+      } else if (this.frSost === 3 || this.frSost === 4){
+        const ч = this.frB[this.frI];
+        this.frI = (this.frI + 1) % this.frN;
+        y = ч;
+      }
+      if (this.frFade > 0){
+        const т = this.frFade / 96;
+        y = y * (1 - т) + this.frPrev * т;
+        this.frFade--;
+      }
       // ГРОСБИТ — резак по грубому метроному. Кольцо пишется всегда, чтобы
       // включение имело историю; фаза идёт всегда, чтобы включение попадало
       // в долю, а не начинало её с нажатия.
@@ -3474,6 +3522,17 @@ class Chaos extends AudioWorkletProcessor {
       if (++this.metrF >= this.metrN){
         this.metrF = 0; this.beatW = this.grW; this.posB = 0;
         this.uzTakt = (this.uzTakt + 1) & 7;       // доля в цикле узора 0..7
+        // Границы ТАКТА (четыре доли) — события фразы.
+        if ((this.uzTakt & 3) === 0){
+          if (this.frSost === 1 || this.frSost === 4){
+            this.frSost = 2; this.frI = 0; this.frN = 0; this.frDopis = 0;
+          } else if (this.frSost === 2 && (this.frDopis || this.frI >= this.frB.length - this.metrN * 4)){
+            // Фраза готова: целых тактов, играет с начала, прибор замолкает.
+            this.frN = Math.max(this.frI, 1); this.frI = 0; this.frSost = 3;
+            this.frTaktov = Math.round(this.frN / (this.metrN * 4));
+            this.frFade = 96; this.frPrev = y;
+          }
+        }
         // Фраза A-A-A-B: три цикла — основной узор, четвёртый — филл.
         if (this.uzTakt === 0) this.uzCikl = (this.uzCikl + 1) & 3;
         this.grFade = 96; this.grPrev = this.grClose;
@@ -3613,6 +3672,23 @@ class Chaos extends AudioWorkletProcessor {
         y = чит;
       } else { this.posB = this.metrF; this.grClose = y; this.grFade = 0; this.uzO = 0; }
       if (++this.grW >= this.grB.length) this.grW = 0;
+
+      // ВУЛКАНО. Chamberlin с tanh в петле: bp насыщается КАК СОСТОЯНИЕ —
+      // это и есть «характер», рык вместо стекла. CUT в нуле — обход;
+      // вправо частота падает от восьми тысяч к сорока пяти герцам,
+      // логарифмически. SCREAM ведёт затухание от тупого к самовозбуждению.
+      const cut = this.p.cut || 0;
+      if (cut > .002){
+        const fc = 8000 * Math.pow(45 / 8000, cut);
+        const f = 2 * Math.sin(Math.PI * Math.min(fc, SR * .22) / SR);
+        const q = 1.35 * Math.pow(.012 / 1.35, clamp(this.p.krik || 0, 0, 1));
+        const hp = y - this.fLp - q * this.fBp;
+        this.fBp += f * hp;
+        this.fBp = Math.tanh(this.fBp * 1.9) / 1.9;
+        this.fLp += f * this.fBp;
+        this.fLp = Math.tanh(this.fLp * 1.4) / 1.4;
+        y = this.fLp;
+      }
 
       // ОКРАС — автоэквализация к профилю шума. Восемь октавных полос;
       // сумма полос равна входу точно, поэтому цветной путь без довода
@@ -3775,6 +3851,7 @@ class Chaos extends AudioWorkletProcessor {
         lim: this.predel.rabota < 1 ? -20 * Math.log10(this.predel.rabota) : 0,
         mik: this.mikPik, vozvrat: this.vozvrat,
         razbros: pr.razbr, period: pr.swing.period, scepka: pr.scepka,
+        fraza: this.frSost, frTaktov: this.frTaktov,
         pitch: pr.osn.f || 0, duty: pr.osn.skv,
         shina: pr.bat.Vl / sb.EMF,
         swing: pr.swing.u, drift: pr.swing.g,
