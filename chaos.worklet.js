@@ -571,6 +571,38 @@ class Build {
       this.Rdef = m(5e5, 5e6);          // насколько подскакивает ветвь, Ом
       this.defekt = ж < .25 ? (к % this.nGen) : -1; }
 
+    // УЗОР ВРЕМЕНИ — гросбит из зерна. Решение хозяина дословно: «важно
+    // чтоб здесь работал некий рисунок и звучал стильно, чтоб он так же
+    // входил в зерно, и чтоб мне не приходилось его выбирать и накручивать —
+    // всё уже заложено в одну крутилку».
+    //
+    // Шестнадцать шагов по полдоли — два такта метронома. Операции — частные
+    // случаи одной вещи, кривой положения чтения: повтор — ступенька назад,
+    // разворот — отрицательный наклон, полускорость — наклон вполовину,
+    // стоп — ноль. «Пиздато» живёт в СКОЛЬЖЕНИЯХ между ступеньками —
+    // плёночные глиссандо; их долю задаёт зерно.
+    //
+    // Веса операций — тоже зерно: у одной коробки узор заикастый, у другой
+    // тягучий, у третьей рваный. Начала тактов заземлены прямым ходом,
+    // иначе узор теряет опору и перестаёт читаться ритмом.
+    {
+      const вПрям = m(.4, .8), вПовт = m(.1, .5), вПолу = m(.05, .35),
+            вРаз = m(.05, .3), вСтоп = m(0, .15);
+      const сумма = вПрям + вПовт + вПолу + вРаз + вСтоп;
+      this.uzor = [];
+      for (let i = 0; i < 16; i++){
+        let х = r() * сумма, op = 0;
+        if ((х -= вПрям) > 0){ op = 1;
+          if ((х -= вПовт) > 0){ op = 2;
+            if ((х -= вПолу) > 0){ op = 3;
+              if ((х -= вРаз) > 0) op = 4; } } }
+        const arg = m(0, 1), pri = m(0, 1);
+        if (i % 8 === 0) op = 0;
+        this.uzor.push({ op, arg, pri });
+      }
+      this.uzorGlide = m(0, .8);
+    }
+
     this.vyvod();
   }
 
@@ -2966,7 +2998,7 @@ class Chaos extends AudioWorkletProcessor {
                // говорилка: чем воткнуто в гнездо, высота, скорость, повтор
                ton:.35, temp:.5, povtor:0, trakt:.3, gnut:0, takt:0, razved:0,
                slip:0, tilt:0, derzhi2:0, derzhi3:0,
-               chop:0, skru:0, okras:0, profil:0,
+               chop:0, skru:0, uzor:0, okras:0, profil:0,
                // ПОСТ: не детали прибора, а слой поверх него.
                mix:0, zhat:0, drive:.15, master:1 };
     // Куда движок ЕДЕТ (панель) и где он СЕЙЧАС (схема) — две разные вещи.
@@ -2999,6 +3031,14 @@ class Chaos extends AudioWorkletProcessor {
     this.grB = new Float32Array(SR * 4);   // кольцо своего выхода
     this.grW = 0; this.beatW = 0; this.posB = 0;
     this.grFade = 0; this.grPrev = 0;      // сшив на скачке чтения
+    // Узорная голова: смещение чтения от письма и его движение.
+    this.uzO = 0;        // насколько чтение позади письма, отсчётов
+    this.uzRate = 1;     // наклон кривой чтения на текущем шаге
+    this.uzSlewN = 0;    // сколько отсчётов ещё едет слив к цели
+    this.uzSlewV = 0;    // скорость слива, отсчётов на отсчёт
+    this.uzShag = -1;    // номер полушага 0..15
+    this.uzTakt = 0;     // номер доли в цикле узора 0..7
+    this.uzAkt = 0;      // активен ли узор на этом шаге
     this.grClose = 0;                      // последний прочитанный отсчёт
     // ОКРАС. Автоэквализация к профилю шума: восемь октавных полос, медленно
     // дотягиваемых к целевому наклону.
@@ -3314,10 +3354,75 @@ class Chaos extends AudioWorkletProcessor {
       this.grB[this.grW] = y;
       if (++this.metrF >= this.metrN){
         this.metrF = 0; this.beatW = this.grW; this.posB = 0;
+        this.uzTakt = (this.uzTakt + 1) & 7;       // доля в цикле узора 0..7
         this.grFade = 96; this.grPrev = this.grClose;
       }
       const chop = this.p.chop || 0, skru = clamp(this.p.skru || 0, 0, 1);
-      if (chop > .02 || skru > .002){
+      const uzor = clamp(this.p.uzor || 0, 0, 1);
+      // УЗОР ВРЕМЕНИ. Шестнадцать полушагов на два такта; на каждом шаге
+      // зерно решает, что делает кривая чтения. Ручка PATTERN — порог по
+      // впаянному приоритету шага: шаги проявляются всегда в одном порядке,
+      // от самых сильных к полному узору. Начала тактов заземлены.
+      //
+      // Скольжение между ступеньками — плёночное глиссандо: смещение ЕДЕТ к
+      // цели, и скорость этой езды слышна высотой. Долю скольжения задаёт
+      // зерно. На жёстких прыжках — прежний короткий сшив.
+      const полшага = this.metrN >> 1;
+      const шаг = ((this.metrF / полшага) | 0) & 1
+                ? (this.uzTakt * 2 + 1) : (this.uzTakt * 2);
+      if (шаг !== this.uzShag){
+        this.uzShag = шаг;
+        const з = this.pr.sb.uzor[шаг & 15];
+        const был = this.uzAkt;
+        this.uzAkt = uzor > .002 && з.op !== 0 && з.pri < uzor ? з.op : 0;
+        if (this.uzAkt === 1){
+          // Повтор: ступенька назад на 1..4 полудоли.
+          const цель = (1 + ((з.arg * 3.999) | 0)) * полшага;
+          const слив = Math.round(this.pr.sb.uzorGlide * полшага * .6);
+          if (слив > 32){ this.uzSlewN = слив; this.uzSlewV = (цель - this.uzO) / слив; }
+          else { this.uzO = цель; this.grFade = 96; this.grPrev = this.grClose; }
+          this.uzRate = 1;
+        }
+        else if (this.uzAkt === 2) this.uzRate = .5;     // полускорость
+        else if (this.uzAkt === 3) this.uzRate = -1;     // разворот
+        else if (this.uzAkt === 4) this.uzRate = 0;      // стоп
+        else {
+          this.uzRate = 1;
+          // Возврат к живому: скольжение догоняет письмо — глисс вверх.
+          if (был && this.uzO > 1){
+            const слив = Math.round(this.pr.sb.uzorGlide * полшага * .6);
+            if (слив > 32){ this.uzSlewN = слив; this.uzSlewV = -this.uzO / слив; }
+            else { this.uzO = 0; this.grFade = 96; this.grPrev = this.grClose; }
+          }
+        }
+      }
+      if (uzor > .002){
+        // УЗОРНАЯ ГОЛОВА. Одна величина — смещение чтения от письма — и её
+        // движение. Наклон шага и скрю перемножаются; слив к цели даёт
+        // плёночное глиссандо. CHOP при поднятом узоре не действует: узор
+        // сам содержит повторы, и две запинки друг по другу — каша.
+        const дл = this.grB.length;
+        if (this.uzSlewN > 0){
+          this.uzO += this.uzSlewV;
+          if (--this.uzSlewN <= 0) this.uzSlewV = 0;
+        } else {
+          this.uzO += 1 - this.uzRate * (1 - skru * .5);
+        }
+        if (this.uzO < 0) this.uzO = 0;
+        if (this.uzO > дл - 2) this.uzO = дл - 2;
+        const и = this.grW - this.uzO + дл;
+        const ц = Math.floor(и), др = и - ц;
+        let чит = this.grB[ц % дл] * (1 - др) + this.grB[(ц + 1) % дл] * др;
+        if (this.grFade > 0){
+          const т = this.grFade / 96;
+          чит = чит * (1 - т) + this.grPrev * т;
+          this.grFade--;
+        }
+        this.grClose = чит;
+        this.posB = this.metrF;
+        y = чит;
+      }
+      else if (chop > .02 || skru > .002){
         const дел = chop <= .02 ? 0 : chop < .25 ? .5 : chop < .5 ? .25 : chop < .75 ? .125 : .0625;
         const W = дел ? Math.max(96, Math.round(this.metrN * дел)) : 0;
         // Читаем С ТЕКУЩЕЙ позиции, шагаем ПОСЛЕ: на сбросе доли позиция
@@ -3340,8 +3445,9 @@ class Chaos extends AudioWorkletProcessor {
           this.grFade--;
         }
         this.grClose = чит;
+        this.uzO = 0;
         y = чит;
-      } else { this.posB = this.metrF; this.grClose = y; this.grFade = 0; }
+      } else { this.posB = this.metrF; this.grClose = y; this.grFade = 0; this.uzO = 0; }
       if (++this.grW >= this.grB.length) this.grW = 0;
 
       // ОКРАС — автоэквализация к профилю шума. Восемь октавных полос;

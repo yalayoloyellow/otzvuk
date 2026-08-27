@@ -180,6 +180,12 @@ const KNOBS=[
   // под что не подстраивается — так решено нарочно, это и есть Gross Beat.
   // CHOP — запинка: доля начинается вживую и повторяет своё начало; ручка
   // ходит по ряду делений 1/2 → 1/4 → 1/8 → 1/16.
+  // PATTERN — узор времени из зерна: шестнадцать полушагов на два такта,
+  // повторы, развороты, полускорости и стопы со скольжениями-глиссандо.
+  // Ручка — порог по впаянному приоритету шагов: узор проявляется всегда в
+  // одном порядке, от самых сильных событий к полному рисунку. Выбирать и
+  // рисовать нечего — рисунок у коробки свой, Tab даёт другой.
+  {k:'uzor', kl:'KeyX', imya:'PATTERN', zona:'post', gr:'post'},
   {k:'chop', kl:'KeyC', imya:'CHOP', zona:'post', gr:'post'},
   // SCREW — chopped and screwed: чтение отстаёт до половинной скорости,
   // высота падает как у кассеты, сброс на каждой доле держит такт.
@@ -792,7 +798,7 @@ async function metka(kakaya){
 
 const knobs={sway:.55, depth:.75, gryzn:0, golos:0,
              zhat:0, drive:.15, master:1, ton:.35, temp:.5, gnut:0, takt:0,
-             trakt:.3, kuda:0, razved:0, slip:0, chop:0, skru:0, okras:0};
+             trakt:.3, kuda:0, razved:0, slip:0, uzor:0, chop:0, skru:0, okras:0};
 const switches={pit:0, petlya:0,
                 mix:0, povtor:0, sboy:0, derzhi:0, derzhi2:0, derzhi3:0, profil:0};
 
