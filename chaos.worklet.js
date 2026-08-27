@@ -696,7 +696,10 @@ class Build {
     this.Gpl   = 1 / this.Rpl;
     // По ЧИСЛУ ветвей, а не по трём: четвёртому голосу здесь доставалась
     // пустота, проводимость выходила NaN, и четырёхголосая коробка молчала.
-    this.Rvet  = this.ves.map(v => this.Rsum0 / v);
+    // БЕЗ map: vyvod теперь зовётся на каждом блоке ведения, и свежий
+    // массив каждый блок — это снова мусор в звуковом потоке.
+    if (!this.Rvet) this.Rvet = new Array(this.ves.length);
+    for (let i = 0; i < this.ves.length; i++) this.Rvet[i] = this.Rsum0 / this.ves[i];
   }
 }
 
@@ -2141,8 +2144,13 @@ class Device {
   // в двух местах значит рано или поздно развести их.
   точка(i, Vdd){
     switch (i){
-      case 1: case 2: case 3: return this.cells[i-1].V;      // узлы заряда
-      case 4: case 5: case 6: return this.cells[i-4].vyh;    // выходы
+      // Третья площадка — ПОСЛЕДНИЙ живой голос: у трёхголосой коробки это
+      // тот же третий, что и был, у четырёхголосой палец достаёт до писка.
+      // Иначе четвёртый голос не имел бы площадки вовсе.
+      case 1: case 2: return this.cells[i-1].V;              // узлы заряда
+      case 3: return this.cells[this.sb.nGen-1].V;
+      case 4: case 5: return this.cells[i-4].vyh;            // выходы
+      case 6: return this.cells[this.sb.nGen-1].vyh;
       case 7:  return this.swing.medl.V;                     // узел качелей
       case 8:  return this.swing.gul.V;                      // узел гула
       case 9:  return this.xBylo;                            // суммирующая точка
@@ -3132,6 +3140,7 @@ class Chaos extends AudioWorkletProcessor {
                    oscP: new Float32Array(256), oscX: new Float32Array(256),
                    oscM: new Float32Array(256), sled: new Float32Array(200) };
     this.snimokTik = 0;
+    this.progrev = 0;                     // маска броска включения при Tab
     // ОКРАС. Автоэквализация к профилю шума: восемь октавных полос, медленно
     // дотягиваемых к целевому наклону.
     // Полосы КАСКАДОМ ИЗ ТРЁХ однополюсников на срез: одиночный течёт юбками
@@ -3284,6 +3293,14 @@ class Chaos extends AudioWorkletProcessor {
     this.vedenie = null;
     this.pr = new Device(semya);
     this.svod = new Decim();
+    // ДОЛГ «БРОСОК УРОВНЯ ПРИ TAB» ЗАКРЫТ. Источник найден замером: свежая
+    // коробка включается, как с полки, и зарядка накопителя — процесс на
+    // полторы секунды с горбом на четырёхстах миллисекундах (профиль по
+    // окнам: 0.05 → 0.171 → 0.008). У тихих сборок горб орал в двадцать
+    // шесть раз громче их устоявшегося уровня. Tab не включение: новая
+    // коробка ВПЛЫВАЕТ квадратичным нарастанием за 1.2 секунды. POWER
+    // остаётся с броском — он задуман и слышен.
+    this.progrev = Math.round(SR * 1.2);
     if (novye) for (const k in novye){
       const v = clamp(novye[k], 0, 1);
       this.p[k] = v;
@@ -3313,6 +3330,11 @@ class Chaos extends AudioWorkletProcessor {
     if (this.vedenie){
       if (this.vedenie.step(n)) this.vedenie = null;
       this.pr.din.perechitay();
+      // ДОЛГ ЗАКРЫТ: производные сборки (проводимости, ветви, постоянные
+      // фильтров) не пересчитывались при ведении вовсе — пока номиналы
+      // ехали, прибор считал ветви от ПРЕЖНЕГО. Теперь пересчёт на каждом
+      // блоке ведения; формулы чистые, розыгрышей в vyvod нет.
+      this.pr.sb.vyvod();
     }
 
     const plavno = this.p.mix > .5;
@@ -3432,6 +3454,11 @@ class Chaos extends AudioWorkletProcessor {
         }
       }
 
+      if (this.progrev > 0){
+        const к = 1 - this.progrev / (SR * 1.2);
+        y *= к * к;
+        this.progrev--;
+      }
       // ГРОСБИТ — резак по грубому метроному. Кольцо пишется всегда, чтобы
       // включение имело историю; фаза идёт всегда, чтобы включение попадало
       // в долю, а не начинало её с нажатия.
