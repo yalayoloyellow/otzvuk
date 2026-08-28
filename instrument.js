@@ -272,6 +272,13 @@ const SWITCHES=[
   // полный HOLD.
   {k:'derzhi2', kl:'KeyU', shift:1, imya:'HOLD 2', zona:'modul', gr:'mod'},
   {k:'derzhi3', kl:'KeyI', shift:1, imya:'HOLD 3', zona:'modul', gr:'mod'},
+  // WEAVE — веретено: сеть модуляционных связей, свиваемая ЭНТРОПИЕЙ
+  // КУРСОРА, по образу VeraCrypt. Включил — и води мышью по окну: чем
+  // дольше водишь, тем больше нитей и мета-связей (связей, ведущих другие
+  // связи). Остановился — сеть замирает и живёт: источники дышат сами.
+  // Выключил — нити тают, прибор чистый. Ручки остаются хозяйскими: сеть
+  // дышит ВОКРУГ выставленных положений, не дальше трети хода.
+  {k:'vite', kl:'KeyW', shift:1, imya:'WEAVE', zona:'modul', gr:'mod'},
   {k:'petlya', kl:'KeyH', shift:1, imya:'FEEDBACK', podpis:['off','room','howl'],
    pol:3, mikro:1, zona:'golos', gr:'petlya'},
   {k:'povtor', kl:'KeyJ', shift:1, imya:'LOOP', zona:'golos', gr:'petlya'},
@@ -735,6 +742,21 @@ async function bystroPrishlo(d){
 }
 
 
+// ЭНТРОПИЯ ДЛЯ ВЕРЕТЕНА. Пока WEAVE включён, движение курсора по окну
+// копится и раз в полтораста миллисекунд уходит в ядро: скорость, направление
+// и ритм руки — это и есть случайность, из которой вьётся сеть.
+let витеБуф=[], витеПосл=0;
+addEventListener('mousemove',e=>{
+  if(!switches.vite || !node) return;
+  витеБуф.push(e.movementX||e.clientX%17, e.movementY||e.clientY%13);
+  const t=performance.now();
+  if(t-витеПосл>150 && витеБуф.length){
+    витеПосл=t;
+    node.port.postMessage({t:'vite', d:витеБуф});
+    витеБуф=[];
+  }
+});
+
 // ТАКТ РУКОЙ — грубый метроном гросбита. Медиана последних интервалов,
 // никакой магии: он и должен быть топорным.
 let tapy=[], metrBpm=0, bZazhat=false;
@@ -819,7 +841,7 @@ const knobs={sway:.55, depth:.75, gryzn:0, golos:0,
              zhat:0, drive:.15, master:1, ton:.35, temp:.5, gnut:0, takt:0,
              trakt:.3, kuda:0, razved:0, slip:0, uzor:0, chop:0, skru:0,
              kolazh:0, cut:0, krik:0, okras:0};
-const switches={pit:0, petlya:0,
+const switches={pit:0, vite:0, petlya:0,
                 mix:0, povtor:0, sboy:0, derzhi:0, derzhi2:0, derzhi3:0, profil:0};
 
 const p={};
@@ -2093,7 +2115,8 @@ function ruchki(){
       // INPUT и удлинял строку вдвое, а место ему тут: без петли это число
       // ни о чём, по нему ядро само считает усиление круга.
       stroki.push(tumbler(t,zn)+
-        (t.k==='petlya'&&switches.petlya ? `  <span class="s1">ROOM ${vz.toFixed(2)}</span>` : ''));
+        (t.k==='petlya'&&switches.petlya ? `  <span class="s1">ROOM ${vz.toFixed(2)}</span>` : '')+
+        (t.k==='vite'&&(report.niti||switches.vite) ? `  <span class="p1">нитей</span> <span class="p3">${report.niti||0}</span>` : ''));
     stroki.push('');
   }
 

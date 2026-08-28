@@ -2688,7 +2688,15 @@ class Petlya {
 // (сама лампочка включается сразу, медленный там фоторезистор) и режим
 // микширования, который вообще не деталь, а слой поверх прибора.
 const TUMBLERY = {mix:1, pit:1, sboy:1, derzhi:1,
-                  derzhi2:1, derzhi3:1, profil:1};
+                  derzhi2:1, derzhi3:1, profil:1, vite:1};
+
+// ВЕРЕТЕНО — приёмники и их природа. Медленные ведутся только медленными
+// формами и мельче: дёргать период качелей быстро — каша, а не модуляция.
+const В_ПРИЁМ = ['cut','krik','kolazh','skru','chop','uzor','okras','takt',
+                 'razved','slip','gnut','golos','kuda','depth','sway','zhat',
+                 'drive','ton','trakt','temp'];
+const В_МЕДЛЕННЫЕ = {takt:1, razved:1, slip:1, gnut:1, kuda:1, sway:1, temp:1};
+const В_НИТЕЙ = 24;
 // Коммутация: в обычном режиме мгновенна, под микшированием едет.
 const KOMMUTACIYA = {kuda:1};
 
@@ -3089,6 +3097,7 @@ class Chaos extends AudioWorkletProcessor {
                ton:.35, temp:.5, povtor:0, trakt:.3, gnut:0, takt:0, razved:0,
                slip:0, tilt:0, derzhi2:0, derzhi3:0,
                chop:0, skru:0, uzor:0, kolazh:0, cut:0, krik:0, okras:0, profil:0,
+               vite:0,
                // ПОСТ: не детали прибора, а слой поверх него.
                mix:0, zhat:0, drive:.15, master:1 };
     // Куда движок ЕДЕТ (панель) и где он СЕЙЧАС (схема) — две разные вещи.
@@ -3141,6 +3150,29 @@ class Chaos extends AudioWorkletProcessor {
                    oscM: new Float32Array(256), sled: new Float32Array(200) };
     this.snimokTik = 0;
     this.progrev = 0;                     // маска броска включения при Tab
+    // ВЕРЕТЕНО. Сеть модуляционных связей, свиваемая энтропией курсора —
+    // по образу VeraCrypt: движение мыши хэшируется в пул, из пула
+    // рождаются решения — свить нить, перевить, углубить метой, оборвать.
+    // Нити в параллельных типизированных массивах: мусора в потоке ноль.
+    this.vIst = new Int8Array(В_НИТЕЙ);      // источник
+    this.vPr = new Int8Array(В_НИТЕЙ).fill(-1);   // приёмник (или -1)
+    this.vMeta = new Int8Array(В_НИТЕЙ).fill(-1);  // цель-нить меты
+    this.vGl = new Float32Array(В_НИТЕЙ);    // глубина со знаком
+    this.vIn = new Float32Array(В_НИТЕЙ);    // коэффициент инерции
+    this.vKr = new Float32Array(В_НИТЕЙ);    // кривая перегиба
+    this.vKv = new Int8Array(В_НИТЕЙ);       // квант: 0 или ступеней
+    this.vSost = new Float32Array(В_НИТЕЙ);  // сглаженный источник
+    this.vKvZn = new Float32Array(В_НИТЕЙ);  // защёлка кванта
+    this.vZhiv = new Float32Array(В_НИТЕЙ);  // вплывание/таяние 0..1
+    this.vCel = new Float32Array(В_НИТЕЙ);   // куда вплывать: 1 жить, 0 таять
+    this.viteN = 0;                          // живых нитей
+    this.vSm = new Float32Array(В_ПРИЁМ.length);  // смещения приёмников
+    this.vMt = new Float32Array(В_НИТЕЙ);    // мета-множители глубин
+    this.vPool = 0x9e3779b9 >>> 0;           // энтропийный пул
+    this.vZaryad = 0;                        // накопленное движение
+    this.vTikResh = 0;                       // блоков до следующего решения
+    this.vOgib = 0;                          // огибающая выхода — источник
+    this.pEff = {};                          // параметры со смещениями сети
     // ФРАЗА — мемфисский семплер механикой педали. Решения хозяина: фраза
     // вырезается ИЗ ПРИБОРА, захват только вперёд («не поймал — лох»),
     // петля ЗАМЕЩАЕТ прибор, пока крутится. Дальше её жуёт вся красная
@@ -3244,6 +3276,18 @@ class Chaos extends AudioWorkletProcessor {
             if (this.dvizh.indexOf(k) < 0) this.dvizh.push(k);
           }
         }
+      }
+      else if (d.t === 'vite'){
+        // Энтропия курсора: каждое число вмешивается в пул xorshift-ом,
+        // движение копит заряд — решения тратят его. Нет движения — сеть
+        // замирает в текущем виде и живёт: источники дышат сами.
+        const дв = d.d || [];
+        for (let i = 0; i < дв.length; i++){
+          let x = (this.vPool ^ ((дв[i] * 65521) | 0)) >>> 0;
+          x ^= x << 13; x >>>= 0; x ^= x >> 17; x ^= x << 5;
+          this.vPool = x >>> 0;
+        }
+        this.vZaryad += дв.length;
       }
       else if (d.t === 'fraza'){
         if (d.v){
@@ -3356,8 +3400,143 @@ class Chaos extends AudioWorkletProcessor {
     }
   }
 
+  вСлучай(){
+    let x = this.vPool;
+    x ^= x << 13; x >>>= 0; x ^= x >> 17; x ^= x << 5; x >>>= 0;
+    this.vPool = x;
+    return x / 4294967296;
+  }
+  вИсточник(и){
+    const pr = this.pr;
+    switch (и){
+      case 0: case 1: case 2: return pr.uM[и] || 0;
+      case 3: return clamp(this.golos.ogib || 0, 0, 1);
+      case 4: return pr.scepka || 0;
+      case 5: return clamp(pr.setka.ogib || 0, 0, 1);
+      case 6: return this.metrF / this.metrN;             // пила метронома
+      case 7: return clamp((pr.elekF - 1) * 1.2 + .5, 0, 1);
+      case 8: return clamp(pr.bat.Vl / pr.sb.EMF, 0, 1);
+      default: return clamp(this.vOgib * 9, 0, 1);        // огибающая выхода
+    }
+  }
+  вРешение(){
+    const р = this.вСлучай();
+    // Свить, перевить, углубить, оборвать. Пока сеть мала — только вить.
+    if (this.viteN >= 6 && р < .18){
+      // Оборвать слабейшую живую.
+      let к = -1;
+      for (let i = 0; i < В_НИТЕЙ; i++)
+        if (this.vCel[i] > 0 && (к < 0 || Math.abs(this.vGl[i]) < Math.abs(this.vGl[к]))) к = i;
+      if (к >= 0){ this.vCel[к] = 0; }
+      return;
+    }
+    if (this.viteN >= 6 && р < .42){
+      // Перевить случайную: новый источник или форма.
+      let к = (this.вСлучай() * В_НИТЕЙ) | 0, страж = В_НИТЕЙ;
+      while (страж-- && this.vCel[к] <= 0) к = (к + 1) % В_НИТЕЙ;
+      if (this.vCel[к] > 0){
+        if (this.вСлучай() < .5) this.vIst[к] = (this.вСлучай() * 9.999) | 0;
+        else { this.vKr[к] = .4 + this.вСлучай() * 2.1;
+               this.vKv[к] = this.вСлучай() < .3 ? (2 + ((this.вСлучай() * 5) | 0)) : 0; }
+      }
+      return;
+    }
+    if (this.viteN >= 8 && р < .58){
+      // Углубить: мета-нить — ведёт глубину другой нити. Переотражение.
+      let св = -1;
+      for (let i = 0; i < В_НИТЕЙ; i++) if (this.vCel[i] <= 0 && this.vPr[i] < 0 && this.vMeta[i] < 0){ св = i; break; }
+      if (св < 0) return;
+      let ц = (this.вСлучай() * В_НИТЕЙ) | 0, страж = В_НИТЕЙ;
+      while (страж-- && (this.vCel[ц] <= 0 || this.vMeta[ц] >= 0)) ц = (ц + 1) % В_НИТЕЙ;
+      if (this.vCel[ц] <= 0) return;
+      this.vIst[св] = (this.вСлучай() * 9.999) | 0;
+      this.vPr[св] = -1; this.vMeta[св] = ц;
+      this.vGl[св] = (this.вСлучай() - .5) * 1.6;
+      this.vIn[св] = 1 - Math.exp(-1 / (SR / 128 * (.3 + this.вСлучай() * 2)));
+      this.vKr[св] = .4 + this.вСлучай() * 2.1; this.vKv[св] = 0;
+      this.vSost[св] = .5; this.vZhiv[св] = 0; this.vCel[св] = 1;
+      this.viteN++;
+      return;
+    }
+    // Свить обычную нить. Слот свободен, только когда прежняя нить
+    // полностью истаяла и СПИСАНА: юная оборванная (жив ещё 0.008) отдавала
+    // слот до списания, и счёт нитей раздувался до двадцати шести при
+    // двадцати четырёх слотах.
+    let св = -1;
+    for (let i = 0; i < В_НИТЕЙ; i++) if (this.vCel[i] <= 0 && this.vPr[i] < 0 && this.vMeta[i] < 0){ св = i; break; }
+    if (св < 0) return;
+    const пр = (this.вСлучай() * В_ПРИЁМ.length) | 0;
+    const медл = В_МЕДЛЕННЫЕ[В_ПРИЁМ[пр]];
+    this.vIst[св] = (this.вСлучай() * 9.999) | 0;
+    this.vPr[св] = пр; this.vMeta[св] = -1;
+    this.vGl[св] = (this.вСлучай() - .5) * (медл ? .3 : .6);
+    const тау = медл ? (.5 + this.вСлучай() * 3) : (.05 + this.вСлучай() * 1.5);
+    this.vIn[св] = 1 - Math.exp(-1 / (SR / 128 * тау));
+    this.vKr[св] = .4 + this.вСлучай() * 2.1;
+    this.vKv[св] = (!медл && this.вСлучай() < .3) ? (2 + ((this.вСлучай() * 5) | 0)) : 0;
+    this.vSost[св] = .5; this.vZhiv[св] = 0; this.vCel[св] = 1;
+    this.viteN++;
+  }
+  вПересчёт(тик){
+    // Решение — при заряде движения, не чаще ~трёх в секунду, и только
+    // при ВКЛЮЧЁННОМ веретене: после выключения сеть лишь тает. Заряд
+    // ограничен сверху — остановил руку, и через пару решений сеть замирает,
+    // а не довьётся на старых запасах.
+    if (this.vZaryad > 72) this.vZaryad = 72;
+    if ((this.p.vite || 0) >= .5 && --this.vTikResh <= 0 && this.vZaryad >= 24){
+      this.vZaryad -= 24; this.vTikResh = 120;
+      this.вРешение();
+    }
+    // Мета-множители, потом смещения. Квантованные защёлкиваются на
+    // полушаге метронома — ступени в такте, а не дрожь.
+    this.vMt.fill(1);
+    for (let i = 0; i < В_НИТЕЙ; i++){
+      if (this.vZhiv[i] <= 0 && this.vCel[i] <= 0) continue;
+      this.vZhiv[i] += (this.vCel[i] - this.vZhiv[i]) * .004;
+      if (this.vCel[i] <= 0 && this.vZhiv[i] < .005){
+        this.vZhiv[i] = 0;
+        if (this.vPr[i] >= 0 || this.vMeta[i] >= 0){ this.vPr[i] = -1; this.vMeta[i] = -1; this.viteN--; }
+        continue;
+      }
+      const x = this.вИсточник(this.vIst[i]);
+      this.vSost[i] += (x - this.vSost[i]) * this.vIn[i];
+      let у = Math.pow(clamp(this.vSost[i], 0, 1), this.vKr[i]);
+      if (this.vKv[i]){
+        if (тик) this.vKvZn[i] = Math.round(у * this.vKv[i]) / this.vKv[i];
+        у = this.vKvZn[i];
+      }
+      if (this.vMeta[i] >= 0)
+        this.vMt[this.vMeta[i]] *= 1 + (у - .5) * this.vGl[i] * this.vZhiv[i] * 2;
+    }
+    this.vSm.fill(0);
+    for (let i = 0; i < В_НИТЕЙ; i++){
+      if (this.vZhiv[i] <= 0 || this.vPr[i] < 0) continue;
+      let у = Math.pow(clamp(this.vSost[i], 0, 1), this.vKr[i]);
+      if (this.vKv[i]) у = this.vKvZn[i];
+      this.vSm[this.vPr[i]] += (у - .5) * this.vGl[i] * this.vZhiv[i] * this.vMt[i];
+    }
+    // Эффективные параметры: ручки хозяина плюс дыхание сети, в пределах.
+    for (const k in this.p) this.pEff[k] = this.p[k];
+    for (let j = 0; j < В_ПРИЁМ.length; j++){
+      const см = clamp(this.vSm[j], -.35, .35);
+      if (см) this.pEff[В_ПРИЁМ[j]] = clamp((this.p[В_ПРИЁМ[j]] || 0) + см, 0, 1);
+    }
+  }
   process(inputs, outputs){
     const oL = outputs[0][0], oR = outputs[0][1], n = oL.length;
+    // ВЕРЕТЕНО: тумблер выключен — цели нитей в ноль, сеть тает; включён —
+    // живёт и растёт от энтропии курсора. Слой П — параметры со смещениями
+    // сети; без нитей он и есть this.p, лишней копии не делается.
+    if ((this.p.vite || 0) < .5 && this.viteN > 0)
+      for (let i = 0; i < В_НИТЕЙ; i++) this.vCel[i] = 0;
+    const плетётся = this.viteN > 0;
+    if (плетётся){
+      const тик = this.vKvTik !== (this.vKvTik = (this.metrF / (this.metrN >> 1)) | 0);
+      this.вПересчёт(тик);
+    } else if ((this.p.vite || 0) >= .5 && this.vZaryad >= 24 && --this.vTikResh <= 0){
+      this.vTikResh = 120; this.vZaryad -= 24; this.вРешение();
+    }
+    const П = плетётся ? this.pEff : this.p;
     const vh = (inputs[0] && inputs[0][0]) || null;
 
     // ПЛОЩАДКИ. На приборе они все одинаковые: палец подключает своё
@@ -3442,10 +3621,10 @@ class Chaos extends AudioWorkletProcessor {
       this.mikKv += (mik * mik - this.mikKv) * ROOMK;
       this.vyhKv += (this.proshY * this.proshY - this.vyhKv) * ROOMK;
       let usil = 0;
-      if (this.p.petlya > .002){
+      if (П.petlya > .002){
         this.vozvrat = this.vyhKv > 1e-9
           ? clamp(Math.sqrt(this.mikKv / this.vyhKv), .004, 3) : .55;
-        usil = clamp(BAZA_PETLI * this.p.petlya / this.vozvrat, 40, 6000);
+        usil = clamp(BAZA_PETLI * П.petlya / this.vozvrat, 40, 6000);
       }
       const petl = this.petlya.step(mik, usil);
 
@@ -3453,8 +3632,8 @@ class Chaos extends AudioWorkletProcessor {
       // входе, и ИСТОЧНИК это не переключатель, а потенциометр между ними:
       // на середине слышны оба. Петля при этом остаётся на микрофоне —
       // круг замыкает воздух, и говорилке в нём делать нечего.
-      const rech = this.govor.step(this.p.ton, this.p.temp, this.p.povtor > .5,
-                                   this.p.trakt, this.pr.swing.period);
+      const rech = this.govor.step(П.ton, П.temp, this.p.povtor > .5,
+                                   П.trakt, this.pr.swing.period);
       // ТРИ ИСТОЧНИКА ЖИВУТ ПО ОДНОМУ ПРАВИЛУ: воткнут — звучит. Микрофон и
       // система втыкаются клавишами, говорилка — набранным текстом; молчит
       // она сама, пока текста нет. Ручки-переключателя между ними больше нет.
@@ -3465,9 +3644,9 @@ class Chaos extends AudioWorkletProcessor {
       // осмысленное лишь в одном случае из двух, честнее отсутствует.
       const vhod = mik + rech;
       for (let k = 0; k < OVER; k++){
-        const gls = this.golos.step(vhod, this.p.golos);
+        const gls = this.golos.step(vhod, П.golos);
         const ogibS = this.golos.udar;
-        y = this.svod.step(this.pr.step(this.p, ut, nav, kont, gls, this.golos.ogib,
+        y = this.svod.step(this.pr.step(П, ut, nav, kont, gls, this.golos.ogib,
                                         petl, this.pl, shoroh, rkont, ogibS));
       }
       if (!(y === y)){ y = 0; this.pr.zhivoy(); this.svod = new Decim(); this.sryvy++; }
@@ -3574,8 +3753,8 @@ class Chaos extends AudioWorkletProcessor {
         if (this.uzTakt === 0) this.uzCikl = (this.uzCikl + 1) & 3;
         this.grFade = 96; this.grPrev = this.grClose;
       }
-      const chop = this.p.chop || 0, skru = clamp(this.p.skru || 0, 0, 1);
-      const uzor = clamp(this.p.uzor || 0, 0, 1);
+      const chop = П.chop || 0, skru = clamp(П.skru || 0, 0, 1);
+      const uzor = clamp(П.uzor || 0, 0, 1);
       // УЗОР ВРЕМЕНИ. Шестнадцать полушагов на два такта; на каждом шаге
       // зерно решает, что делает кривая чтения. Ручка PATTERN — порог по
       // впаянному приоритету шага: шаги проявляются всегда в одном порядке,
@@ -3715,7 +3894,7 @@ class Chaos extends AudioWorkletProcessor {
       // текущий звук как есть. Ручка — доля активных фрагментов: внизу
       // редкие странные вставки, на упоре сплошная перестановка. Скачки
       // сшиваются второй головой, как в узоре.
-      const kol = this.p.kolazh || 0;
+      const kol = П.kolazh || 0;
       if (kol > .002){
         if (--this.kolOst <= 0){
           this.kolIdx = (this.kolIdx + 1) & 7;
@@ -3764,14 +3943,14 @@ class Chaos extends AudioWorkletProcessor {
       // это и есть «характер», рык вместо стекла. CUT в нуле — обход;
       // вправо частота падает от восьми тысяч к сорока пяти герцам,
       // логарифмически. SCREAM ведёт затухание от тупого к самовозбуждению.
-      const cut = this.p.cut || 0;
+      const cut = П.cut || 0;
       if (cut > .002){
         // «Прикол не понял, оч слабые» — и справедливо: один каскад на
         // тёмном треске закрывает мало, а tanh душил резонанс до шёпота.
         // Теперь: предусиление растёт с КРИКОМ (насыщению есть что жевать —
         // рык настоящий), каскада ДВА (24 дБ — закрытие слышно сразу), и
         // резонанс второго мягче, чтобы вой остался чистым тоном.
-        const кр = clamp(this.p.krik || 0, 0, 1);
+        const кр = clamp(П.krik || 0, 0, 1);
         const fc = 8000 * Math.pow(45 / 8000, cut);
         const f = 2 * Math.sin(Math.PI * Math.min(fc, SR * .22) / SR);
         const q = 1.35 * Math.pow(.012 / 1.35, кр);
@@ -3800,7 +3979,7 @@ class Chaos extends AudioWorkletProcessor {
       // добивала до цели, потому что юбки полос съедали командованное.
       // Ручка COLOR — честное смешение сухого с цветным, а не ослабление
       // довода: ослабленный довод петля тут же докрутила бы обратно.
-      const okras = this.p.okras || 0;
+      const okras = П.okras || 0;
       if (okras > .002){
         const лп = this.eqLp, мп = this.eqM, aк = this.eqA;
         const пол = this.eqB;
@@ -3833,7 +4012,7 @@ class Chaos extends AudioWorkletProcessor {
           if (всего > 1e-8 && this.eqInKv > 1e-8){
             // Наклон целевой лесенки: белый +1, розовый 0, коричневый −1
             // на полосу (по плотности — привычные 0/−3/−6 дБ на октаву).
-            const пр = this.p.profil || 0;
+            const пр = П.profil || 0;
             const скл = пр < .25 ? 1 : пр < .75 ? 0 : -1;
             let сумЦ = 0; const ц = [];
             for (let k = 0; k < 8; k++){ ц[k] = Math.pow(2, скл * k); сумЦ += ц[k]; }
@@ -3859,7 +4038,7 @@ class Chaos extends AudioWorkletProcessor {
       const yDo = this.zad[this.zadi];
       this.zad[this.zadi] = y;
       this.zadi = (this.zadi + 1) % this.zad.length;
-      y = this.zhmi.step(y, this.p.zhat);
+      y = this.zhmi.step(y, П.zhat);
       if (++this.okno >= SR * .25){ this.okno = 0; this.pr.mera(); }
       const a = y < 0 ? -y : y;
       if (a > this.pik) this.pik = a;
@@ -3884,13 +4063,14 @@ class Chaos extends AudioWorkletProcessor {
       // этого нужен только ограничитель. Нормализация — одно умножение на
       // весь файл, испортить она ничего не может. Петля же ездила по уровню
       // и ломала динамику — это слышно на любом резком переключении.
-      y = koleno(this.predel.step(y * (.5 + this.p.drive * 7.5)));
+      y = koleno(this.predel.step(y * (.5 + П.drive * 7.5)));
       // MASTER — ослабление ПОСЛЕ ограничителя, и только ослабление. Оно
       // меняет громкость, не трогая характер: DRIVE двигает то и другое
       // разом, и убавить им звук, ничего не испортив, нельзя. Прибавлять
       // мастеру незачем — для этого есть DRIVE, — а раз он не может быть
       // больше единицы, то и потолок пробить не может. Гарантия «запись не
       // пикует ни при каком положении ручек» остаётся целой.
+      this.vOgib += (Math.abs(y) - this.vOgib) * .0004;
       y *= this.p.master;
       // Громкость считается по-прежнему, но НИ НА ЧТО не влияет: цифра
       // нужна только чтобы написать её после записи.
@@ -3951,6 +4131,7 @@ class Chaos extends AudioWorkletProcessor {
         mik: this.mikPik, vozvrat: this.vozvrat,
         razbros: pr.razbr, period: pr.swing.period, scepka: pr.scepka,
         fraza: this.frSost, frTaktov: this.frTaktov,
+        niti: this.viteN,
         pitch: pr.osn.f || 0, duty: pr.osn.skv,
         shina: pr.bat.Vl / sb.EMF,
         swing: pr.swing.u, drift: pr.swing.g,
