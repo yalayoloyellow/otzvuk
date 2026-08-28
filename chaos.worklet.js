@@ -3189,6 +3189,20 @@ class Chaos extends AudioWorkletProcessor {
     this.vTikResh = 0;                       // блоков до следующего решения
     this.vOgib = 0;                          // огибающая выхода — источник
     this.pEff = {};                          // параметры со смещениями сети
+    // ШВЫ — второй уровень веретена: не смещения ручек, а перешивание САМОЙ
+    // СБОРКИ. Решение хозяина дословно: «изменение внутри сборки — изменение
+    // подключений: один вход начинает подавать в доп источник, один вход
+    // убирает звук из другого источника и ставит в третий — не сценарно, а
+    // рандомно, но рандом стильный». Стильность — гарантией: диапазоны швов
+    // ТЕ ЖЕ, в которых рождаются коробки; непрерывное ведётся плавно,
+    // дискретное щёлкает по такту.
+    this.mVid = new Int8Array(12).fill(-1);  // вид шва
+    this.mInd = new Int8Array(12);           // индекс внутри поля
+    this.mTek = new Float32Array(12);        // текущее значение
+    this.mCel = new Float32Array(12);        // куда ведём
+    this.mK = new Float32Array(12);          // скорость ведения
+    this.mZhdet = new Int8Array(12);         // дискретный шов ждёт такта
+    this.mShvov = 0;                         // счётчик швов за жизнь сети
     // ФРАЗА — мемфисский семплер механикой педали. Решения хозяина: фраза
     // вырезается ИЗ ПРИБОРА, захват только вперёд («не поймал — лох»),
     // петля ЗАМЕЩАЕТ прибор, пока крутится. Дальше её жуёт вся красная
@@ -3435,6 +3449,88 @@ class Chaos extends AudioWorkletProcessor {
       default: return clamp(this.vOgib * 9, 0, 1);        // огибающая выхода
     }
   }
+  вШов(){
+    // Выбор вида шва и цели. Диапазоны — из Build, дословно.
+    let сл = -1;
+    for (let i = 0; i < 12; i++) if (this.mVid[i] < 0){ сл = i; break; }
+    if (сл < 0) return;
+    const sb = this.pr.sb, р = this.вСлучай;
+    const вид = (р.call(this) * 10.999) | 0;
+    let инд = 0, тек = 0, цель = 0, дискр = 0;
+    switch (вид){
+      case 0:  // вход в ячейку: подать больше, меньше или почти отключить
+        инд = (р.call(this) * sb.Rvhod.length) | 0;
+        тек = sb.Rvhod[инд];
+        цель = 2.2e5 * Math.pow(4, р.call(this) * 2 - 1) * (р.call(this) < .15 ? 40 : 1);
+        break;
+      case 1:  // вес голоса в сумме: убрать из одного, поставить в другой
+        инд = (р.call(this) * sb.ves.length) | 0;
+        тек = sb.ves[инд];
+        цель = .06 + р.call(this) * 1.1;
+        break;
+      case 2:  // разводка подстроечников голосов
+        инд = 1 + ((р.call(this) * (sb.razv.length - 1)) | 0);
+        тек = sb.razv[инд];
+        цель = инд === 1 ? 1.5 + р.call(this) * 1.1 : 5.5 + р.call(this) * 20;
+        break;
+      case 3:  // разводка медленных узлов
+        инд = 1 + ((р.call(this) * 2) | 0);
+        тек = sb.razvM[инд];
+        цель = инд === 1 ? 1.7 + р.call(this) * .7 : 3.4 + р.call(this) * 1.4;
+        break;
+      case 4:  // перемычка no-input: номинал или вкл/выкл
+        if (р.call(this) < .35){ sb.perem = sb.perem ? 0 : 1; this.mShvov++; return; }
+        тек = sb.Rperem; цель = 15e3 * Math.pow(8, р.call(this));
+        вид === 4; инд = 0;
+        break;
+      case 5:  // провод сетки: переключить одно из четырёх подключений
+        { const к = (р.call(this) * 3.999) | 0;
+          const имя = ['zSeqSm','zSeqSv','zSeqNk','zSeqSh'][к];
+          sb[имя] = sb[имя] ? 0 : .45 + р.call(this) * .6;
+          if (!(sb.zSeqSm || sb.zSeqSv || sb.zSeqNk || sb.zSeqSh)) sb.zSeqNk = 1;
+          this.mShvov++; return; }
+      case 6:  // рисунок сетки — дискретно, на такте
+        инд = (р.call(this) * 7.999) | 0; дискр = 1; тек = sb.risunok; цель = инд;
+        break;
+      case 7:  // характер слоёв и рабочая точка
+        if (р.call(this) < .5){ тек = sb.zTilt; цель = р.call(this) * .8; инд = 0; }
+        else { тек = sb.zTone; цель = .3 + р.call(this) * .4; инд = 1; }
+        break;
+      case 8:  // регистр коробки
+        тек = sb.zRange; цель = .25 + р.call(this) * .5;
+        break;
+      case 9:  // фигура узора: проявить или утопить один шаг
+        { const ш = (р.call(this) * 15.999) | 0;
+          const з = sb.uzor[ш];
+          if (з.op) з.pri = р.call(this) * .8;
+          з.arg = р.call(this);
+          this.mShvov++; return; }
+      default: // питание: дряблость или напряжение
+        if (р.call(this) < .5){ тек = sb.zSag; цель = р.call(this) * .65; инд = 0; }
+        else { тек = sb.zVolt; цель = .32 + р.call(this) * .36; инд = 1; }
+        break;
+    }
+    this.mVid[сл] = вид; this.mInd[сл] = инд;
+    this.mTek[сл] = тек; this.mCel[сл] = цель;
+    this.mZhdet[сл] = дискр;
+    this.mK[сл] = 1 - Math.exp(-1 / (SR / 128 * (.3 + р.call(this) * 1.7)));
+    this.mShvov++;
+  }
+  вЗапись(вид, инд, з){
+    const sb = this.pr.sb;
+    switch (вид){
+      case 0: sb.Rvhod[инд] = з; break;
+      case 1: sb.ves[инд] = з; return 1;          // производные пересчитать
+      case 2: sb.razv[инд] = з; break;
+      case 3: sb.razvM[инд] = з; break;
+      case 4: sb.Rperem = з; break;
+      case 6: sb.risunok = инд; break;
+      case 7: if (инд) sb.zTone = з; else sb.zTilt = з; break;
+      case 8: sb.zRange = з; break;
+      default: if (инд) sb.zVolt = з; else sb.zSag = з; break;
+    }
+    return 0;
+  }
   вРешение(){
     const р = this.вСлучай();
     // Свить, перевить, углубить, оборвать. Пока сеть мала — только вить.
@@ -3456,6 +3552,12 @@ class Chaos extends AudioWorkletProcessor {
                this.vKv[к] = this.вСлучай() < .3 ? (2 + ((this.вСлучай() * 5) | 0)) : 0; }
       }
       return;
+    }
+    if (this.viteN >= 4 && р < .58){
+      // ШОВ — перешивание самой сборки: почти половина решений зрелой сети.
+      // Нити дышат значениями, швы меняют ПРОВОДА — вход, веса голосов,
+      // разводки, рисунок, перемычку. По цепочке уходит вся картина.
+      if (this.вСлучай() < .75){ this.вШов(); return; }
     }
     if (this.viteN >= 8 && р < .58){
       // Углубить: мета-нить — ведёт глубину другой нити. Переотражение.
@@ -3524,6 +3626,21 @@ class Chaos extends AudioWorkletProcessor {
       if (this.vMeta[i] >= 0)
         this.vMt[this.vMeta[i]] *= 1 + (у - .5) * this.vGl[i] * this.vZhiv[i] * 2;
     }
+    // Ведение швов: непрерывные едут к цели, дискретные щёлкают на тике
+    // полушага. Производные пересчитываются, если шов тронул веса.
+    let производные = 0;
+    for (let i = 0; i < 12; i++){
+      if (this.mVid[i] < 0) continue;
+      if (this.mZhdet[i]){
+        if (тик){ производные |= this.вЗапись(this.mVid[i], this.mInd[i], this.mCel[i]); this.mVid[i] = -1; }
+        continue;
+      }
+      this.mTek[i] += (this.mCel[i] - this.mTek[i]) * this.mK[i];
+      производные |= this.вЗапись(this.mVid[i], this.mInd[i], this.mTek[i]);
+      if (Math.abs(this.mCel[i] - this.mTek[i]) < Math.abs(this.mCel[i]) * .004 + 1e-6)
+        this.mVid[i] = -1;
+    }
+    if (производные) this.pr.sb.vyvod();
     this.vSm.fill(0);
     for (let i = 0; i < В_НИТЕЙ; i++){
       if (this.vZhiv[i] <= 0 || this.vPr[i] < 0) continue;
@@ -4147,7 +4264,7 @@ class Chaos extends AudioWorkletProcessor {
         mik: this.mikPik, vozvrat: this.vozvrat,
         razbros: pr.razbr, period: pr.swing.period, scepka: pr.scepka,
         fraza: this.frSost, frTaktov: this.frTaktov,
-        niti: this.viteN,
+        niti: this.viteN, shvy: this.mShvov,
         pitch: pr.osn.f || 0, duty: pr.osn.skv,
         shina: pr.bat.Vl / sb.EMF,
         swing: pr.swing.u, drift: pr.swing.g,

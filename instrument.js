@@ -1975,11 +1975,14 @@ function ruchki(){
   // VOLTS и TANK из списка ушли вместе с ручками — они теперь зерно сборки.
   // Оставшийся список — только живые органы: имя, которого нет в таблицах,
   // роняло сборку строк, и панель пустела целиком.
+  // ШАПКА — ЕДИНЫМ БЛОКОМ. Дыры стояли после каждой пары строк, и мелкие
+  // группы тонули в разрывах: девять полнострочных дыр на панель — «рыхлая
+  // колбаса» (диагноз хозяина). Правило теперь одно: пустая строка — только
+  // на границе ЦВЕТА.
   for(const imya of ['POWER','METAL']){
     const r=KNOBS.find(x=>x.imya===imya), t=SWITCHES.find(x=>x.imya===imya);
     stroki.push(r ? ruchka(r,zs) : tumbler(t,zs));
   }
-  stroki.push('');
 
   const per=report.period>0&&report.period<30 ? report.period : 0;
   const r=report.razbros||0;
@@ -2043,7 +2046,6 @@ function ruchki(){
   if(report.sryvy) stroki.push(
     `<span class="k4">${vpole('СРЫВ',POLE_IMENI)}${vpole('',POLE_KLAV)}`+
     `${report.sryvy} — ядро ловило NaN</span>`);
-  stroki.push('');
 
   // INPUT стоит ОТДЕЛЬНО, отбитый пустыми строками: это гнездо, а не
   // показание схемы. Без него проверить микрофон нельзя вовсе — не слышно,
@@ -2077,8 +2079,11 @@ function ruchki(){
     `<span class="${VHODY.fayl?'s3':'s1'}">${vpole(imyaFayla||'\u2014',24)}</span>`);
   stroki.push('');
 
+  let прошлаяЗона='';
   for(const [z,g] of GRUPPY){
     const zn=ZONY[z];
+    if(прошлаяЗона && прошлаяЗона!==z) stroki.push('');
+    прошлаяЗона=z;
     if(z==='vulk'){
       // Фраза открывает жёлтый раздел: она источник, остальное — её ножи.
       const f=report.fraza||0;
@@ -2104,9 +2109,11 @@ function ruchki(){
           // после шкалы; шаг показан яркостью, знак — ударом.
           const ris=report.risunok||[]; if(!ris.length) return '';
           const shag=report.shag|0;
+          // Рисунок ТИШЕ шкал: шестнадцать ярких звёзд забивали всю панель.
+          // Удар — второй ступенью, пустота — нулевой, остриё только у шага.
           return ' '+ris.map((v,i)=>{
             const zn=v?ZN_EST:ZN_NET;
-            return `<span class="${i===shag?'z4':v?'z3':'z1'}">${zn}</span>`;}).join('');
+            return `<span class="${i===shag?'z4':v?'z2':'z0'}">${zn}</span>`;}).join('');
         })() : ''));
 
     for(const t of SWITCHES) if((t.zona||'shema')===z && t.gr===g)
@@ -2115,9 +2122,10 @@ function ruchki(){
       // ни о чём, по нему ядро само считает усиление круга.
       stroki.push(tumbler(t,zn)+
         (t.k==='petlya'&&switches.petlya ? `  <span class="s1">ROOM ${vz.toFixed(2)}</span>` : '')+
-        (t.k==='vite'&&(report.niti||switches.vite) ? `  <span class="p1">нитей</span> <span class="p3">${report.niti||0}</span>` : ''));
-    stroki.push('');
+        (t.k==='vite'&&(report.niti||switches.vite) ? `  <span class="p1">нитей</span> <span class="p3">${report.niti||0}</span>`+
+          (report.shvy ? ` <span class="p1">швов</span> <span class="p3">${report.shvy}</span>` : '') : ''));
   }
+  stroki.push('');
 
   // Строка текста показывается всегда: без неё непонятно, что скажется.
   // Длинную строку показываем ХВОСТОМ — так же, как всякое поле ввода: тем,

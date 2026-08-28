@@ -39,3 +39,28 @@ console.log('без движения 6 с: нитей '+c.viteN+' · скз '+Ma
 c.port.onmessage({data:{t:'p',v:{vite:0}}});
 гнать(12);
 console.log('после выключения и 12 с: нитей '+c.viteN+' (ждём 0)');
+// Швы: перешивание сборки. Снимок номиналов до, вождение, снимок после —
+// сборка обязана УЙТИ; выключение швы не откатывает (перешитое перешито).
+const c2=new K(); c2.port.onmessage({data:{t:'seed',v:770901}});
+c2.port.onmessage({data:{t:'metr',v:120}});
+c2.port.onmessage({data:{t:'p',v:{pit:1, vite:1, gryzn:.4}}});
+const гнать2=с=>{ for(let b=0;b<Math.round(48000*с/n);b++) c2.process([[вх]],[[L,R]]); };
+const мышь2=()=>{ const д=[]; for(let i=0;i<16;i++) д.push((Math.random()*40-20)|0);
+  c2.port.onmessage({data:{t:'vite', d:д}}); };
+гнать2(2);
+const до={Rvhod:c2.pr.sb.Rvhod.slice(), ves:c2.pr.sb.ves.slice(), ris:c2.pr.sb.risunok,
+          perem:c2.pr.sb.perem, tone:c2.pr.sb.zTone};
+for(let s2=0;s2<15;s2++){ for(let k=0;k<7;k++){ мышь2(); гнать2(.15); } }
+const sb=c2.pr.sb;
+let сдвигов=0;
+for(let i=0;i<до.Rvhod.length;i++) if(Math.abs(sb.Rvhod[i]/до.Rvhod[i]-1)>.02) сдвигов++;
+for(let i=0;i<до.ves.length;i++) if(Math.abs(sb.ves[i]/до.ves[i]-1)>.02) сдвигов++;
+if(sb.risunok!==до.ris) сдвигов++;
+if(sb.perem!==до.perem) сдвигов++;
+if(Math.abs(sb.zTone-до.tone)>.01) сдвигов++;
+console.log('швы за 15 с вождения: '+c2.mShvov+' · полей сборки уехало: '+сдвигов+
+  ' · Rvet цел: '+(sb.Rvet.length===sb.ves.length && sb.Rvet.every(v=>v===v)?'да':'НЕТ')+
+  ' · срывов '+c2.sryvy);
+let кв2=0,N2=0; for(let b=0;b<Math.round(48000*2/n);b++){ c2.process([[вх]],[[L,R]]);
+  for(let i=0;i<n;i++){кв2+=L[i]*L[i];N2++;} }
+console.log('после перешивки скз '+Math.sqrt(кв2/N2).toFixed(4)+' — прибор жив');
