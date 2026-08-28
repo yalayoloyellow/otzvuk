@@ -185,11 +185,11 @@ const KNOBS=[
   // на законных местах такта. Ручка вводит фигуры по одной, по впаянному
   // приоритету. Выбирать и рисовать нечего — рисунок у коробки свой, Tab
   // даёт другой. CHOP и SCREW работают между фигурами, узор их не глушит.
-  {k:'uzor', kl:'KeyX', imya:'PATTERN', zona:'post', gr:'post'},
-  {k:'chop', kl:'KeyC', imya:'CHOP', zona:'post', gr:'post'},
+  {k:'uzor', kl:'KeyX', imya:'PATTERN', zona:'vulk', gr:'vulk'},
+  {k:'chop', kl:'KeyC', imya:'CHOP', zona:'vulk', gr:'vulk'},
   // SCREW — chopped and screwed: чтение отстаёт до половинной скорости,
   // высота падает как у кассеты, сброс на каждой доле держит такт.
-  {k:'skru', kl:'KeyV', imya:'SCREW', zona:'post', gr:'post'},
+  {k:'skru', kl:'KeyV', imya:'SCREW', zona:'vulk', gr:'vulk'},
   // COLOR — автоэквализация к профилю шума (⇧b выбирает профиль): восемь
   // октавных полос медленно дотягиваются к лесенке белого, розового или
   // коричневого. У розового энергия всех октав РАВНА — отсюда и цель.
@@ -203,7 +203,7 @@ const KNOBS=[
   // прохода один фрагмент перерисовывается — паттерн постепенно меняется.
   // Ручка — доля активных фрагментов: внизу редкие странные вставки,
   // на упоре сплошная перестановка. Живой случай, от запуска не повторяется.
-  {k:'kolazh', kl:'KeyE', imya:'COLLAGE', zona:'post', gr:'post'},
+  {k:'kolazh', kl:'KeyE', imya:'COLLAGE', zona:'vulk', gr:'vulk'},
   {k:'cut',  kl:'KeyD', imya:'CUT',    zona:'vulk', gr:'vulk'},
   {k:'krik', kl:'KeyF', imya:'SCREAM', zona:'vulk', gr:'vulk'},
   {k:'okras', kl:'Period', imya:'COLOR', zona:'post', gr:'post'},
@@ -2093,6 +2093,13 @@ function ruchki(){
 
   for(const [z,g] of GRUPPY){
     const zn=ZONY[z];
+    if(z==='vulk'){
+      // Фраза открывает жёлтый раздел: она источник, остальное — её ножи.
+      const f=report.fraza||0;
+      stroki.push(chelo('PHRASE','g',zn)+
+        `<span class="${f===3?'y4':f?'y3':'y1'}">${
+          f===0?'·':f===1?'ждёт такта':f===2||f===5?'запись':(report.frTaktov||1)+' такт(а)'}</span>`);
+    }
     for(const r of KNOBS) if((r.zona||'shema')===z && r.gr===g)
       // Метроном живёт на строке CHOP: ему больше негде, а резаку он и нужен.
       // Метроном показывается ВСЕГДА, не только после топанья: резак и до
@@ -2103,13 +2110,7 @@ function ruchki(){
       // b со стрелками — вести число, ⇧ десятками.
       stroki.push(ruchka(r,zn)+
         (r.k==='chop' ? `  <span class="k1">b</span> <span class="${metrBpm?'k3':'k1'}">${metrBpm||120}</span>` : ''));
-    if(z==='vulk'){
-      // Фраза — элемент семплера, живёт в жёлтой зоне своей строкой.
-      const f=report.fraza||0;
-      stroki.push(chelo('PHRASE','g',zn)+
-        `<span class="${f===3?'y4':f?'y3':'y1'}">${
-          f===0?'·':f===1?'ждёт такта':f===2||f===5?'запись':(report.frTaktov||1)+' такт(а)'}</span>`);
-    }
+
     for(const t of SWITCHES) if((t.zona||'shema')===z && t.gr===g)
       // ROOM — сколько из вышедшего комната вернула в микрофон. Стоял он у
       // INPUT и удлинял строку вдвое, а место ему тут: без петли это число
