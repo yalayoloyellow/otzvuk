@@ -204,8 +204,8 @@ const KNOBS=[
   // Ручка — доля активных фрагментов: внизу редкие странные вставки,
   // на упоре сплошная перестановка. Живой случай, от запуска не повторяется.
   {k:'kolazh', kl:'KeyE', imya:'COLLAGE', zona:'post', gr:'post'},
-  {k:'cut',  kl:'KeyD', imya:'CUT',    zona:'post', gr:'post'},
-  {k:'krik', kl:'KeyF', imya:'SCREAM', zona:'post', gr:'post'},
+  {k:'cut',  kl:'KeyD', imya:'CUT',    zona:'vulk', gr:'vulk'},
+  {k:'krik', kl:'KeyF', imya:'SCREAM', zona:'vulk', gr:'vulk'},
   {k:'okras', kl:'Period', imya:'COLOR', zona:'post', gr:'post'},
   {k:'zhat', kl:'KeyN', imya:'COMP',   zona:'post', gr:'post'},
   // DRIVE — усиление на входе ограничителя: сначала громче, потом плотнее,
@@ -1859,6 +1859,9 @@ const ZONY={
   // МОДУЛЯЦИЯ — четвёртая зона, розовая. Здесь живёт всё, что заставляет
   // прибор двигаться или, наоборот, замереть.
   modul:{imya:'p3', obych:'p3', yark:'p4', klav:'p1',  n:3},
+  // ЖЁЛТАЯ ЗОНА — семплер и вулкано, решение хозяина: инструменты, которые
+  // берут звук в руки целиком — фраза замещает прибор, фильтр поёт сам.
+  vulk: {imya:'y3', obych:'y3', yark:'y4', klav:'y1',  n:4},
 };
 // ГРУППЫ ПО СМЫСЛУ, а не по рядам клавиатуры. Порядок здесь — порядок на
 // экране, и клавиши розданы по нему же, подряд: qw er ty · ui op as df gh ·
@@ -1867,9 +1870,12 @@ const ZONY={
 // ПИТАНИЕ ИДЁТ ПЕРВЫМ. Это не одна из групп схемы, а то, с чего прибор
 // начинается: пока выключатель разомкнут, всё остальное на панели ничего не
 // значит.
-const GRUPPY=[['shema','gen'],['shema','kach'],['shema','setka'],
+// Группа генераторов опустела — TUNE, DETUNE, WIDTH и тумблеры OSC ушли в
+// зерно; пустая группа рисовала бы голый разрыв.
+const GRUPPY=[['shema','kach'],['shema','setka'],
               ['modul','mod'],
               ['golos','ist'],['golos','vmesh'],['golos','petlya'],
+              ['vulk','vulk'],
               ['post','post']];
 
 function ruchki(){
@@ -1966,8 +1972,11 @@ function ruchki(){
   // музыкальный темп 70–160 лежит на тринадцати процентах хода ручки RATE,
   // и без подписи в него не попасть — отсюда «получается только рейв».
   // Ход ручки не тронут нарочно: он переопределил бы все пресеты.
-  const bpm = per>0 ? 240/per : 0;
-  const vtemp = bpm>=40 && bpm<=200;
+  // Здесь стояло «BPM = 240/период» — у быстрых качелей выходили пятизначные
+  // числа, не значившие ничего (хозяин: «не имеет смысла»). Качель — не
+  // темп, а ПЕРИОД; его и показываем, в секундах. Темп в приборе один —
+  // ручной метроном, и он подписан у резака.
+  const vtemp = per>=.25 && per<=4;
 
   // СЦЕПКА — СОСТОЯЛСЯ ЛИ ЗАХВАТ. Единственное, что об этом говорит: режим
   // тут бесполезен, и это померено. На одной сборке свободный ход дал
@@ -1982,9 +1991,9 @@ function ruchki(){
   const сцеп = sc > .04
     ? `  <span class="s1">сцепка</span> <span class="${sc>.6?'s4':sc>.3?'s3':'s2'}">${sc.toFixed(2)}</span>`
     : '';
-  stroki.push(chelo('BPM','',zs)+
-    shkalaMesto(bpm?clamp(Math.log2(bpm/8)/8,0,1):0,shk,0)+` `+
-    (bpm ? `<span class="${vtemp?'z4':'z1'}">${Math.round(bpm)}</span>` : '—')+
+  stroki.push(chelo('SWING','',zs)+
+    shkalaMesto(per?clamp(1-Math.log2(per/.05)/8,0,1):0,shk,0)+` `+
+    (per ? `<span class="${vtemp?'z4':'z1'}">${per<1?(per*1000).toFixed(0)+'мс':per.toFixed(2)+'с'}</span>` : '—')+
     `  <span class="z2">${rezhim}</span>`+сцеп);
   // Сетка ритма: где удары и где сейчас счётчик. Имя то же, что у ручки, и
   // это НАРОЧНО: строка показывает рисунок счётчика, ручка задаёт, насколько
@@ -2071,10 +2080,14 @@ function ruchki(){
       // было немым — не найти, чем оно правится. b — топать в долю,
       // b со стрелками — вести число, ⇧ десятками.
       stroki.push(ruchka(r,zn)+
-        (r.k==='chop' ? `  <span class="k1">b</span> <span class="${metrBpm?'k3':'k1'}">${metrBpm||120}</span>` : '')+
-        (r.k==='uzor' ? (()=>{ const f=report.fraza||0;
-          return `  <span class="k1">g</span> <span class="${f===3?'k4':f?'k3':'k1'}">${
-            f===0?'·':f===1?'ждёт':f===2?'зап':(report.frTaktov||1)+'т'}</span>`; })() : ''));
+        (r.k==='chop' ? `  <span class="k1">b</span> <span class="${metrBpm?'k3':'k1'}">${metrBpm||120}</span>` : ''));
+    if(z==='vulk'){
+      // Фраза — элемент семплера, живёт в жёлтой зоне своей строкой.
+      const f=report.fraza||0;
+      stroki.push(chelo('PHRASE','g',zn)+
+        `<span class="${f===3?'y4':f?'y3':'y1'}">${
+          f===0?'·':f===1?'ждёт такта':f===2||f===5?'запись':(report.frTaktov||1)+' такт(а)'}</span>`);
+    }
     for(const t of SWITCHES) if((t.zona||'shema')===z && t.gr===g)
       // ROOM — сколько из вышедшего комната вернула в микрофон. Стоял он у
       // INPUT и удлинял строку вдвое, а место ему тут: без петли это число
@@ -2138,7 +2151,7 @@ let PU=.5;
 function pperesoberi(sh, v){
   const el=$('#ppole'); if(!el) return;
   PSH=sh; PV=v; PPOLE=[]; PSTUP=new Int8Array(sh*v).fill(-1);
-  for(let c=0;c<CVETOV;c++) PPOLE.push(new Float32Array(sh*v));
+  for(let c=0;c<KLASS_PANELI.length;c++) PPOLE.push(new Float32Array(sh*v));
   // НИЖНЯЯ СТУПЕНЬ АКЦЕНТА У ПАНЕЛИ НУЛЕВАЯ. У картины она третья: там тёмный
   // красный на тонком знаке читается бурым, и слабое вмешательство просто не
   // помечается. На панели зона красная целиком — это решение хозяина, — и
@@ -2222,7 +2235,7 @@ function ppole(){
   // Дыхание считается В СТУПЕНЯХ, а не в разах: качели ведут весь спад на
   // полступени вверх-вниз, просадка шины подсаживает его целиком.
   const dyh=(u-.5)*.7-(1-shina)*1.4;
-  for(let c=0;c<CVETOV;c++) PPOLE[c].fill(0);
+  for(let c=0;c<PPOLE.length;c++) PPOLE[c].fill(0);
   for(const s of SHKALY){
     if(s.x===undefined || s.y>=PV) continue;
     const p=PPOLE[s.zona], baz=s.y*PSH+s.x;

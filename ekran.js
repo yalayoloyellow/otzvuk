@@ -60,7 +60,8 @@ export const KLASS = [['z0','z1','z2','z3','z4'],
 export const KLASS_PANELI = [['z0','z1','z2','z3','z4'],
                              ['k0','k1','k2','k3','k4'],
                              ['s0','s1','s2','s3','s4'],
-                             ['p0','p1','p2','p3','p4']];
+                             ['p0','p1','p2','p3','p4'],
+                             ['y0','y1','y2','y3','y4']];
 
 // ДОЛИ СВЕРХУ от всех горящих знакомест. Последняя — граница отрисовки: всё,
 // что тусклее, не рисуется вовсе. Тусклая масса это пустая порода: там, где
@@ -129,14 +130,17 @@ export class Ekran {
     this.shablon = new Uint16Array(dlina); this.shablon.fill(32);
     for (let y = 0; y < V; y++) this.shablon[y * (Sh + 1) + Sh] = 10;
     this.el.textContent = '';
-    this.sloi = []; this.pre = []; this.bylo = new Uint8Array(SLOEV);
-    for (let c = 0; c < CVETOV; c++) for (let t = 0; t < STUPENEY; t++) {
+    // Слоёв — по СВОЕЙ палитре, не по глобальной константе: у панели пять
+    // цветов (жёлтая зона), у картины четыре, и оба живут одним классом.
+    this.sloev = this.klass.length * STUPENEY;
+    this.sloi = []; this.pre = []; this.bylo = new Uint8Array(this.sloev);
+    for (let c = 0; c < this.klass.length; c++) for (let t = 0; t < STUPENEY; t++) {
       this.sloi.push(new Uint16Array(dlina));
       const e = document.createElement('pre');
       e.className = 'sl ' + this.klass[c][t];
       this.el.appendChild(e); this.pre.push(e);
     }
-    this.est = new Uint8Array(SLOEV);
+    this.est = new Uint8Array(this.sloev);
   }
   // polya — три поля по числу цветов, gr — границы из grani()
   risuy(polya, gr) {
@@ -145,7 +149,7 @@ export class Ekran {
     const g4 = gr[0], g3 = gr[1], g2 = gr[2], g1 = gr[3];
     const gris = Math.max(POROG_GOR, gr[4]);
     est.fill(0);
-    for (let k = 0; k < SLOEV; k++) sloi[k].set(this.shablon);
+    for (let k = 0; k < this.sloev; k++) sloi[k].set(this.shablon);
     for (let y = 0; y < V; y++) {
       const yb = y * Sh, ob = y * (Sh + 1);
       for (let x = 0; x < Sh; x++) {
@@ -182,7 +186,7 @@ export class Ekran {
     }
     // Пустой слой не переводим в строку вовсе, и очищаем его только когда он
     // ТОЛЬКО ЧТО опустел.
-    for (let k = 0; k < SLOEV; k++) {
+    for (let k = 0; k < this.sloev; k++) {
       if (est[k]) { pre[k].textContent = vStroku(sloi[k]); bylo[k] = 1; }
       else if (bylo[k]) { pre[k].textContent = ''; bylo[k] = 0; }
     }
