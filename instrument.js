@@ -18,6 +18,7 @@ const $ = s => document.querySelector(s);
 const clamp = (v,a,b) => v<a?a:v>b?b:v;
 
 let ctx=null, node=null, idet=false;
+let avariya='';   // текст падения воркла; пусто = жив
 let report={pik:0,rms:0,lyap:0,vraschenie:0,shina:1,osc:new Float32Array(256),
            cells:[0,0,0,0,0,0],step:0,risunok:new Uint8Array(32),hit:0};
 
@@ -983,8 +984,12 @@ async function pusk(){
   window.dbg.dorozhka=vozmiFayl;
   window.dbg.zamer=()=>({kadrov:KADRY.length, posl:KADRY[KADRY.length-1]||null,
                          ogib:ogib_posl});
+  // Воркл может упасть двумя голосами: сам поймал исключение и прислал
+  // аварию, или умер так, что сказать успел только браузер. Оба слышим.
+  node.onprocessorerror=()=>{ avariya=avariya||'воркл упал молча — подробностей браузер не даёт'; };
   node.port.onmessage=e=>{
     const d=e.data;
+    if(d && d.t==='avaria'){ avariya=d.text; console.error('АВАРИЯ ВОРКЛА:\n'+d.text); return; }
     if(d && d.t==='rec'){ zapisPrishla(d); return; }
     if(d && d.t==='быстро'){ bystroPrishlo(d); return; }
     report=d; window.dbg.otchetov=(window.dbg.otchetov||0)+1; window.dbg.o=report;
@@ -2056,6 +2061,13 @@ function ruchki(){
   if (pot > 20) stroki.push(
     `<span class="k3">${vpole('DROPOUT',POLE_IMENI)}${vpole('',POLE_KLAV)}`+
     `${Math.round(pot)} мс — воркл не успевает</span>`);
+  // АВАРИЯ. Раньше падение воркла выглядело как «всё зависло»: звук замирал,
+  // панель застывала на последнем отчёте, и никаких следов. Строки быть не
+  // должно никогда; если она есть — в консоли полный стек, звука не будет
+  // до перезагрузки страницы.
+  if(avariya) stroki.push(
+    `<span class="k4">${vpole('АВАРИЯ',POLE_IMENI)}${vpole('',POLE_KLAV)}`+
+    `${avariya.split('\n')[0].replace(/[&<>]/g,'·').slice(0,60)} — стек в консоли, перезагрузи</span>`);
   // СРЫВ — это NaN в звуковом потоке, пойманный и вылеченный на лету. Строки
   // быть не должно никогда; если она есть, в схеме что-то разошлось.
   if(report.sryvy) stroki.push(
