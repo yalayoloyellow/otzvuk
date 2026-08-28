@@ -3163,7 +3163,8 @@ class Chaos extends AudioWorkletProcessor {
     // переиспользовать, мусора от них ноль.
     this.почта = { osc: new Float32Array(256), oscDo: new Float32Array(256),
                    oscP: new Float32Array(256), oscX: new Float32Array(256),
-                   oscM: new Float32Array(256), sled: new Float32Array(200) };
+                   oscM: new Float32Array(256), sled: new Float32Array(200),
+                   ruchki: new Float32Array(В_ПРИЁМ.length) };
     this.snimokTik = 0;
     this.progrev = 0;                     // маска броска включения при Tab
     // ВЕРЕТЕНО. Сеть модуляционных связей, свиваемая энтропией курсора —
@@ -3451,10 +3452,27 @@ class Chaos extends AudioWorkletProcessor {
   }
   вШов(){
     // Выбор вида шва и цели. Диапазоны — из Build, дословно.
-    let сл = -1;
-    for (let i = 0; i < 12; i++) if (this.mVid[i] < 0){ сл = i; break; }
-    if (сл < 0) return;
+    // Активных швов разом — не больше трёх: сборка, которую перешивают в
+    // десяти местах сразу, звучит не сменой, а кашей.
+    let сл = -1, акт = 0;
+    for (let i = 0; i < 12; i++){ if (this.mVid[i] >= 0) акт++; else if (сл < 0) сл = i; }
+    if (сл < 0 || акт >= 3) return;
     const sb = this.pr.sb, р = this.вСлучай;
+    // Треть швов — РУЧКИ: хозяин разрешил веретену управление крутилками.
+    // Ручка уводится в новое место насовсем, полным ходом, медленно; панель
+    // показывает движение — крутилки живут на глазах.
+    if (р.call(this) < .33){
+      const пр = (р.call(this) * В_ПРИЁМ.length) | 0;
+      const имя = В_ПРИЁМ[пр];
+      let цель = р.call(this);
+      if (В_МЕДЛЕННЫЕ[имя]) цель = this.p[имя] + (цель - .5) * .5;
+      сл = сл; this.mVid[сл] = 20; this.mInd[сл] = пр;
+      this.mTek[сл] = this.p[имя] || 0; this.mCel[сл] = clamp(цель, 0, 1);
+      this.mZhdet[сл] = 0;
+      this.mK[сл] = 1 - Math.exp(-1 / (SR / 128 * (1 + р.call(this) * 3)));
+      this.mShvov++;
+      return;
+    }
     const вид = (р.call(this) * 10.999) | 0;
     let инд = 0, тек = 0, цель = 0, дискр = 0;
     switch (вид){
@@ -3519,6 +3537,13 @@ class Chaos extends AudioWorkletProcessor {
   вЗапись(вид, инд, з){
     const sb = this.pr.sb;
     switch (вид){
+      case 20: {
+        // Ручка: пишем и в параметр, и в цель движка — иначе движок панели
+        // утащит её назад при первом же чужом send.
+        const имя = В_ПРИЁМ[инд];
+        this.p[имя] = з;
+        if (имя in this.cel){ this.cel[имя] = з; this.skor[имя] = 0; }
+        break; }
       case 0: sb.Rvhod[инд] = з; break;
       case 1: sb.ves[инд] = з; return 1;          // производные пересчитать
       case 2: sb.razv[инд] = з; break;
@@ -3587,8 +3612,8 @@ class Chaos extends AudioWorkletProcessor {
     const медл = В_МЕДЛЕННЫЕ[В_ПРИЁМ[пр]];
     this.vIst[св] = (this.вСлучай() * 9.999) | 0;
     this.vPr[св] = пр; this.vMeta[св] = -1;
-    this.vGl[св] = (this.вСлучай() - .5) * (медл ? .3 : .6);
-    const тау = медл ? (.5 + this.вСлучай() * 3) : (.05 + this.вСлучай() * 1.5);
+    this.vGl[св] = (this.вСлучай() - .5) * (медл ? .2 : .4);
+    const тау = медл ? (.8 + this.вСлучай() * 3) : (.15 + this.вСлучай() * 1.8);
     this.vIn[св] = 1 - Math.exp(-1 / (SR / 128 * тау));
     this.vKr[св] = .4 + this.вСлучай() * 2.1;
     this.vKv[св] = (!медл && this.вСлучай() < .3) ? (2 + ((this.вСлучай() * 5) | 0)) : 0;
@@ -3600,9 +3625,11 @@ class Chaos extends AudioWorkletProcessor {
     // при ВКЛЮЧЁННОМ веретене: после выключения сеть лишь тает. Заряд
     // ограничен сверху — остановил руку, и через пару решений сеть замирает,
     // а не довьётся на старых запасах.
-    if (this.vZaryad > 72) this.vZaryad = 72;
-    if ((this.p.vite || 0) >= .5 && --this.vTikResh <= 0 && this.vZaryad >= 24){
-      this.vZaryad -= 24; this.vTikResh = 120;
+    // УКРОЩЕНИЕ («пока это какофония» — хозяин): решения вдвое реже, и
+    // сборка успевает прозвучать между швами.
+    if (this.vZaryad > 96) this.vZaryad = 96;
+    if ((this.p.vite || 0) >= .5 && --this.vTikResh <= 0 && this.vZaryad >= 48){
+      this.vZaryad -= 48; this.vTikResh = 260;
       this.вРешение();
     }
     // Мета-множители, потом смещения. Квантованные защёлкиваются на
@@ -4265,6 +4292,11 @@ class Chaos extends AudioWorkletProcessor {
         razbros: pr.razbr, period: pr.swing.period, scepka: pr.scepka,
         fraza: this.frSost, frTaktov: this.frTaktov,
         niti: this.viteN, shvy: this.mShvov,
+        // Живые положения ручек-приёмников: панель ведёт по ним крутилки,
+        // когда веретено их водит.
+        ruchki: (()=>{ for (let j = 0; j < В_ПРИЁМ.length; j++)
+                        this.почта.ruchki[j] = this.p[В_ПРИЁМ[j]] || 0;
+                      return this.почта.ruchki; })(),
         pitch: pr.osn.f || 0, duty: pr.osn.skv,
         shina: pr.bat.Vl / sb.EMF,
         swing: pr.swing.u, drift: pr.swing.g,

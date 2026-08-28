@@ -3,11 +3,9 @@
   "configurations": [
     {
       "name": "otzvuk",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": [
-        "serve.py"
-      ],
-      "port": 8781
+      "url": "http://localhost:8781",
+      "port": 8781,
+      "autoPort": false
     }
   ]
 }

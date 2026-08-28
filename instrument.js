@@ -355,6 +355,11 @@ const KOMANDY=[
 //
 // И следствие, которого на парах не было: держишь ДВЕ буквы — обе ручки едут
 // от одной стрелки. Связанный жест пальцами не сделать.
+// Приёмники веретена — тем же порядком, что в ядре: по этому списку
+// панель читает живые положения ручек, когда сеть их водит.
+const V_PRIYOM = ['cut','krik','kolazh','skru','chop','uzor','okras','takt',
+                  'razved','slip','gnut','golos','kuda','depth','sway','zhat',
+                  'drive','ton','trakt','temp'];
 const derzhimRuchki = new Map();      // клавиша → ручка, пока нажата
 const IMYAKL={Comma:',', Period:'.', Slash:'/', Semicolon:';', Quote:"'", Space:'␣',
              Backslash:'\\', Backquote:'`', Minus:'-', Equal:'=',
@@ -983,6 +988,16 @@ async function pusk(){
     if(d && d.t==='rec'){ zapisPrishla(d); return; }
     if(d && d.t==='быстро'){ bystroPrishlo(d); return; }
     report=d; window.dbg.otchetov=(window.dbg.otchetov||0)+1; window.dbg.o=report;
+    // ВЕРЕТЕНО ВОДИТ КРУТИЛКИ (разрешение хозяина): живые положения из ядра
+    // ложатся в панельные ручки — шкалы едут на глазах. Ручка под пальцем
+    // не трогается: рука главнее сети.
+    if(d.ruchki && (d.niti||switches.vite)){
+      const держим=new Set(); for(const r of derzhimRuchki.values()) держим.add(r.k);
+      for(let j=0;j<V_PRIYOM.length;j++){
+        const k=V_PRIYOM[j];
+        if(!держим.has(k) && k in knobs) knobs[k]=d.ruchki[j];
+      }
+    }
   };
   await ctx.resume();
   // ЕСЛИ СИСТЕМНЫЙ ВЫХОД ВИРТУАЛЬНЫЙ, прибор обязан уйти с него СРАЗУ, а не
