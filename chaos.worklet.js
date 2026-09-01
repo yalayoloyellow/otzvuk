@@ -3304,6 +3304,7 @@ class Chaos extends AudioWorkletProcessor {
                    ruchki: new Float32Array(В_ПРИЁМ.length) };
     this.snimokTik = 0;
     this.progrev = 0;                     // маска броска включения при Tab
+    this.limSgl = 0;                      // сглаженная работа ограничителя, дБ
     this.podgon = 1; this.podgSum = 0; this.podgSch = 0;
     // ВЕРЕТЕНО. Сеть модуляционных связей, свиваемая энтропией курсора —
     // по образу VeraCrypt: движение мыши хэшируется в пул, из пула
@@ -4579,7 +4580,7 @@ class Chaos extends AudioWorkletProcessor {
         pik: this.pik, sryvy: this.sryvy,
         perehod: this.vedenie ? this.vedenie.t : 1,
         lufs: this.grom.lufs,
-        lim: this.predel.rabota < 1 ? -20 * Math.log10(this.predel.rabota) : 0,
+        lim: this.limSgl,
         mik: this.mikPik, vozvrat: this.vozvrat,
         razbros: pr.razbr, period: pr.swing.period, scepka: pr.scepka,
         fraza: this.frSost, frTaktov: this.frTaktov,
@@ -4612,6 +4613,13 @@ class Chaos extends AudioWorkletProcessor {
         nominaly: this.номДано === sb.semya ? undefined
                 : (this.номДано = sb.semya, pr.nominaly())
       });
+      // СРЕЗ СГЛАЖИВАЕТСЯ, как и всё живое на панели. Работа ограничителя —
+      // это МИНИМУМ усиления за окно отчёта, то есть статистика самой громкой
+      // иглы в нём; у нашего материала крест-фактор около четырёх, и цифра
+      // прыгала тридцать раз в секунду. Единственное несглаженное число на
+      // панели — и это было видно.
+      const мгн = this.predel.rabota < 1 ? -20 * Math.log10(this.predel.rabota) : 0;
+      this.limSgl += (мгн - this.limSgl) * .18;
       this.pik *= .6; this.mikPik *= .5; this.predel.rabota = 1;
     }
     return true;
