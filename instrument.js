@@ -1309,6 +1309,8 @@ let postSred=1;
 const VESP=new Float32Array(TOCHEK), VESG=new Float32Array(TOCHEK);
 // Вес модуляции — четвёртый цвет картины.
 const VESM=new Float32Array(TOCHEK);
+// Вес машины времени: доля выхода, пришедшая с ленты, а не из живой схемы.
+const VESV=new Float32Array(TOCHEK);
 // Точки траектории и длины разрывов: считаются первым проходом, рисуются
 // вторым.
 const TX=new Int16Array(TOCHEK), TY=new Int16Array(TOCHEK), TDL=new Float32Array(TOCHEK);
@@ -1663,7 +1665,7 @@ function kartina(){
   }
   PUSTO=0;
   const oA=report.osc||new Float32Array(TOCHEK);
-  const oP=report.oscP, oX=report.oscX, oM=report.oscM;
+  const oP=report.oscP, oX=report.oscX, oM=report.oscM, oV=report.oscV;
   const A=podgotov(oA);
   const ks=1/A.mxo, ki=1/A.mxi;
 
@@ -1698,6 +1700,7 @@ function kartina(){
     // МОДУЛЯЦИЯ — четвёртый цвет. Приходит готовой долей от прибора: увод
     // меряется чужим током в заряде узла, удержание — стоящими качелями.
     VESM[i] = oM ? oM[i] : 0;
+    VESV[i] = oV ? oV[i] : 0;
   }
   // ЗЕЛЁНОЕ — ГЛАВНОЕ, И ЭТО ПРАВИЛО, А НЕ ПОРОГ.
   //
@@ -1724,7 +1727,7 @@ function kartina(){
   // Дробить её след в крапину значит показывать зернистость измерения, а не
   // явление. Сглаживание по семи соседям возвращает следу его настоящую
   // длину.
-  sgladi(VESP, A.n); sgladi(VESG, A.n); sgladi(VESM, A.n);
+  sgladi(VESP, A.n); sgladi(VESG, A.n); sgladi(VESM, A.n); sgladi(VESV, A.n);
   const porK = otsechka(VESP, A.n, .30, .085);
   const porG = otsechka(VESG, A.n, .26, .24);
   // РОЗОВОЕ ЖИДЕНЬКОЕ НАРОЧНО. Доля вшестеро меньше, чем у красного, и порог
@@ -1732,13 +1735,23 @@ function kartina(){
   // счёту она закрасила бы фигуру целиком, задавив и пост, и голос. Красим
   // только вершины — там, где ведущий тянет ведомого сильнее всего.
   const porM = otsechka(VESM, A.n, .14, .30);
+  // ЖЁЛТОЕ — ХВАТКА ЛЕНТЫ, и доля у него щедрее прочих акцентов: когда чоп
+  // или коллаж держат звук, они держат его ЦЕЛИКОМ, а не подкрашивают. Порог
+  // низкий по той же причине: хватка — величина почти двоичная.
+  const porV = otsechka(VESV, A.n, .34, .05);
   for(let i=0;i<A.n;i++){
-    const wp=VESP[i], wg=VESG[i], wm=VESM[i];
+    const wp=VESP[i], wg=VESG[i], wm=VESM[i], wv=VESV[i];
     // Кто сильнее вмешался, тот и красит. Порядок при равенстве: голос,
     // модуляция, пост — от самого «чужого» звуку к самому своему.
     // И уступает при споре: чтобы отобрать точку у поста, модуляция должна
     // быть его сильнее в полтора раза, а не просто не слабее.
-    CVET[i] = (wg>porG && wg*1.4>=wp && wg*1.4>=wm) ? 2
+    //
+    // ЖЁЛТОЕ ИДЁТ ПЕРВЫМ И СПОРА НЕ ВЕДЁТ. Когда звучит лента, звучит ИМЕННО
+    // она: пост жмёт её, голос ведёт её, но источник в этот миг — не схема.
+    // Это не подкраска поверх живого, а подмена живого, и спорить тут не о
+    // чем — как петля фразы встаёт на место прибора целиком.
+    CVET[i] = wv>porV ? 4
+            : (wg>porG && wg*1.4>=wp && wg*1.4>=wm) ? 2
             : (wm>porM && wm>=wp*1.5) ? 3
             : wp>porK ? 1 : 0;
   }

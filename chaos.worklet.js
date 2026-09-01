@@ -3300,7 +3300,8 @@ class Chaos extends AudioWorkletProcessor {
     // переиспользовать, мусора от них ноль.
     this.почта = { osc: new Float32Array(256), oscDo: new Float32Array(256),
                    oscP: new Float32Array(256), oscX: new Float32Array(256),
-                   oscM: new Float32Array(256), sled: new Float32Array(200),
+                   oscM: new Float32Array(256), oscV: new Float32Array(256),
+                   sled: new Float32Array(200),
                    ruchki: new Float32Array(В_ПРИЁМ.length) };
     this.snimokTik = 0;
     this.progrev = 0;                     // маска броска включения при Tab
@@ -3417,6 +3418,11 @@ class Chaos extends AudioWorkletProcessor {
     this.oscP = new Float32Array(256);   // мгновенное усиление поста
     this.oscX = new Float32Array(256);   // насколько голос ведёт схему
     this.oscM = new Float32Array(256);   // насколько модуляция ведёт схему
+    // ХВАТКА МАШИНЫ ВРЕМЕНИ: доля выхода, которая в этот отсчёт пришла не из
+    // живой схемы, а из ленты — повтор доли, кусок коллажа, петля фразы,
+    // отставание головки. Жёлтая зона панели — это она, и в фигуре её не
+    // было видно вовсе.
+    this.oscV = new Float32Array(256);
     this.osci = 0; this.oscsh = 0;
     this.sled = new Float32Array(200); this.sli = 0; this.prore = 0;
 
@@ -4056,6 +4062,7 @@ class Chaos extends AudioWorkletProcessor {
           this.frFade = 96; this.frPrev = y;
         }
       } else if (this.frSost === 3 || this.frSost === 4){
+        this.mvHvat = 1;                    // играет петля, а не прибор
         const ч = this.frB[this.frI];
         this.frI = (this.frI + 1) % this.frN;
         y = ч;
@@ -4076,6 +4083,10 @@ class Chaos extends AudioWorkletProcessor {
       // сброс на каждой доле держит его в такте.
       // Скачки чтения сшиваются коротким кроссфейдом — не для красоты, а
       // чтобы скачок на полразмаха не бил по ограничителю иглой.
+      // ХВАТКА МАШИНЫ ВРЕМЕНИ на этом отсчёте. Ноль — звучит живая схема;
+      // единица — звучит лента. Считается там же, где лента и работает, и
+      // потому не догадка, а факт.
+      this.mvHvat = 0;
       this.grB[this.grW] = y;
       if (++this.metrF >= this.metrN){
         this.metrF = 0; this.beatW = this.grW; this.posB = 0;
@@ -4235,6 +4246,9 @@ class Chaos extends AudioWorkletProcessor {
         }
         this.grClose = чит;
         this.uzO = 0;
+        // Читаем ленту: полная хватка на повторе доли, половинная на одном
+        // отставании головки — там звук ещё свой, просто пришёл позже.
+        this.mvHvat = Math.max(this.mvHvat, W ? 1 : (skru > .002 ? .5 : 0));
         y = чит;
       } else { this.posB = this.metrF; this.grClose = y; this.grFade = 0; this.uzO = 0; }
       if (++this.grW >= this.grB.length) this.grW = 0;
@@ -4303,6 +4317,8 @@ class Chaos extends AudioWorkletProcessor {
           ч = ч * (1 - т) + ч2 * т;
           this.kolFade--;
         }
+        // Фрагмент коллажа — это лента целиком, чужой кусок на месте живого.
+        if (this.kolAkt) this.mvHvat = 1;
         y = ч;
       }
 
@@ -4552,7 +4568,8 @@ class Chaos extends AudioWorkletProcessor {
         // обратное: цветом идут только те точки, где вмешательство сильнее
         // всего. Ровная подложка забивала бы и красное, и синее. Да и видно
         // удержание без всякого цвета: фигура перестаёт двигаться.
-        this.oscM[this.osci] = Math.min(1, this.pr.gnutDolya || 0); }
+        this.oscM[this.osci] = Math.min(1, this.pr.gnutDolya || 0);
+        this.oscV[this.osci] = this.mvHvat; }
       if (++this.prore >= SR / 100){ this.prore = 0;
         this.sled[this.sli] = this.pr.swing.u;
         this.sli = (this.sli + 1) % 200; }
@@ -4575,6 +4592,7 @@ class Chaos extends AudioWorkletProcessor {
       this.почта.osc.set(this.osc); this.почта.oscDo.set(this.oscDo);
       this.почта.oscP.set(this.oscP); this.почта.oscX.set(this.oscX);
       this.почта.oscM.set(this.oscM);
+      this.почта.oscV.set(this.oscV);
       const pr = this.pr, sb = pr.sb;
       this.port.postMessage({
         pik: this.pik, sryvy: this.sryvy,
@@ -4602,7 +4620,7 @@ class Chaos extends AudioWorkletProcessor {
         risunok: this.pr.setka.risunok.slice(),
         osc: this.почта.osc, oscDo: this.почта.oscDo,
         oscP: this.почта.oscP,
-        oscX: this.почта.oscX, oscM: this.почта.oscM, sled: l,
+        oscX: this.почта.oscX, oscM: this.почта.oscM, oscV: this.почта.oscV, sled: l,
         pl: Array.from(this.pl), utechka: this.utechka,
         // Снимок — самый жирный мусорогон отчёта: сотня полей, и каждое
         // toFixed рождает строку. Раз в два отчёта достаточно: панель и
