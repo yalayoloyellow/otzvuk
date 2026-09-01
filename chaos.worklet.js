@@ -3242,7 +3242,7 @@ class Chaos extends AudioWorkletProcessor {
                // говорилка: чем воткнуто в гнездо, высота, скорость, повтор
                ton:.35, temp:.5, povtor:0, trakt:.3, gnut:0, takt:0, razved:0,
                slip:0, tilt:0, derzhi2:0, derzhi3:0,
-               chop:0, skru:0, uzor:0, kolazh:0, cut:0, krik:0, okras:0, profil:0,
+               chop:0, skru:0, uzor:0, kolazh:0, kolDl:0, cut:0, krik:0, okras:0, profil:0,
                vite:0,
                // ПОСТ: не детали прибора, а слой поверх него.
                mix:0, zhat:0, drive:.15, master:1 };
@@ -4268,7 +4268,10 @@ class Chaos extends AudioWorkletProcessor {
               отст: Math.random() < .35 ? Math.random() * .8 : 0 };
           }
           const слот = this.kolTab[this.kolIdx];
-          this.kolOst = слот.дл;
+          // ДЛИНА КУСКА — ручкой. Зерно задаёт, какой слот короче, какой
+          // длиннее; ручка тянет их ВСЕ разом, сохраняя эту разницу.
+          this.kolOst = Math.max(64,
+            Math.round(слот.дл * (1 + (П.kolDl || 0) * 11)));
           this.kolСост = слот;
           const был = this.kolAkt;
           this.kolAkt = Math.random() < kol ? 1 : 0;

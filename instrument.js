@@ -205,6 +205,12 @@ const KNOBS=[
   // Ручка — доля активных фрагментов: внизу редкие странные вставки,
   // на упоре сплошная перестановка. Живой случай, от запуска не повторяется.
   {k:'kolazh', kl:'KeyE', imya:'COLLAGE', zona:'vulk', gr:'vulk'},
+  // ДЛИНА КУСКА КОЛЛАЖА — заказ хозяина: «мб я хочу чтоб ряд кусков или все
+  // куски играли дольше». Ручка не задаёт длину, а РАСТЯГИВАЕТ ту, что
+  // разыграло зерно: разница между короткими и длинными слотами остаётся
+  // характером коробки, а ход ручки тянет их все разом, до двенадцати раз.
+  // Скобка, а не буква: буквы кончились, а по раскладке знаки — это пост.
+  {k:'kolDl', kl:'BracketLeft', imya:'SPAN', zona:'vulk', gr:'vulk'},
   {k:'cut',  kl:'KeyD', imya:'CUT',    zona:'vulk', gr:'vulk'},
   {k:'krik', kl:'KeyF', imya:'SCREAM', zona:'vulk', gr:'vulk'},
   {k:'okras', kl:'Period', imya:'COLOR', zona:'post', gr:'post'},
@@ -846,7 +852,7 @@ async function metka(kakaya){
 const knobs={sway:.55, depth:.75, gryzn:0, golos:0,
              zhat:0, drive:.15, master:1, ton:.35, temp:.5, gnut:0, takt:0,
              trakt:.3, kuda:0, razved:0, slip:0, uzor:0, chop:0, skru:0,
-             kolazh:0, cut:0, krik:0, okras:0};
+             kolazh:0, kolDl:0, cut:0, krik:0, okras:0};
 const switches={pit:0, vite:0, petlya:0,
                 mix:0, povtor:0, sboy:0, derzhi:0, derzhi2:0, derzhi3:0, profil:0};
 
