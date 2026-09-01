@@ -45,7 +45,7 @@ if (process.argv.length >= 5){
 const ИМЁН = ['sving','uzor','chop','skru','kolazh','cut','krik','okras','zhat',
   'drive','master','gryzn','gnut','golos','kuda','depth','sway','ton','trakt',
   'temp','razved','slip','takt','povtor','puls'];
-// Пара хозяина, на которой зависло впервые (3→2 голоса), с его ручками + BEND.
+// Пара, на которой зависло впервые (3→2 голоса), с теми же ручками + BEND.
 const ЕГО = {pit:1, mix:1, sving:.5, uzor:.2, chop:.15, skru:.2, kolazh:.15,
   cut:.1, krik:.35, okras:.05, zhat:.05, drive:.05, master:.3, gryzn:.3, gnut:.4};
 function ручки(){

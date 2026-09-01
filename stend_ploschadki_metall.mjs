@@ -11,7 +11,7 @@ import {readFileSync} from 'fs';
 globalThis.sampleRate=48000; let K=null;
 globalThis.registerProcessor=(n,k)=>K=k;
 globalThis.AudioWorkletProcessor=class{constructor(){this.port={postMessage(){},set onmessage(f){this._f=f},get onmessage(){return this._f}};}};
-new Function(readFileSync('/Users/yala/otzvuk/chaos.worklet.js','utf8'))();
+new Function(readFileSync(new URL('./chaos.worklet.js', import.meta.url),'utf8'))();
 const Б={sway:.55,depth:.75,gryzn:0,golos:0,petlya:0,kuda:0,zhat:0,drive:.15,master:1,pit:1,sboy:0};
 const СЛУЧАИ=[['ничего',[]],['одна: узел 1',[1]],['узел1 + ладонь',[1,13]],
               ['узел1+узел2',[1,2]],['узел1+земля',[1,12]],['узел1+шина',[1,11]],

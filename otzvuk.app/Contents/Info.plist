@@ -4,7 +4,7 @@
 <dict>
   <key>CFBundleName</key>                  <string>отзвук</string>
   <key>CFBundleDisplayName</key>           <string>отзвук</string>
-  <key>CFBundleIdentifier</key>            <string>com.yala.otzvuk</string>
+  <key>CFBundleIdentifier</key>            <string>otzvuk.instrument</string>
   <key>CFBundleExecutable</key>            <string>otzvuk</string>
   <key>CFBundleIconFile</key>              <string>otzvuk</string>
   <key>CFBundlePackageType</key>           <string>APPL</string>

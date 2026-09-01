@@ -15,15 +15,7 @@ from urllib.parse import unquote
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STORE = os.path.expanduser("~/Documents/otzvuk")
 STATE = os.path.join(STORE, "state.json")
-VKUS = os.path.join(STORE, "вкус.jsonl")
-EMB = os.path.join(STORE, "эмбеддинги.jsonl")
 RECS = os.path.join(STORE, "записи")
-INBOX = os.path.join(STORE, "обмен")
-ИСТОК = os.path.join(STORE, "исток")
-ЗАКАЗ = os.path.join(STORE, "заказ.json")
-# Пресеты лежат по одному файлу на штуку: так их не потерять целиком и можно
-# унести по одному. Папка в Документах — она переживает и порт, и профиль
-# браузера, и переустановку.
 ПРЕСЕТЫ = os.path.join(STORE, "presets")
 # Папка называлась по-русски, пока имена в проекте были кириллическими.
 # Читаем обе — ни один сохранённый пресет потеряться не должен.
@@ -54,8 +46,7 @@ class Handler(SimpleHTTPRequestHandler):
         # с непростыми именами не совпадёт ни с одним обработчиком.
         p = unquote(self.path.split("?")[0])
         if p == "/":
-            # Корень ведёт на инструмент: перезапуск сервера больше не
-            # выкидывает на старую страницу. Прежняя лежит на /index.html.
+            # Корень ведёт на инструмент.
             self.send_response(302)
             self.send_header("Location", "/instrument.html")
             self.end_headers()
@@ -79,52 +70,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(200, {"presets": строки})
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
-        if p == "/vkus":
-            # журнал кликов: одна строка на пару, дописывается, не переписывается
-            try:
-                with open(VKUS, encoding="utf-8") as f:
-                    rows = [json.loads(x) for x in f if x.strip()]
                 return self._json(200, {"rows": rows})
-            except FileNotFoundError:
-                return self._json(200, {"rows": []})
-            except (ValueError, OSError) as e:
-                return self._json(500, {"error": str(e)})
-        if p == "/исток/мета":
-            # что известно о фрагментах: запрос, близость, темп, длина
-            try:
-                rows = []
-                with open(os.path.join(STORE, "исток.jsonl"), encoding="utf-8") as f:
-                    rows = [json.loads(x) for x in f if x.strip()]
-                return self._json(200, {"rows": rows})
-            except FileNotFoundError:
-                return self._json(200, {"rows": []})
-            except (ValueError, OSError) as e:
-                return self._json(500, {"error": str(e)})
-        if p == "/исток":
-            # что уже породил генератор: список готовых файлов
-            try:
-                names = sorted(f for f in os.listdir(ИСТОК) if f.endswith(".wav"))
-                return self._json(200, {"файлы": names})
-            except FileNotFoundError:
-                return self._json(200, {"файлы": []})
-            except OSError as e:
-                return self._json(500, {"error": str(e)})
-        if p.startswith("/исток/"):
-            name = os.path.basename(unquote(p[len("/исток/"):]))
-            path = os.path.join(ИСТОК, name)
-            try:
-                data = open(path, "rb").read()
-                self.send_response(200)
-                self.send_header("Content-Type", "audio/wav")
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                return self.wfile.write(data)
-            except OSError:
-                return self._json(404, {"error": "нет такого"})
-        if p == "/эмбеддинги":
-            try:
-                with open(EMB, encoding="utf-8") as f:
-                    return self._json(200, {"rows": [json.loads(x) for x in f if x.strip()]})
             except FileNotFoundError:
                 return self._json(200, {"rows": []})
             except (ValueError, OSError) as e:
@@ -255,47 +201,12 @@ class Handler(SimpleHTTPRequestHandler):
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
 
-        if self.path.split("?")[0] == "/clap":
-            from urllib.parse import parse_qs
-            # WAV из браузера → эмбеддинг CLAP. Модель живёт в отдельном
-            # процессе (clapd.py) и общается через папку обмена: держать
-            # торч внутри веб-сервера значит ждать его при каждом старте.
-            try:
-                n = int(self.headers.get("Content-Length", 0))
-                q = parse_qs(self.path.split("?")[1] if "?" in self.path else "")
-                # ключ едет в адресе, а не в заголовке: заголовки HTTP —
-                # только латиница, а профили у нас по-русски
-                key = unquote(q.get("key", ["нечто"])[0])
-                key = key.replace("/", "_").replace("..", "_")
-                data = self.rfile.read(n)
-                os.makedirs(INBOX, exist_ok=True)
-                tmp = os.path.join(INBOX, key + ".part")
-                with open(tmp, "wb") as f:
-                    f.write(data)
-                os.replace(tmp, os.path.join(INBOX, key + ".wav"))
                 return self._json(200, {"ok": True, "queued": key})
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
-        if self.path.split("?")[0] == "/заказ":
-            # заказ материала словами: демон истока подхватит и породит
-            try:
-                n = int(self.headers.get("Content-Length", 0))
-                d = json.loads(self.rfile.read(n) or b"{}")
-                os.makedirs(STORE, exist_ok=True)
-                tmp = ЗАКАЗ + ".tmp"
-                with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump(d, f, ensure_ascii=False)
-                os.replace(tmp, ЗАКАЗ)
                 return self._json(200, {"ok": True})
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
-        if self.path.split("?")[0] == "/vkus":
-            try:
-                n = int(self.headers.get("Content-Length", 0))
-                row = json.loads(self.rfile.read(n) or b"{}")
-                os.makedirs(STORE, exist_ok=True)
-                with open(VKUS, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
                 return self._json(200, {"ok": True})
             except (ValueError, OSError) as e:
                 return self._json(500, {"error": str(e)})
@@ -361,8 +272,6 @@ def okno():
 
 if __name__ == "__main__":
     os.makedirs(RECS, exist_ok=True)
-    os.makedirs(INBOX, exist_ok=True)
-    os.makedirs(ИСТОК, exist_ok=True)
     сервер = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"отзвук: http://127.0.0.1:{PORT}  ·  записи: {RECS}")
     # Окно открываем ПОСЛЕ того, как порт занят, иначе браузер успевает
