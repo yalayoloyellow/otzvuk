@@ -684,7 +684,7 @@ function nazad(){
 // выпавший ноль читался бы как поломка, а не как новая сборка.
 function brosok(){
   for(const r of KNOBS) if(r.k!=='master') knobs[r.k]=Math.random();
-  poslednyaya=null;
+  vspyshki.clear();
   send();
   peresoberi();
   skazhi('бросок костей');
@@ -858,7 +858,10 @@ const switches={pit:0, vite:0, petlya:0,
 
 const p={};
 
-let poslednyaya=null, vspyshka=0, vspyshkat=null, poslednieVkladki='';
+// ВСПЫХИВАЮТ ВСЕ, КТО ДВИНУЛСЯ. Держали одну ручку — и запоминалась одна;
+// но стрелка ведёт ВСЕ зажатые буквы разом, а загоралась из них только
+// последняя в обходе. Панель врала про то, что сделала рука.
+let vspyshki=new Set(), vspyshka=0, vspyshkat=null, poslednieVkladki='';
 // Ручка должна ехать, а не прыгать. Шаг 4% при диапазоне высоты в семь с
 // половиной октав давал треть октавы за нажатие — отсюда «жёсткие пороги»
 // и ощущение цифры вместо аналога. Теперь базовый шаг мелкий, а при
@@ -894,7 +897,7 @@ setInterval(()=>{
     for(const r of derzhimRuchki.values()){
       if(r.stupeni) continue;                 // ступенчатую разгонять нечем
       knobs[r.k]=clamp((knobs[r.k]||0)+s.znak*step,0,1);
-      poslednyaya=r;
+      vspyshki.add(r);
     }
     vspyshka=4;
   }
@@ -1107,7 +1110,7 @@ addEventListener('keydown',async e=>{
     e.preventDefault();
     if(e.repeat) return;
     derzhimRuchki.set(c, r);
-    poslednyaya=r; vspyshka=6;
+    vspyshki.clear(); vspyshki.add(r); vspyshka=6;
     // Голосу нужен источник: без микрофона ручка глубины крутится впустую.
     // МИКРОФОН САМ НЕ ВКЛЮЧАЕТСЯ. Здесь стояло: тронул XMOD или SOURCE —
     // прибор молча просит микрофон. Задумано было как забота, вышло как
@@ -1153,7 +1156,7 @@ addEventListener('keydown',async e=>{
       } else {
         knobs[r.k]=clamp((knobs[r.k]||0)+strelka*.02*skor,0,1);
       }
-      poslednyaya=r;
+      vspyshki.add(r);
     }
     vspyshka=6; send();
     return;
@@ -2009,7 +2012,7 @@ function ruchki(){
       return `<span class="${zn.yark}">${vpole(r.imya,POLE_IMENI)}`+
              `${vpole(r.podpis,POLE_KLAV)}</span>`+shkalaMesto(v,shk,zn.n)+
              `<span class="${zn.yark}">${st}</span>`;
-    if(r===poslednyaya && vspyshka>0)
+    if(vspyshki.has(r) && vspyshka>0)
       return `<span class="${zn.yark}">${vpole(r.imya,POLE_IMENI)}`+
              `${vpole(r.podpis,POLE_KLAV)}${shkala(v,shk)}${st}</span>`;
     return chelo(r.imya,r.podpis,zn)+shkalaMesto(v,shk,zn.n)+
@@ -2019,7 +2022,12 @@ function ruchki(){
     const z=switches[t.k], pol=t.pol||2;
     // У двухпозиционного подписи нет: лампочка и имя говорят всё. Подпись
     // нужна там, где положений больше двух и словом их не заменишь.
-    const vid = pol>2 ? (t.podpis[z]||String(z)) : (z?ZN_EST:ZN_NET);
+    // ЛАМПОЧКА БЕРЁТ ЗНАКИ СВОЕЙ ЗОНЫ. Прежде все тумблеры во всех зонах
+    // брали их из зелёного ряда, а ряды разной плотности: у схемы ' ·◦⁘✷※',
+    // у прочих ' ◦⁘✷※●'. Розовый тумблер рисовался знаком чужого ряда и
+    // стоял на другой ступени, чем шкалы рядом с ним.
+    const ряд = ZNAKI[zn.n] || ZNAKI[0];
+    const vid = pol>2 ? (t.podpis[z]||String(z)) : (z?ряд[4]:ряд[1]);
     const kl = (t.shift?'\u21e7':'')+(IMYAKL[t.kl] || t.kl.replace('Key','').toLowerCase());
     // У МНОГОПОЗИЦИОННОГО НУЛЕВОЕ ПОЛОЖЕНИЕ — ЭТО ПОЛОЖЕНИЕ, А НЕ «ВЫКЛЮЧЕНО».
     // Красить «white» или «off» тусклым как погашенную лампочку значит врать:
@@ -2183,7 +2191,8 @@ function ruchki(){
         // Отступ ОДИН пробел, как у всех показаний после шкалы: с двумя
         // метроном стоял в колонке 27, а все соседи в 26 — на знак правее,
         // и колонка показаний ломалась ровно в одном месте панели.
-        (r.k==='chop' ? ` <span class="k1">b</span> <span class="${metrBpm?'k3':'k1'}">${metrBpm||120}</span>` : '')+
+        // Метроном покрашен цветом СВОЕЙ строки: он стоял красным на жёлтой.
+        (r.k==='chop' ? ` <span class="y1">b</span> <span class="${metrBpm?'y3':'y1'}">${metrBpm||120}</span>` : '')+
         (r.k==='gryzn' ? (()=>{
           // СПЕЦ-МЕСТО, А НЕ ВТОРАЯ СТРОКА. Имя SEQ стояло на панели дважды —
           // показание в шапке и ручка в схеме, — и хозяин прав: это отврат.
@@ -2207,7 +2216,10 @@ function ruchki(){
       // INPUT и удлинял строку вдвое, а место ему тут: без петли это число
       // ни о чём, по нему ядро само считает усиление круга.
       stroki.push(tumbler(t,zn)+
-        (t.k==='petlya'&&switches.petlya ? `  <span class="s1">ROOM ${vz.toFixed(2)}</span>` : '')+
+        // «room» — это ПОЛОЖЕНИЕ тумблера, и оно уже стоит на этой же строке.
+        // Писать рядом «ROOM 0.02» значило ставить одно слово в двух значениях
+        // на одной строке; показание зовётся по-русски, как все показания.
+        (t.k==='petlya'&&switches.petlya ? `  <span class="s1">возврат ${vz.toFixed(2)}</span>` : '')+
         (t.k==='vite'&&(report.niti||switches.vite) ? `  <span class="p1">нитей</span> <span class="p3">${report.niti||0}</span>`+
           (report.shvy ? `  <span class="p1">швов</span> <span class="p3">${report.shvy}</span>` : '') : ''));
   }
@@ -2277,7 +2289,11 @@ function ruchki(){
   // до перезагрузки страницы.
   if(avariya) stroki.push(
     `<span class="k4">${vpole('АВАРИЯ',POLE_IMENI)}${vpole('',POLE_KLAV)}`+
-    `${avariya.split('\n')[0].replace(/[&<>]/g,'·').slice(0,60)} — стек в консоли, перезагрузи</span>`);
+    // ЧТО ДЕЛАТЬ — ПЕРВЫМ. Прежде строка начиналась с текста ошибки в
+    // шестьдесят знаков, и указание «стек в консоли, перезагрузи» уезжало за
+    // пятьдесят второй знак: обрезка съедала ровно то, ради чего строка и
+    // нужна. Теперь наоборот, а на имя ошибки остаётся то, что влезло.
+    `перезагрузи · ${avariya.split('\n')[0].replace(/[&<>]/g,'·').slice(0,22)}</span>`);
   // СРЫВ — это NaN в звуковом потоке, пойманный и вылеченный на лету. Строки
   // быть не должно никогда; если она есть, в схеме что-то разошлось.
   if(report.sryvy) stroki.push(
@@ -2550,7 +2566,7 @@ let bylOtchet = -1, byliRuchki = '', bylaStroka = '', bylaShapka = null;
 let dropDo = 0;        // до какого мгновения держим строку DROPOUT
 let bylaKorobka = '';
 function kadr_(){
-  if(vspyshka>0) vspyshka--;
+  if(vspyshka>0 && --vspyshka===0) vspyshki.clear();
   if(!idet){
     // Заголовка нет. До запуска здесь стоит одно приглашение, после — пусто.
     if(bylaShapka!==0){ bylaShapka=0;
@@ -2587,7 +2603,10 @@ function kadr_(){
   // Число пресетов ушло отсюда в панель, под сборку: это состояние прибора,
   // а не подсказка по клавишам.
   const l = legenda()+
-    (vest && performance.now()<vestdo ? `\n<span class="z4">${vest}</span>` : '');
+    // Весть несёт имя файла и текст говорилки — то есть чужие знаки. В
+    // разметку они идут только экранированными.
+    (vest && performance.now()<vestdo
+      ? `\n<span class="z4">${String(vest).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>` : '');
   if(l!==bylaStroka){ bylaStroka=l; $('#line').innerHTML=l; }
 }
 pomer();
