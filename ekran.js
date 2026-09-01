@@ -140,6 +140,7 @@ export class Ekran {
     // цветов (жёлтая зона), у картины четыре, и оба живут одним классом.
     this.sloev = this.klass.length * STUPENEY;
     this.sloi = []; this.pre = []; this.bylo = new Uint8Array(this.sloev);
+    this.pred = new Array(this.sloev).fill(null);   // что уже стоит в слое
     for (let c = 0; c < this.klass.length; c++) for (let t = 0; t < STUPENEY; t++) {
       this.sloi.push(new Uint16Array(dlina));
       const e = document.createElement('pre');
@@ -192,8 +193,18 @@ export class Ekran {
     // Пустой слой не переводим в строку вовсе, и очищаем его только когда он
     // ТОЛЬКО ЧТО опустел.
     for (let k = 0; k < this.sloev; k++) {
-      if (est[k]) { pre[k].textContent = vStroku(sloi[k]); bylo[k] = 1; }
-      else if (bylo[k]) { pre[k].textContent = ''; bylo[k] = 0; }
+      // ПИШЕМ, ТОЛЬКО ЕСЛИ ПРАВДА ИЗМЕНИЛОСЬ. Прежде textContent
+      // переприсваивался каждому непустому слою КАЖДЫЙ кадр, даже когда
+      // строка та же: браузер на каждое присваивание перекладывает и
+      // перерисовывает весь <pre>, а на каждом знаке висит ореол. Двадцать
+      // пять слоёв по шестьдесят раз в секунду — это и читалось как
+      // мерцание, хотя содержимое менялось на десяток знакомест.
+      if (est[k]) {
+        const стр = vStroku(sloi[k]);
+        if (стр !== this.pred[k]) { pre[k].textContent = стр; this.pred[k] = стр; }
+        bylo[k] = 1;
+      }
+      else if (bylo[k]) { pre[k].textContent = ''; this.pred[k] = ''; bylo[k] = 0; }
     }
   }
 }
