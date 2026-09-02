@@ -1,6 +1,6 @@
 // Почему одни сборки вдвое-впятеро громче других. Корпус отдаёт тем больше,
 // чем плотнее к нему привинчен капсюль и чем гулче он сам, — и оба множителя
-// разбросаны сборкой. Ищу, чем именно это описывается.
+// разбросаны сборкой. Что именно это описывает — предмет замера.
 import {readFileSync} from 'fs';
 globalThis.sampleRate = 48000;
 globalThis.registerProcessor = () => {};
@@ -32,7 +32,7 @@ for (const s of semena){
 }
 const piki = stroki.map(r => r.pik);
 console.log('\nразброс по пику:', (Math.max(...piki)/Math.min(...piki)).toFixed(1), 'раз');
-// проверяю догадку: отдача корпуса ∝ vkladk · Qкорп, а мембраны ∝ Bl/mms
+// проверка догадки: отдача корпуса ∝ vkladk · Qкорп, а мембраны ∝ Bl/mms
 console.log('\nсемя        пик   vkladk·Qк   пик/(vkladk·Qк)');
 for (const r of stroki){
   const pr = r.sb.vkladk * r.sb.Qkorp;
