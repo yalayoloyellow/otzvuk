@@ -2,23 +2,10 @@
 <meta charset="utf-8">
 <title>отзвук · инструмент</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- СВОЁ ОКНО ВМЕСТО ВКЛАДКИ. Прибор ставится приложением: у окна нет ни
-     вкладок, ни адресной строки, а значит нечего закрывать посреди звука и
-     некому перехватывать Tab. Запуск: python3 serve.py --okno -->
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="znachok-192.png">
+<!-- СВОЁ ОКНО ВМЕСТО ВКЛАДКИ. Прибор открывается своим окном: ни вкладок, ни
+     адресной строки, а значит нечего закрывать посреди звука и некому
+     перехватывать Tab. Запуск: python3 serve.py --okno -->
 <meta name="theme-color" content="#06080a">
-<!-- На айфоне отдельного окна без этих двух строк не бывает: без первой
-     прибор откроется вкладкой Safari поверх адресной строки. -->
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<script>
-  // Служебный скрипт кладёт прибор в память устройства: после первого
-  // открытия он играет без сети. Молча — если браузер его не поддерживает,
-  // прибор просто работает как обычная страница.
-  if ('serviceWorker' in navigator)
-    addEventListener('load', () => navigator.serviceWorker.register('sluzhba.js').catch(()=>{}));
-</script>
 <style>
   /* Один цвет, три яркости. Жёлтый и оранжевый выбивались из фосфора и
      ломали общий вид. */
