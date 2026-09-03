@@ -393,10 +393,28 @@ let seed=(Math.random()*4294967295)>>>0;
 // тот привязан к origin и слетает от смены порта или профиля браузера, а
 // пресет должен пережить всё.
 let presets=[], tekuschiy=-1, vest='', vestdo=0;
+// Снимок сети веретена, приехавший из ядра. Живёт ровно до записи пресета.
+let seteVite=null;
 function skazhi(t){ vest=t; vestdo=performance.now()+2600; }
 function snimok(){
   return {name:nazovis(), time:new Date().toISOString().slice(0,19).replace('T',' '),
-          seed, knobs:{...knobs}, switches:{...switches}, tekst:stroka.tekst};
+          seed, knobs:{...knobs}, switches:{...switches}, tekst:stroka.tekst,
+          vite:seteVite};
+}
+// СЕТЬ ЖИВЁТ В ЯДРЕ, А ПРЕСЕТ ПИШЕТ ПАНЕЛЬ. Спрашиваем снимок и ждём его не
+// дольше четверти секунды: пресет без сети всё равно лучше, чем несохранённый.
+function sprosiVite(){
+  if(!node) return Promise.resolve();
+  seteVite=null; node.port.postMessage({t:'vite_day'});
+  return new Promise(gotovo=>{
+    // Ждём ТАЙМЕРОМ, а не кадрами: в фоновом окне requestAnimationFrame не
+    // приходит вовсе, и запись пресета повисла бы навсегда. Этот же промах
+    // однажды уже выдал себя за поломку панели.
+    const t0=Date.now();
+    const zhdyom=()=>{ if(seteVite || Date.now()-t0>250) gotovo();
+                       else setTimeout(zhdyom, 10); };
+    zhdyom();
+  });
 }
 function nazovis(){
   const p=report.period>0 ? report.period.toFixed(2)+'с' : '';
@@ -407,6 +425,7 @@ function nazovis(){
   return [data, (report.build&&report.build.imya)||'····', p, v].filter(Boolean).join(' ');
 }
 async function sohrani(){
+  await sprosiVite();
   try{
     const o=await fetch('/presets',{method:'POST',headers:{'Content-Type':'application/json'},
                                     body:JSON.stringify(snimok())});
@@ -449,6 +468,9 @@ function primenit(p){
   const s = pervy(p.seeds || p.семена) ?? p.seed ?? p.семя;
   if(s!==undefined && s!==null) seed=s>>>0;
   shli();
+  // Сеть возвращается ПОСЛЕ семени: shli() пересобирает прибор, и швы пишут
+  // в номиналы уже новой сборки. Порядок наоборот стёр бы их.
+  if(p.vite && node) node.port.postMessage({t:'vite_vstav', v:p.vite});
   skazhi('пресет: '+(p.name||p.имя||p.file));
 }
 // ---- СТРОКА ТЕКСТА ---------------------------------------------------------
@@ -1007,6 +1029,7 @@ async function pusk(){
     if(d && d.t==='avaria'){ avariya=d.text; console.error('АВАРИЯ ВОРКЛА:\n'+d.text); return; }
     if(d && d.t==='rec'){ zapisPrishla(d); return; }
     if(d && d.t==='быстро'){ bystroPrishlo(d); return; }
+    if(d && d.t==='vite_sost'){ seteVite=d.v; return; }
     report=d; window.dbg.otchetov=(window.dbg.otchetov||0)+1; window.dbg.o=report;
     // ВЕРЕТЕНО ВОДИТ КРУТИЛКИ: живые положения из ядра
     // ложатся в панельные ручки — шкалы едут на глазах. Ручка под пальцем

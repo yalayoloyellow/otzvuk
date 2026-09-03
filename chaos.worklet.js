@@ -3503,6 +3503,11 @@ class Chaos extends AudioWorkletProcessor {
         this.быстро = new Float32Array(this.бN * БЫСТР_ПОЛЕЙ);
         this.бк = 0;
       }
+      // СНИМОК СЕТИ ДЛЯ ПРЕСЕТА И ЕГО ВОЗВРАТ. Пресет без сети врал: звук,
+      // свитый веретеном, не воспроизводился — сеть живёт в ядре, а пресет
+      // пишет панель.
+      else if (d.t === 'vite_day') this.port.postMessage({t:'vite_sost', v:this.viteSnimok()});
+      else if (d.t === 'vite_vstav') this.viteVstav(d.v);
       else if (d.t === 'rec'){
         const bylo = this.rec;
         this.rec = !!d.v;
@@ -3686,6 +3691,60 @@ class Chaos extends AudioWorkletProcessor {
     this.mK[сл] = 1 - Math.exp(-1 / (SR / 128 * (.3 + р.call(this) * 1.7)));
     this.mShvov++;
   }
+  // СНИМОК ВЕРЕТЕНА.
+  //
+  // Одних нитей мало. ШОВ, дойдя до цели, ВПИСЫВАЕТСЯ В СБОРКУ и снимает
+  // себя из списка — его след живёт уже не в сети, а в номиналах. При
+  // загрузке пресета сборка рождается из семени заново, то есть без него.
+  // Поэтому вместе с нитями кладём и поля сборки, куда швы вообще умеют
+  // писать: список закрытый, он весь в вЗапись() ниже.
+  //
+  // Пул энтропии, заряд движения и счётчик до решения НЕ берём: это ход
+  // процесса, а не его результат. Сеть должна вернуться такой, какой
+  // звучала, а не продолжить с той же случайности.
+  viteSnimok(){
+    const м = а => Array.from(а), sb = this.pr.sb;
+    return {
+      n:this.viteN, shvov:this.mShvov,
+      ist:м(this.vIst), pr:м(this.vPr), meta:м(this.vMeta), gl:м(this.vGl),
+      iner:м(this.vIn), kr:м(this.vKr), kv:м(this.vKv), sost:м(this.vSost),
+      kvzn:м(this.vKvZn), zhiv:м(this.vZhiv), cel:м(this.vCel),
+      mt:м(this.vMt), sm:м(this.vSm),
+      mvid:м(this.mVid), mind:м(this.mInd), mtek:м(this.mTek),
+      mcel:м(this.mCel), mk:м(this.mK), mzhdet:м(this.mZhdet),
+      sborka:{Rvhod:м(sb.Rvhod), ves:м(sb.ves), razv:м(sb.razv),
+              razvM:м(sb.razvM), Rperem:sb.Rperem, risunok:sb.risunok,
+              zTone:sb.zTone, zTilt:sb.zTilt, zRange:sb.zRange,
+              zVolt:sb.zVolt, zSag:sb.zSag}
+    };
+  }
+
+  // ВОЗВРАТ СЕТИ. Длины сверяются на месте: пресет мог быть записан, когда
+  // нитей было другое число, и класть чужую длину в типизированный массив
+  // нельзя.
+  viteVstav(с){
+    if (!с) return;
+    const в = (а, и) => { if (!а || !и) return;
+      const n = Math.min(а.length, и.length);
+      for (let i = 0; i < n; i++) а[i] = и[i]; };
+    в(this.vIst, с.ist);   в(this.vPr, с.pr);     в(this.vMeta, с.meta);
+    в(this.vGl, с.gl);     в(this.vIn, с.iner);   в(this.vKr, с.kr);
+    в(this.vKv, с.kv);     в(this.vSost, с.sost); в(this.vKvZn, с.kvzn);
+    в(this.vZhiv, с.zhiv); в(this.vCel, с.cel);   в(this.vMt, с.mt);
+    в(this.vSm, с.sm);
+    в(this.mVid, с.mvid);  в(this.mInd, с.mind);  в(this.mTek, с.mtek);
+    в(this.mCel, с.mcel);  в(this.mK, с.mk);      в(this.mZhdet, с.mzhdet);
+    this.viteN = с.n | 0;  this.mShvov = с.shvov | 0;
+    const б = с.sborka, sb = this.pr.sb;
+    if (б){
+      в(sb.Rvhod, б.Rvhod); в(sb.ves, б.ves);
+      в(sb.razv, б.razv);   в(sb.razvM, б.razvM);
+      for (const k of ['Rperem','risunok','zTone','zTilt','zRange','zVolt','zSag'])
+        if (typeof б[k] === 'number') sb[k] = б[k];
+      sb.vyvod();          // веса в суммирующей цепи тянут производные за собой
+    }
+  }
+
   вЗапись(вид, инд, з){
     const sb = this.pr.sb;
     switch (вид){
