@@ -417,7 +417,12 @@ async function sohrani(){
     else skazhi('не сохранилось: '+(d.error||'?'));
   }catch(e){ skazhi('не сохранилось: '+e.message); }
 }
+// СВОЙ СЕРВЕР ИЛИ СЕТЬ. Пресеты, запись и замеры — ручки локального сервера,
+// в сетевой версии их нет. Молча поймать отказ нельзя: 404 браузер пишет в
+// консоль сам, мимо любого catch. Значит не спрашиваем вовсе.
+const SVOY_SERVER = ['localhost','127.0.0.1','[::1]'].includes(location.hostname);
 async function zagruzispisok(){
+  if(!SVOY_SERVER){ presets=[]; return; }
   try{
     const o=await fetch('/presets'); const d=await o.json();
     presets=d.presets||[];
